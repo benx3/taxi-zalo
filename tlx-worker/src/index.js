@@ -11,11 +11,16 @@ import "dotenv/config";
 
 import * as dbm from "./dbLayer.js";
 import * as sm from "./sessionManager.js";
+import { config } from "./config.js";
 
 const PORT = Number(process.env.PORT || 8080);
 
 await dbm.ensureSeed();
 await dbm.purgeOld();
+// load cài đặt từ DB vào bộ nhớ
+config.voiceEnabled = (await dbm.getSetting("voice_enabled", "1")) === "1";
+const _storedFptKey = await dbm.getSetting("fpt_stt_api_key", null);
+if (_storedFptKey) config.fptSttApiKey = _storedFptKey;
 setInterval(() => dbm.purgeOld().catch(()=>{}), 6 * 3600 * 1000);
 
 const app = express();
@@ -89,6 +94,31 @@ app.post("/api/admin/set-role", async (req, res) => {
   if (req.body.id === a.userId && req.body.role !== "admin")
     return res.status(400).json({ error: "Không thể tự gỡ quyền admin của chính mình" });
   res.json(await dbm.setRole(req.body.id, req.body.role));
+});
+app.get("/api/admin/settings", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const key = config.fptSttApiKey || process.env.FPT_STT_API_KEY || "";
+  res.json({
+    voice_enabled: config.voiceEnabled,
+    fpt_api_key_set: !!key,
+    fpt_api_key_hint: key ? "****" + key.slice(-4) : null,
+  });
+});
+app.post("/api/admin/settings", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { key, value } = req.body;
+  if (key === "voice_enabled") {
+    await dbm.setSetting("voice_enabled", value ? "1" : "0");
+    config.voiceEnabled = !!value;
+    return res.json({ ok: true, voice_enabled: !!value });
+  }
+  if (key === "fpt_stt_api_key") {
+    const trimmed = String(value || "").trim();
+    await dbm.setSetting("fpt_stt_api_key", trimmed);
+    config.fptSttApiKey = trimmed || null;
+    return res.json({ ok: true, fpt_api_key_set: !!trimmed, fpt_api_key_hint: trimmed ? "****" + trimmed.slice(-4) : null });
+  }
+  res.status(400).json({ error: "Key không hợp lệ" });
 });
 
 // ---------- Lịch sử cuốc ----------

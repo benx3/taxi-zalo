@@ -7,6 +7,8 @@
 // ============================================================
 import { Zalo } from "zca-js";
 import { parseMultipleTrips, isConfirmMessage } from "./parser.js";
+import { transcribeVoice, getVoiceUrl } from "./stt.js";
+import { config } from "./config.js";
 import * as dbm from "./dbLayer.js";
 
 const OK_MIN = Number(process.env.OK_DELAY_MIN || 400);
@@ -155,10 +157,28 @@ function onMessage(sess, msg) {
 
     const senderId = String(msg.data?.uidFrom || msg.data?.senderId || "");
     const senderName = msg.data?.dName || "Không rõ";
-    const text = typeof msg.data?.content === "string" ? msg.data.content : (msg.data?.content?.title || "");
     const msgId = String(msg.data?.msgId || msg.data?.cliMsgId || Date.now());
     const groupName = sess.groupNameById.get(groupId) || msg.data?.groupName || groupId;
     const time = new Date().toLocaleTimeString("vi-VN", { hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
+
+    // DEBUG: log tin media để xác định cấu trúc voice thật của zca-js
+    if (process.env.DEBUG_RAW && typeof msg.data?.content !== "string") {
+      console.log(`[DEBUG_RAW] group=${groupId} msgType=${msg.data?.msgType}`,
+        JSON.stringify(msg.data?.content)?.slice(0, 600));
+    }
+
+    // Phát hiện tin nhắn voice → dịch bất đồng bộ, không chặn listener
+    const voiceUrl = getVoiceUrl(msg.data?.content, msg.data);
+    if (voiceUrl) {
+      if (config.voiceEnabled) {
+        cacheRawMsg(sess, msgId, msg);
+        handleVoiceTrip(sess, { groupId, groupName, senderId, senderName, msgId, time }, msg, voiceUrl)
+          .catch(e => console.error(`[${sess.userId}] voice trip:`, e?.message || e));
+      }
+      return; // bỏ qua voice nếu tính năng tắt (không xử lý như text)
+    }
+
+    const text = typeof msg.data?.content === "string" ? msg.data.content : (msg.data?.content?.title || "");
 
     // (A) chủ cuốc xác nhận cho mình?
     const key = `${groupId}:${senderId}`;
@@ -173,11 +193,7 @@ function onMessage(sess, msg) {
     // (B) cuốc mới — 1 tin có thể chứa nhiều cuốc
     const trips = parseMultipleTrips({ groupId, groupName, senderId, senderName, msgId, text, time });
     if (trips.length > 0) {
-      sess.rawMsgById.set(msgId, msg);
-      if (sess.rawMsgById.size > 30) {
-        const firstKey = sess.rawMsgById.keys().next().value;
-        sess.rawMsgById.delete(firstKey);
-      }
+      cacheRawMsg(sess, msgId, msg);
       for (let i = 0; i < trips.length; i++) {
         const subMsgId = trips.length === 1 ? msgId : `${msgId}_${i}`;
         const tripOut = { ...trips[i], msgId: subMsgId };
@@ -190,6 +206,33 @@ function onMessage(sess, msg) {
     }
   } catch (e) {
     console.error(`[${sess.userId}] onMessage:`, e?.message || e);
+  }
+}
+
+// Lưu rawMsg vào cache (giới hạn 30 tin)
+function cacheRawMsg(sess, msgId, msg) {
+  sess.rawMsgById.set(msgId, msg);
+  if (sess.rawMsgById.size > 30) {
+    const firstKey = sess.rawMsgById.keys().next().value;
+    sess.rawMsgById.delete(firstKey);
+  }
+}
+
+// Dịch voice → text → parseTrip → gửi event (chạy nền)
+async function handleVoiceTrip(sess, base, rawMsg, voiceUrl) {
+  const text = await transcribeVoice(voiceUrl, base.msgId);
+  if (!text) return;
+  console.log(`[${sess.userId}] 🎤 voice "${text.slice(0, 80)}"`);
+  const trips = parseMultipleTrips({ ...base, text });
+  if (trips.length === 0) return;
+  for (let i = 0; i < trips.length; i++) {
+    const subMsgId = trips.length === 1 ? base.msgId : `${base.msgId}_${i}`;
+    const tripOut = { ...trips[i], msgId: subMsgId, isVoice: true };
+    if (trips.length > 1) {
+      tripOut.replyMsgId = base.msgId;
+      sess.rawMsgById.set(subMsgId, rawMsg);
+    }
+    sess.onEvent(sess.userId, { type: "trip", trip: tripOut });
   }
 }
 

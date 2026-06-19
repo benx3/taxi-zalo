@@ -4,7 +4,7 @@ import {
   Shield, CreditCard, Ban, RefreshCw, X, Megaphone, User, TrendingUp,
   Radio, ArrowRight, Hourglass, Sparkles, Filter, MessageCircle, Lock,
   Phone, QrCode, LogOut, UserPlus, AlertTriangle, ChevronRight, Smartphone,
-  Settings, ListChecks, Wifi, WifiOff, MapPin, ChevronDown
+  Settings, ListChecks, Wifi, WifiOff, MapPin, ChevronDown, Mic, Eye, EyeOff
 } from "lucide-react";
 import { useWorker } from "./useWorker.js";
 import { api, getToken, setToken } from "./api.js";
@@ -555,7 +555,7 @@ function TripCard({trip,state,onTake,onCancel}){
       {trip.route&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,fontSize:14,fontWeight:600,textTransform:"capitalize"}}><span>{trip.route.from||"—"}</span><ArrowRight size={15} color="var(--accent)" style={{flexShrink:0}}/><span style={{color:"var(--accent)"}}>{trip.route.to||"—"}</span></div>}
       <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:10,flexWrap:"wrap"}}>
         <Tag color={meta.color} icon={Icon}>{trip.type}</Tag>{trip.time&&<Tag><Clock size={12}/> {trip.time.label}</Tag>}<Tag>{trip.seats}</Tag>
-        {trip.car&&<Tag><Car size={12}/> {trip.car}</Tag>}{trip.free&&<Tag color="#34d399"><Sparkles size={11}/> free</Tag>}{trip.bonus&&<Tag color="#a78bfa">+{trip.bonus}</Tag>}
+        {trip.car&&<Tag><Car size={12}/> {trip.car}</Tag>}{trip.free&&<Tag color="#34d399"><Sparkles size={11}/> free</Tag>}{trip.bonus&&<Tag color="#a78bfa">+{trip.bonus}</Tag>}{trip.isVoice&&<Tag color="#a78bfa"><Mic size={11}/> voice</Tag>}
         {trip.price&&<span style={{marginLeft:"auto",display:"inline-flex",alignItems:"center",gap:5,fontWeight:800,fontSize:19,color:"#f87171",fontFamily:"var(--display)"}}><Wallet size={16}/> {trip.price}k</span>}
       </div>
       <div style={{fontSize:15,color:"var(--ink-dim)",lineHeight:1.6,marginBottom:13,background:"rgba(0,0,0,.2)",padding:"10px 12px",borderRadius:9,whiteSpace:"pre-wrap"}}>{trip.text}</div>
@@ -600,6 +600,127 @@ function WonModal({trip,groupLink,onClose}){
   );
 }
 
+/* ===== Admin: Cài đặt hệ thống ===== */
+function AdminSettingsTab() {
+  const [settings, setSettings] = useState(null); // null = đang tải
+  const [saving, setSaving] = useState(null); // key đang lưu
+  const [msg, setMsg] = useState(null);
+  const [fptKey, setFptKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+
+  const load = () => api.getSettings().then(s => { setSettings(s); setFptKey(""); }).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  const flash = (ok, text) => { setMsg({ ok, text }); setTimeout(() => setMsg(null), 3000); };
+
+  const toggleVoice = async () => {
+    setSaving("voice");
+    try {
+      const next = !settings.voice_enabled;
+      await api.setSetting("voice_enabled", next);
+      setSettings(s => ({ ...s, voice_enabled: next }));
+      flash(true, next ? "Đã bật xử lý tin nhắn voice." : "Đã tắt xử lý tin nhắn voice.");
+    } catch (e) { flash(false, e.message || "Lỗi lưu"); }
+    finally { setSaving(null); }
+  };
+
+  const saveFptKey = async () => {
+    setSaving("fpt");
+    try {
+      const r = await api.setSetting("fpt_stt_api_key", fptKey.trim());
+      setSettings(s => ({ ...s, fpt_api_key_set: r.fpt_api_key_set, fpt_api_key_hint: r.fpt_api_key_hint }));
+      setFptKey("");
+      flash(true, fptKey.trim() ? "Đã lưu FPT API Key." : "Đã xoá FPT API Key.");
+    } catch (e) { flash(false, e.message || "Lỗi lưu"); }
+    finally { setSaving(null); }
+  };
+
+  const voiceOn = settings?.voice_enabled;
+  const cardStyle = { background:"var(--card)", border:"1px solid var(--line)", borderRadius:16, padding:20, marginBottom:14 };
+
+  return (
+    <div style={{maxWidth:540}}>
+      {/* Toggle voice */}
+      <div style={cardStyle}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+          <Mic size={17} color="#a78bfa"/>
+          <span style={{fontWeight:700,fontSize:15}}>Xử lý tin nhắn Voice</span>
+          <span style={{marginLeft:"auto"}}>
+            {settings === null
+              ? <span style={{color:"var(--ink-dim)",fontSize:13}}>Đang tải…</span>
+              : <button onClick={toggleVoice} disabled={!!saving} style={{
+                  display:"inline-flex",alignItems:"center",gap:7,padding:"7px 18px",
+                  borderRadius:99,cursor:saving?"default":"pointer",fontWeight:700,fontSize:13,
+                  background:voiceOn?"rgba(52,211,153,.15)":"rgba(239,68,68,.1)",
+                  color:voiceOn?"#34d399":"#f87171",
+                  border:"1px solid "+(voiceOn?"#34d39955":"#f8717155"),
+                }}>
+                  <span style={{width:9,height:9,borderRadius:99,background:voiceOn?"#34d399":"#f87171",display:"inline-block"}}/>
+                  {saving==="voice" ? "Đang lưu…" : voiceOn ? "Đang BẬT" : "Đang TẮT"}
+                </button>
+            }
+          </span>
+        </div>
+        <p style={{color:"var(--ink-dim)",fontSize:13,lineHeight:1.6,margin:0}}>
+          Khi <b>bật</b>: voice trong nhóm Zalo được chuyển văn bản qua FPT.AI rồi phân tích cuốc xe.<br/>
+          Khi <b>tắt</b>: tin voice bị bỏ qua hoàn toàn, không tốn API key.
+        </p>
+      </div>
+
+      {/* FPT API Key */}
+      <div style={cardStyle}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+          <Settings size={17} color="#60a5fa"/>
+          <span style={{fontWeight:700,fontSize:15}}>FPT.AI STT API Key</span>
+          {settings?.fpt_api_key_set && (
+            <span style={{marginLeft:"auto",fontSize:12,color:"#34d399",fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
+              <CheckCircle2 size={13}/> Đã cấu hình {settings.fpt_api_key_hint}
+            </span>
+          )}
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{flex:1,position:"relative"}}>
+            <input
+              type={showKey?"text":"password"}
+              value={fptKey}
+              onChange={e=>setFptKey(e.target.value)}
+              placeholder={settings?.fpt_api_key_set ? "Nhập key mới để thay thế…" : "Nhập FPT.AI API Key…"}
+              style={{width:"100%",boxSizing:"border-box",padding:"10px 38px 10px 12px",borderRadius:10,border:"1px solid var(--line)",background:"rgba(0,0,0,.2)",color:"var(--ink)",fontSize:13,outline:"none"}}
+              onKeyDown={e=>e.key==="Enter"&&fptKey.trim()&&saveFptKey()}
+            />
+            <button onClick={()=>setShowKey(p=>!p)} title={showKey?"Ẩn":"Hiện"} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"var(--ink-dim)",padding:2}}>
+              {showKey ? <EyeOff size={15}/> : <Eye size={15}/>}
+            </button>
+          </div>
+          <button onClick={saveFptKey} disabled={!!saving||!fptKey.trim()} style={{padding:"10px 18px",borderRadius:10,cursor:fptKey.trim()&&!saving?"pointer":"default",fontWeight:700,fontSize:13,background:"rgba(96,165,250,.15)",color:"#60a5fa",border:"1px solid #60a5fa44",whiteSpace:"nowrap"}}>
+            {saving==="fpt"?"Đang lưu…":"Lưu key"}
+          </button>
+        </div>
+        {settings?.fpt_api_key_set && (
+          <button onClick={async()=>{
+            try{await api.setSetting("fpt_stt_api_key","");setSettings(s=>({...s,fpt_api_key_set:false,fpt_api_key_hint:null}));flash(true,"Đã xoá FPT API Key.");}
+            catch(e){flash(false,e.message);}
+          }} style={{marginTop:8,background:"none",border:"none",cursor:"pointer",color:"#f87171",fontSize:12,textDecoration:"underline",padding:0}}>
+            Xoá key
+          </button>
+        )}
+        <p style={{color:"var(--ink-dim)",fontSize:12,lineHeight:1.5,marginTop:10,marginBottom:0}}>
+          Lấy key tại <b>fpt.ai</b> → Console → API Key. Key lưu trong DB, ưu tiên hơn biến môi trường <code style={{background:"rgba(148,163,184,.1)",padding:"1px 4px",borderRadius:3}}>FPT_STT_API_KEY</code>.
+        </p>
+      </div>
+
+      {msg && (
+        <div style={{padding:"10px 14px",borderRadius:10,fontSize:13,fontWeight:600,
+          background:msg.ok?"rgba(52,211,153,.12)":"rgba(239,68,68,.12)",
+          color:msg.ok?"#34d399":"#f87171",
+          border:"1px solid "+(msg.ok?"#34d39944":"#f8717144")}}>
+          {msg.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ============ ADMIN ============ */
 function AdminApp() {
   const [week,setWeek]=useState(30000);const [month,setMonth]=useState(99000);
@@ -634,11 +755,12 @@ function AdminApp() {
       <h1 style={{fontFamily:"var(--display)",fontWeight:800,fontSize:24,letterSpacing:"-.02em",marginBottom:4}}>Bảng điều khiển Admin</h1>
       <p style={{color:"var(--ink-dim)",fontSize:14,marginBottom:14}}>Duyệt tài khoản, cấp gói, gia hạn và phân quyền.</p>
       <div style={{display:"flex",gap:8,marginBottom:20}}>
-        {[{key:"users",label:"Tài khoản"},{key:"stats",label:"Thống kê"}].map(t=>(
+        {[{key:"users",label:"Tài khoản"},{key:"stats",label:"Thống kê"},{key:"settings",label:"Cài đặt"}].map(t=>(
           <button key={t.key} onClick={()=>setAdminTab(t.key)} style={{padding:"8px 18px",borderRadius:10,border:"1px solid "+(adminTab===t.key?"var(--accent)":"var(--line)"),background:adminTab===t.key?"rgba(52,211,153,.15)":"var(--card)",color:adminTab===t.key?"var(--accent)":"var(--ink-dim)",fontWeight:700,fontSize:13.5,cursor:"pointer"}}>{t.label}</button>
         ))}
       </div>
       {adminTab==="stats"&&<AdminStatsTab/>}
+      {adminTab==="settings"&&<AdminSettingsTab/>}
       {adminTab==="users"&&<>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:24}}>
         <Stat icon={Hourglass} color="#f59e0b" label="Chờ duyệt" value={pending}/>

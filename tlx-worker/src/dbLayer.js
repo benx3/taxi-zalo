@@ -22,4 +22,5 @@ export const {
   resetPassword, getRevenueStats, getUserStats,
   saveZaloSession, getZaloSession, clearZaloSession,
   saveTrip, markTripWon, deleteSavedTrip, listSavedTrips, purgeOld,
+  getSetting, setSetting,
 } = impl;

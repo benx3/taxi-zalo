@@ -34,6 +34,8 @@ export const api = {
   resetPassword: (id, newPass) => req("/api/admin/reset-password", { id, newPass }),
   revenueStats: (from, to) => req(`/api/admin/stats/revenue?from=${from}&to=${to}`, null, "GET"),
   userStats: (from, to, status) => req(`/api/admin/stats/users?from=${from}&to=${to}&status=${status||"all"}`, null, "GET"),
+  getSettings: () => req("/api/admin/settings", null, "GET"),
+  setSetting: (key, value) => req("/api/admin/settings", { key, value }),
   // zalo
   startZaloQR: () => req("/api/zalo/login-qr", {}),
   logoutZalo: () => req("/api/zalo/logout", {}),

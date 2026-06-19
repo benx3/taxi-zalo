@@ -68,6 +68,10 @@ export async function initDb() {
       created_at BIGINT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(created_at DESC);
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 }
 
@@ -252,6 +256,15 @@ export async function listSavedTrips(userId, limit = 100) {
   const r = await q("SELECT * FROM saved_trips WHERE user_id=$1 ORDER BY taken_at DESC LIMIT $2", [userId, limit]);
   return r.rows;
 }
+export async function getSetting(key, defaultVal = null) {
+  const r = await q("SELECT value FROM app_settings WHERE key=$1", [key]);
+  return r.rowCount > 0 ? r.rows[0].value : defaultVal;
+}
+export async function setSetting(key, value) {
+  await q("INSERT INTO app_settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+    [key, String(value)]);
+}
+
 export async function purgeOld() {
   const cutoff = now() - 60 * 86400000;
   const r = await q("DELETE FROM saved_trips WHERE taken_at < $1", [cutoff]);

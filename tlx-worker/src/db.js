@@ -66,6 +66,11 @@ CREATE TABLE IF NOT EXISTS transactions (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `);
 
 const sessions = new Map(); // token -> userId (đăng nhập web)
@@ -261,6 +266,16 @@ export function getUserStats(fromMs, toMs, status) {
     FROM users WHERE role='driver' AND created_at>=? AND created_at<=?
     GROUP BY day, status ORDER BY day ASC
   `).all(fromMs, toMs);
+}
+
+// ---------- Cài đặt ứng dụng ----------
+export function getSetting(key, defaultVal = null) {
+  const row = db.prepare("SELECT value FROM app_settings WHERE key=?").get(key);
+  return row ? row.value : defaultVal;
+}
+export function setSetting(key, value) {
+  db.prepare("INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+    .run(key, String(value));
 }
 
 // ---------- Dọn dữ liệu cũ > 2 tháng ----------
