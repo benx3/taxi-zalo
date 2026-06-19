@@ -68,9 +68,22 @@ app.post("/api/change-password", async (req, res) => {
 
 // ---------- Admin ----------
 app.get("/api/admin/users", async (req, res) => { if (!await requireAdmin(req, res)) return; res.json(await dbm.listUsers()); });
-app.post("/api/admin/approve", async (req, res) => { if (!await requireAdmin(req, res)) return; res.json(await dbm.approveUser(req.body.id, req.body.plan)); });
-app.post("/api/admin/renew", async (req, res) => { if (!await requireAdmin(req, res)) return; res.json(await dbm.renewUser(req.body.id)); });
+app.post("/api/admin/approve", async (req, res) => { if (!await requireAdmin(req, res)) return; res.json(await dbm.approveUser(req.body.id, req.body.plan, req.body.amount || 0)); });
+app.post("/api/admin/renew", async (req, res) => { if (!await requireAdmin(req, res)) return; res.json(await dbm.renewUser(req.body.id, req.body.amount || 0)); });
 app.post("/api/admin/ban", async (req, res) => { if (!await requireAdmin(req, res)) return; res.json(await dbm.toggleBan(req.body.id)); });
+app.post("/api/admin/reset-password", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try { res.json(await dbm.resetPassword(req.body.id, req.body.newPass)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.get("/api/admin/stats/revenue", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  res.json(await dbm.getRevenueStats(Number(req.query.from) || 0, Number(req.query.to) || Date.now()));
+});
+app.get("/api/admin/stats/users", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  res.json(await dbm.getUserStats(Number(req.query.from) || 0, Number(req.query.to) || Date.now(), req.query.status || "all"));
+});
 app.post("/api/admin/set-role", async (req, res) => {
   const a = await requireAdmin(req, res); if (!a) return;
   if (req.body.id === a.userId && req.body.role !== "admin")

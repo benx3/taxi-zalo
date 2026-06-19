@@ -67,7 +67,7 @@ function DriverFlow({ me, setMe }) {
   if (me.status==="expired") return <GateScreen kind="expired" me={me} onLogout={()=>{api.logout();setMe(null);}}/>;
   if (me.status==="banned") return <GateScreen kind="banned" me={me} onLogout={()=>{api.logout();setMe(null);}}/>;
   const needZalo = forceReconnect || (!me.hasZalo && !zaloConnected);
-  if (needZalo) return <ConnectZalo me={me} onConnected={()=>{setZaloConnected(true);setForceReconnect(false);}}/>;
+  if (needZalo) return <ConnectZalo me={me} onConnected={()=>{setZaloConnected(true);setForceReconnect(false);}} onLogout={async()=>{await api.logout();setMe(null);}}/>;
   return <DriverApp me={me} setMe={setMe} onChangeZalo={()=>{setZaloConnected(false);setForceReconnect(true);}}/>;
 }
 
@@ -135,7 +135,7 @@ function GateScreen({ kind, me, onLogout }) {
   );
 }
 
-function ConnectZalo({ me, onConnected }) {
+function ConnectZalo({ me, onConnected, onLogout }) {
   const { connected, qr, zaloReady } = useWorker();
   const [requested,setRequested]=useState(false);
   const [err,setErr]=useState("");
@@ -159,6 +159,7 @@ function ConnectZalo({ me, onConnected }) {
       {zaloReady ? <div style={{textAlign:"center",color:"#34d399",fontWeight:800}}>Đã kết nối! Đang vào…</div>
         : requested ? <div style={{textAlign:"center",color:"#f59e0b",fontWeight:700,fontSize:14}}><Hourglass size={15} style={{verticalAlign:-2,marginRight:5}}/> Đang chờ bạn quét QR…</div>
         : <button onClick={start} disabled={!connected} style={{...primaryBtn,background:"linear-gradient(135deg,#0068ff,#0052cc)",color:"#fff",opacity:connected?1:0.5}}><QrCode size={17} style={{marginRight:7,verticalAlign:-3}}/> Hiện mã QR Zalo</button>}
+      <button onClick={onLogout} style={{...ghostFull,marginTop:12,color:"var(--ink-dim)",fontSize:13}}><LogOut size={14} style={{marginRight:6,verticalAlign:-2}}/> Đăng xuất tài khoản</button>
     </AuthShell>
   );
 }
@@ -555,6 +556,8 @@ function AdminApp() {
   const [week,setWeek]=useState(30000);const [month,setMonth]=useState(99000);
   const [users,setUsers]=useState([]);
   const [q,setQ]=useState("");
+  const [adminTab,setAdminTab]=useState("users");
+  const [resetTarget,setResetTarget]=useState(null);
   const fmt=n=>n.toLocaleString("vi-VN")+"đ";
   const reload=()=>api.adminUsers().then(setUsers).catch(()=>{});
   useEffect(()=>{ reload(); const t=setInterval(reload,5000); return ()=>clearInterval(t); },[]);
@@ -569,8 +572,8 @@ function AdminApp() {
   const active=stat.filter(u=>u.status==="active").length;
   const expired=stat.filter(u=>u.status==="expired").length;
   const rev=stat.filter(u=>u.status==="active").reduce((s,u)=>s+(u.plan==="Tháng"?month:week),0);
-  const approve=async(id,plan)=>{await api.approve(id,plan);reload();};
-  const renew=async(id)=>{await api.renew(id);reload();};
+  const approve=async(id,plan)=>{await api.approve(id,plan,plan==="Tháng"?month:week);reload();};
+  const renew=async(id)=>{const u=users.find(x=>x.id===id);await api.renew(id,u?.plan==="Tháng"?month:week);reload();};
   const ban=async(id)=>{await api.ban(id);reload();};
   const setRole=async(id,role)=>{
     const verb=role==="admin"?"CẤP quyền admin cho":"GỠ quyền admin của";
@@ -580,7 +583,14 @@ function AdminApp() {
   return (
     <div style={{maxWidth:1000,margin:"0 auto",padding:"20px 16px 60px"}}>
       <h1 style={{fontFamily:"var(--display)",fontWeight:800,fontSize:24,letterSpacing:"-.02em",marginBottom:4}}>Bảng điều khiển Admin</h1>
-      <p style={{color:"var(--ink-dim)",fontSize:14,marginBottom:22}}>Duyệt tài khoản, cấp gói, gia hạn và phân quyền.</p>
+      <p style={{color:"var(--ink-dim)",fontSize:14,marginBottom:14}}>Duyệt tài khoản, cấp gói, gia hạn và phân quyền.</p>
+      <div style={{display:"flex",gap:8,marginBottom:20}}>
+        {[{key:"users",label:"Tài khoản"},{key:"stats",label:"Thống kê"}].map(t=>(
+          <button key={t.key} onClick={()=>setAdminTab(t.key)} style={{padding:"8px 18px",borderRadius:10,border:"1px solid "+(adminTab===t.key?"var(--accent)":"var(--line)"),background:adminTab===t.key?"rgba(52,211,153,.15)":"var(--card)",color:adminTab===t.key?"var(--accent)":"var(--ink-dim)",fontWeight:700,fontSize:13.5,cursor:"pointer"}}>{t.label}</button>
+        ))}
+      </div>
+      {adminTab==="stats"&&<AdminStatsTab/>}
+      {adminTab==="users"&&<>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:24}}>
         <Stat icon={Hourglass} color="#f59e0b" label="Chờ duyệt" value={pending}/>
         <Stat icon={CheckCircle2} color="#22c55e" label="Hoạt động" value={active}/>
@@ -617,6 +627,7 @@ function AdminApp() {
                 <td style={td}>{!isAdmin&&u.status==="active"?<span style={{color:u.daysLeft<=3?"#f59e0b":"var(--ink)"}}>{u.daysLeft} ngày</span>:<span style={{color:"var(--ink-dim)"}}>—</span>}</td>
                 <td style={td}><StatusPill status={u.status}/></td>
                 <td style={{...td,textAlign:"right",whiteSpace:"nowrap"}}>
+                  <button onClick={()=>setResetTarget(u)} style={miniBtn("#8b5cf6")}><Lock size={13}/> Reset MK</button>
                   {isAdmin ? (
                     <button onClick={()=>setRole(u.id,"driver")} style={miniBtn("#f59e0b")}><Shield size={13}/> Gỡ admin</button>
                   ) : u.status==="pending" ? (<>
@@ -633,12 +644,171 @@ function AdminApp() {
           </table>
         </div>
       </div>
+      </>}
+      {resetTarget&&<ResetPwdModal target={resetTarget} onClose={()=>setResetTarget(null)} onDone={reload}/>}
     </div>
   );
 }
 function Stat({icon:Icon,color,label,value,small}){return(<div style={{background:"var(--card)",border:"1px solid var(--line)",borderRadius:14,padding:"15px 16px"}}><div style={{display:"flex",alignItems:"center",gap:7,color:"var(--ink-dim)",fontSize:12.5,marginBottom:9,fontWeight:600}}><Icon size={15} color={color}/> {label}</div><div style={{fontFamily:"var(--display)",fontWeight:800,fontSize:small?22:30,color,letterSpacing:"-.02em"}}>{value}</div></div>);}
 function PriceInput({label,value,onChange}){return(<div><div style={{fontSize:12.5,color:"var(--ink-dim)",marginBottom:6,fontWeight:600}}>{label}</div><div style={{position:"relative"}}><input type="number" value={value} onChange={e=>onChange(Number(e.target.value))} style={{width:"100%",padding:"10px 40px 10px 13px",borderRadius:10,background:"var(--bg)",border:"1px solid var(--line)",color:"var(--ink)",fontSize:15,fontWeight:700,outline:"none",fontFamily:"var(--display)"}}/><span style={{position:"absolute",right:13,top:11,color:"var(--ink-dim)",fontSize:14}}>đ</span></div></div>);}
 function StatusPill({status}){const m={active:{t:"Hoạt động",c:"#34d399"},pending:{t:"Chờ duyệt",c:"#f59e0b"},expired:{t:"Hết hạn",c:"#94a3b8"},banned:{t:"Đã khoá",c:"#f87171"}}[status]||{t:status,c:"#94a3b8"};return(<span style={{display:"inline-block",padding:"3px 10px",borderRadius:99,fontSize:12,fontWeight:700,color:m.c,background:m.c+"1f",border:"1px solid "+m.c+"33"}}>{m.t}</span>);}
+
+/* ===== Admin: Reset mật khẩu user ===== */
+function ResetPwdModal({ target, onClose, onDone }) {
+  const [p1,setP1]=useState(""); const [p2,setP2]=useState("");
+  const [err,setErr]=useState(""); const [ok,setOk]=useState(false); const [busy,setBusy]=useState(false);
+  const submit=async()=>{
+    if(p1.length<3){setErr("Mật khẩu phải từ 3 ký tự.");return;}
+    if(p1!==p2){setErr("Mật khẩu xác nhận không khớp.");return;}
+    setBusy(true);setErr("");
+    try{await api.resetPassword(target.id,p1);setOk(true);onDone?.();setTimeout(onClose,1200);}
+    catch(e){setErr(e.message);}finally{setBusy(false);}
+  };
+  useEffect(()=>{const k=e=>e.key==="Escape"&&onClose();window.addEventListener("keydown",k);return()=>window.removeEventListener("keydown",k);},[onClose]);
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:200,display:"grid",placeItems:"center",background:"rgba(3,6,14,.72)",backdropFilter:"blur(4px)",padding:18}} className="overlay-in">
+      <div onClick={e=>e.stopPropagation()} className="modal-in" style={{width:"100%",maxWidth:400,background:"var(--card)",borderRadius:20,border:"1px solid var(--line)",padding:"22px 20px",boxShadow:"0 24px 70px rgba(0,0,0,.6)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:4}}>
+          <Lock size={18} color="#8b5cf6"/><div style={{fontWeight:800,fontSize:17,fontFamily:"var(--display)"}}>Reset mật khẩu</div>
+          <button onClick={onClose} style={{marginLeft:"auto",background:"none",border:"none",color:"var(--ink-dim)",cursor:"pointer"}}><X size={18}/></button>
+        </div>
+        <div style={{fontSize:13,color:"var(--ink-dim)",marginBottom:16}}>Tài khoản: <b style={{color:"var(--ink)"}}>{target.name}</b> ({target.phone})</div>
+        {ok?<div style={{textAlign:"center",padding:"20px 0",color:"#34d399"}}><CheckCircle2 size={40}/><div style={{fontWeight:800,marginTop:8}}>Đã đặt lại mật khẩu!</div></div>:<>
+          <Field label="Mật khẩu mới" icon={Lock}><input type="password" value={p1} onChange={e=>setP1(e.target.value)} style={inputStyle} autoFocus/></Field>
+          <Field label="Xác nhận mật khẩu mới" icon={Lock}><input type="password" value={p2} onChange={e=>setP2(e.target.value)} style={{...inputStyle,borderColor:p2&&p1!==p2?"#ef4444":(p2&&p1===p2?"#34d399":"var(--line)")}} onKeyDown={e=>e.key==="Enter"&&submit()}/></Field>
+          {err&&<ErrBox>{err}</ErrBox>}
+          <button onClick={submit} disabled={busy} style={{...primaryBtn,background:"linear-gradient(135deg,#8b5cf6,#7c3aed)",boxShadow:"0 6px 18px rgba(139,92,246,.3)",opacity:busy?0.6:1}}>{busy?"ĐANG ĐẶT LẠI…":"ĐẶT LẠI MẬT KHẨU"}</button>
+        </>}
+      </div>
+    </div>
+  );
+}
+
+/* ===== Admin: Thống kê doanh thu & user ===== */
+const STATUS_LABELS={active:"Hoạt động",pending:"Chờ duyệt",expired:"Hết hạn",banned:"Đã khoá"};
+const STATUS_COLORS={active:"#34d399",pending:"#f59e0b",expired:"#94a3b8",banned:"#f87171"};
+
+function AdminStatsTab() {
+  const todayStr=()=>new Date().toISOString().slice(0,10);
+  const daysAgoStr=n=>new Date(Date.now()-n*86400000).toISOString().slice(0,10);
+  const [from,setFrom]=useState(daysAgoStr(29));
+  const [to,setTo]=useState(todayStr());
+  const [revData,setRevData]=useState(null);
+  const [userData,setUserData]=useState(null);
+  const [usrStatus,setUsrStatus]=useState("all");
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState("");
+
+  const toMs=s=>new Date(s+"T00:00:00+07:00").getTime();
+  const toEndMs=s=>new Date(s+"T23:59:59+07:00").getTime();
+
+  const load=async()=>{
+    setLoading(true);setErr("");
+    try{
+      const [rev,usr]=await Promise.all([
+        api.revenueStats(toMs(from),toEndMs(to)),
+        api.userStats(toMs(from),toEndMs(to),usrStatus),
+      ]);
+      setRevData(rev);setUserData(usr);
+    }catch(e){setErr(e.message);}
+    finally{setLoading(false);}
+  };
+  useEffect(()=>{load();},[]);
+
+  const totalRev=(revData||[]).reduce((s,r)=>s+Number(r.total),0);
+  const totalTx=(revData||[]).reduce((s,r)=>s+Number(r.count),0);
+  const totalUsr=(userData||[]).reduce((s,r)=>s+Number(r.count),0);
+  const fmt=n=>Number(n).toLocaleString("vi-VN")+"đ";
+
+  return (
+    <div>
+      {/* Bộ lọc ngày */}
+      <div style={{background:"var(--card)",border:"1px solid var(--line)",borderRadius:16,padding:16,marginBottom:20,display:"flex",gap:12,alignItems:"flex-end",flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:12,color:"var(--ink-dim)",fontWeight:600,marginBottom:5}}>Từ ngày</div>
+          <input type="date" value={from} onChange={e=>setFrom(e.target.value)} max={to} style={{padding:"8px 11px",borderRadius:9,background:"var(--bg)",border:"1px solid var(--line)",color:"var(--ink)",fontSize:14,outline:"none"}}/>
+        </div>
+        <div>
+          <div style={{fontSize:12,color:"var(--ink-dim)",fontWeight:600,marginBottom:5}}>Đến ngày</div>
+          <input type="date" value={to} onChange={e=>setTo(e.target.value)} min={from} max={todayStr()} style={{padding:"8px 11px",borderRadius:9,background:"var(--bg)",border:"1px solid var(--line)",color:"var(--ink)",fontSize:14,outline:"none"}}/>
+        </div>
+        <button onClick={load} disabled={loading} style={{padding:"9px 20px",borderRadius:9,border:"none",background:"var(--accent)",color:"#04121a",fontWeight:800,fontSize:14,cursor:"pointer",opacity:loading?0.6:1}}>{loading?"Đang tải…":"Tải dữ liệu"}</button>
+        {err&&<span style={{fontSize:13,color:"#f87171"}}>{err}</span>}
+      </div>
+
+      {/* Doanh thu */}
+      <div style={{background:"var(--card)",border:"1px solid var(--line)",borderRadius:16,overflow:"hidden",marginBottom:20}}>
+        <div style={{padding:"14px 18px",borderBottom:"1px solid var(--line)",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          <div style={{fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:7}}><TrendingUp size={17} color="var(--accent)"/> Doanh thu</div>
+          {revData&&<>
+            <span style={{fontSize:12.5,color:"var(--ink-dim)"}}>{totalTx} giao dịch</span>
+            <span style={{marginLeft:"auto",fontFamily:"var(--display)",fontWeight:800,fontSize:18,color:"#34d399"}}>{fmt(totalRev)}</span>
+          </>}
+        </div>
+        {!revData&&!loading&&<div style={{padding:"30px",textAlign:"center",color:"var(--ink-dim)",fontSize:13}}>Chọn khoảng thời gian và bấm "Tải dữ liệu".</div>}
+        {revData&&revData.length===0&&<div style={{padding:"30px",textAlign:"center",color:"var(--ink-dim)",fontSize:13}}>Không có giao dịch trong khoảng thời gian này.</div>}
+        {revData&&revData.length>0&&(
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13.5}}>
+              <thead><tr style={{color:"var(--ink-dim)",fontSize:11.5,textTransform:"uppercase",letterSpacing:".05em",textAlign:"left"}}>
+                <th style={th}>Ngày</th><th style={th}>Loại</th><th style={th}>Số GD</th><th style={{...th,textAlign:"right"}}>Doanh thu</th>
+              </tr></thead>
+              <tbody>{revData.map((r,i)=>(
+                <tr key={i} style={{borderTop:"1px solid var(--line)"}}>
+                  <td style={td}>{r.day}</td>
+                  <td style={td}><span style={{fontWeight:700,color:r.note==="approve"?"#34d399":"#60a5fa"}}>{r.note==="approve"?"Duyệt mới":"Gia hạn"}</span></td>
+                  <td style={td}>{r.count}</td>
+                  <td style={{...td,textAlign:"right",fontWeight:700,color:"#34d399",fontFamily:"var(--display)"}}>{fmt(r.total)}</td>
+                </tr>
+              ))}</tbody>
+              <tfoot><tr style={{borderTop:"2px solid var(--line)",background:"rgba(255,255,255,.03)"}}>
+                <td style={{...td,fontWeight:700}} colSpan={2}>Tổng</td>
+                <td style={{...td,fontWeight:700}}>{totalTx}</td>
+                <td style={{...td,textAlign:"right",fontWeight:800,color:"#34d399",fontFamily:"var(--display)",fontSize:16}}>{fmt(totalRev)}</td>
+              </tr></tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Tài khoản mới */}
+      <div style={{background:"var(--card)",border:"1px solid var(--line)",borderRadius:16,overflow:"hidden"}}>
+        <div style={{padding:"14px 18px",borderBottom:"1px solid var(--line)",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          <div style={{fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:7}}><Users size={17} color="var(--accent)"/> Tài khoản đăng ký</div>
+          {userData&&<span style={{fontSize:12.5,color:"var(--ink-dim)"}}>{totalUsr} tài xế</span>}
+          <div style={{marginLeft:"auto",display:"flex",gap:6,flexWrap:"wrap"}}>
+            {["all","active","pending","expired","banned"].map(s=>(
+              <button key={s} onClick={()=>{setUsrStatus(s);}} style={{padding:"5px 12px",borderRadius:99,border:"1px solid "+(usrStatus===s?(STATUS_COLORS[s]||"var(--accent)"):"var(--line)"),background:usrStatus===s?((STATUS_COLORS[s]||"var(--accent)")+"1f"):"transparent",color:usrStatus===s?(STATUS_COLORS[s]||"var(--accent)"):"var(--ink-dim)",fontWeight:700,fontSize:12,cursor:"pointer"}} >{s==="all"?"Tất cả":(STATUS_LABELS[s]||s)}</button>
+            ))}
+          </div>
+        </div>
+        {!userData&&!loading&&<div style={{padding:"30px",textAlign:"center",color:"var(--ink-dim)",fontSize:13}}>Chọn khoảng thời gian và bấm "Tải dữ liệu".</div>}
+        {userData&&userData.length===0&&<div style={{padding:"30px",textAlign:"center",color:"var(--ink-dim)",fontSize:13}}>Không có tài khoản nào đăng ký trong khoảng thời gian này.</div>}
+        {userData&&userData.length>0&&(
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13.5}}>
+              <thead><tr style={{color:"var(--ink-dim)",fontSize:11.5,textTransform:"uppercase",letterSpacing:".05em",textAlign:"left"}}>
+                <th style={th}>Ngày đăng ký</th><th style={th}>Trạng thái</th><th style={{...th,textAlign:"right"}}>Số tài khoản</th>
+              </tr></thead>
+              <tbody>{userData.map((r,i)=>{const c=STATUS_COLORS[r.status]||"#94a3b8";return(
+                <tr key={i} style={{borderTop:"1px solid var(--line)"}}>
+                  <td style={td}>{r.day}</td>
+                  <td style={td}><span style={{display:"inline-block",padding:"3px 10px",borderRadius:99,fontSize:12,fontWeight:700,color:c,background:c+"1f",border:"1px solid "+c+"33"}}>{STATUS_LABELS[r.status]||r.status}</span></td>
+                  <td style={{...td,textAlign:"right",fontWeight:700}}>{r.count}</td>
+                </tr>
+              );})}
+              </tbody>
+              <tfoot><tr style={{borderTop:"2px solid var(--line)",background:"rgba(255,255,255,.03)"}}>
+                <td style={{...td,fontWeight:700}} colSpan={2}>Tổng</td>
+                <td style={{...td,textAlign:"right",fontWeight:800,fontSize:16}}>{totalUsr}</td>
+              </tr></tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /* ===== shared UI ===== */
 function AuthShell({title,icon:Icon,children,accent="#34d399",wide}){return(<div style={{display:"grid",placeItems:"center",padding:"40px 16px",minHeight:"calc(100vh - 52px)"}}><div style={{width:"100%",maxWidth:wide?420:400}}><div style={{background:"var(--card)",border:"1px solid var(--line)",borderRadius:20,padding:"26px 24px",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}><div style={{width:38,height:38,borderRadius:11,background:accent+"1f",display:"grid",placeItems:"center"}}><Icon size={20} color={accent}/></div><div style={{fontFamily:"var(--display)",fontWeight:800,fontSize:21,letterSpacing:"-.02em"}}>{title}</div></div>{children}</div></div></div>);}

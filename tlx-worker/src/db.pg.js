@@ -58,6 +58,16 @@ export async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_saved_user ON saved_trips(user_id, taken_at DESC);
     CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
+    CREATE TABLE IF NOT EXISTS transactions (
+      id         TEXT PRIMARY KEY,
+      user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_name  TEXT,
+      plan       TEXT NOT NULL,
+      amount     BIGINT NOT NULL DEFAULT 0,
+      note       TEXT,
+      created_at BIGINT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(created_at DESC);
   `);
 }
 
@@ -126,18 +136,24 @@ export async function listUsers() {
   const r = await q("SELECT id FROM users ORDER BY (role='admin') DESC, created_at DESC");
   return Promise.all(r.rows.map(x => getUserPublic(x.id)));
 }
-export async function approveUser(id, plan) {
+export async function approveUser(id, plan, amount = 0) {
   const days = plan === "Tháng" ? 30 : 7;
   await q("UPDATE users SET status='active', plan=$1, expires_at=$2 WHERE id=$3",
     [plan, now() + days * 86400000, id]);
-  return getUserPublic(id);
+  const u = await getUserPublic(id);
+  await q("INSERT INTO transactions (id,user_id,user_name,plan,amount,note,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+    [uid(), id, u.name, plan, amount, "approve", now()]);
+  return u;
 }
-export async function renewUser(id) {
+export async function renewUser(id, amount = 0) {
   const r = await q("SELECT * FROM users WHERE id=$1", [id]); const u = r.rows[0];
   const days = u.plan === "Tháng" ? 30 : 7;
   const base = Math.max(now(), Number(u.expires_at) || now());
   await q("UPDATE users SET status='active', expires_at=$1 WHERE id=$2", [base + days * 86400000, id]);
-  return getUserPublic(id);
+  const pub = await getUserPublic(id);
+  await q("INSERT INTO transactions (id,user_id,user_name,plan,amount,note,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+    [uid(), id, pub.name, u.plan, amount, "renew", now()]);
+  return pub;
 }
 export async function toggleBan(id) {
   const r = await q("SELECT status FROM users WHERE id=$1", [id]);
@@ -158,6 +174,43 @@ export async function setRole(id, role) {
   if (!["admin", "driver"].includes(role)) throw new Error("Vai trò không hợp lệ");
   await q("UPDATE users SET role=$1 WHERE id=$2", [role, id]);
   return getUserPublic(id);
+}
+
+// ---------- Admin: reset mật khẩu, thống kê ----------
+export async function resetPassword(userId, newPass) {
+  if (!newPass || newPass.length < 3) throw new Error("Mật khẩu phải từ 3 ký tự");
+  const hash = await hashPassword(newPass);
+  await q("UPDATE users SET pass_hash=$1 WHERE id=$2", [hash, userId]);
+  return { ok: true };
+}
+
+export async function getRevenueStats(fromMs, toMs) {
+  const r = await q(`
+    SELECT to_char(to_timestamp(created_at/1000.0) + INTERVAL '7 hours', 'YYYY-MM-DD') as day,
+      note, SUM(amount) as total, COUNT(*) as count
+    FROM transactions WHERE created_at>=$1 AND created_at<=$2
+    GROUP BY day, note ORDER BY day ASC
+  `, [fromMs, toMs]);
+  return r.rows;
+}
+
+export async function getUserStats(fromMs, toMs, status) {
+  if (status && status !== "all") {
+    const r = await q(`
+      SELECT to_char(to_timestamp(created_at/1000.0) + INTERVAL '7 hours', 'YYYY-MM-DD') as day,
+        status, COUNT(*) as count
+      FROM users WHERE role='driver' AND created_at>=$1 AND created_at<=$2 AND status=$3
+      GROUP BY day, status ORDER BY day ASC
+    `, [fromMs, toMs, status]);
+    return r.rows;
+  }
+  const r = await q(`
+    SELECT to_char(to_timestamp(created_at/1000.0) + INTERVAL '7 hours', 'YYYY-MM-DD') as day,
+      status, COUNT(*) as count
+    FROM users WHERE role='driver' AND created_at>=$1 AND created_at<=$2
+    GROUP BY day, status ORDER BY day ASC
+  `, [fromMs, toMs]);
+  return r.rows;
 }
 
 // ---------- Phiên Zalo ----------

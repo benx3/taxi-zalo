@@ -55,6 +55,17 @@ CREATE TABLE IF NOT EXISTS saved_trips (
   taken_at    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_saved_user ON saved_trips(user_id, taken_at DESC);
+
+CREATE TABLE IF NOT EXISTS transactions (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id),
+  user_name  TEXT,
+  plan       TEXT NOT NULL,
+  amount     INTEGER NOT NULL DEFAULT 0,
+  note       TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(created_at DESC);
 `);
 
 const sessions = new Map(); // token -> userId (đăng nhập web)
@@ -129,18 +140,24 @@ export function listUsers() {
   return db.prepare("SELECT * FROM users ORDER BY (role='admin') DESC, created_at DESC")
     .all().map(u => getUserPublic(u.id));
 }
-export function approveUser(id, plan) {
+export function approveUser(id, plan, amount = 0) {
   const days = plan === "Tháng" ? 30 : 7;
   db.prepare("UPDATE users SET status='active', plan=?, expires_at=? WHERE id=?")
     .run(plan, now() + days * 86400000, id);
-  return getUserPublic(id);
+  const u = getUserPublic(id);
+  db.prepare("INSERT INTO transactions (id,user_id,user_name,plan,amount,note,created_at) VALUES (?,?,?,?,?,?,?)")
+    .run(uid(), id, u.name, plan, amount, "approve", now());
+  return u;
 }
-export function renewUser(id) {
+export function renewUser(id, amount = 0) {
   const u = db.prepare("SELECT * FROM users WHERE id=?").get(id);
   const days = u.plan === "Tháng" ? 30 : 7;
   const base = Math.max(now(), u.expires_at || now());
   db.prepare("UPDATE users SET status='active', expires_at=? WHERE id=?").run(base + days * 86400000, id);
-  return getUserPublic(id);
+  const pub = getUserPublic(id);
+  db.prepare("INSERT INTO transactions (id,user_id,user_name,plan,amount,note,created_at) VALUES (?,?,?,?,?,?,?)")
+    .run(uid(), id, pub.name, u.plan, amount, "renew", now());
+  return pub;
 }
 export function toggleBan(id) {
   const u = db.prepare("SELECT * FROM users WHERE id=?").get(id);
@@ -210,6 +227,40 @@ export function deleteSavedTrip(savedId) {
 export function listSavedTrips(userId, limit = 100) {
   return db.prepare("SELECT * FROM saved_trips WHERE user_id=? ORDER BY taken_at DESC LIMIT ?")
     .all(userId, limit);
+}
+
+// ---------- Admin: reset mật khẩu, thống kê ----------
+export async function resetPassword(userId, newPass) {
+  if (!newPass || newPass.length < 3) throw new Error("Mật khẩu phải từ 3 ký tự");
+  const hash = await hashPassword(newPass);
+  db.prepare("UPDATE users SET pass_hash=? WHERE id=?").run(hash, userId);
+  return { ok: true };
+}
+
+export function getRevenueStats(fromMs, toMs) {
+  return db.prepare(`
+    SELECT date(created_at/1000,'unixepoch','+7 hours') as day,
+      note, SUM(amount) as total, COUNT(*) as count
+    FROM transactions WHERE created_at>=? AND created_at<=?
+    GROUP BY day, note ORDER BY day ASC
+  `).all(fromMs, toMs);
+}
+
+export function getUserStats(fromMs, toMs, status) {
+  if (status && status !== "all") {
+    return db.prepare(`
+      SELECT date(created_at/1000,'unixepoch','+7 hours') as day,
+        status, COUNT(*) as count
+      FROM users WHERE role='driver' AND created_at>=? AND created_at<=? AND status=?
+      GROUP BY day, status ORDER BY day ASC
+    `).all(fromMs, toMs, status);
+  }
+  return db.prepare(`
+    SELECT date(created_at/1000,'unixepoch','+7 hours') as day,
+      status, COUNT(*) as count
+    FROM users WHERE role='driver' AND created_at>=? AND created_at<=?
+    GROUP BY day, status ORDER BY day ASC
+  `).all(fromMs, toMs);
 }
 
 // ---------- Dọn dữ liệu cũ > 2 tháng ----------

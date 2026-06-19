@@ -27,10 +27,13 @@ export const api = {
   changePassword: (oldPass, newPass) => req("/api/change-password", { oldPass, newPass }),
   // admin
   adminUsers: () => req("/api/admin/users", null, "GET"),
-  approve: (id, plan) => req("/api/admin/approve", { id, plan }),
-  renew: (id) => req("/api/admin/renew", { id }),
+  approve: (id, plan, amount) => req("/api/admin/approve", { id, plan, amount }),
+  renew: (id, amount) => req("/api/admin/renew", { id, amount }),
   ban: (id) => req("/api/admin/ban", { id }),
   setRole: (id, role) => req("/api/admin/set-role", { id, role }),
+  resetPassword: (id, newPass) => req("/api/admin/reset-password", { id, newPass }),
+  revenueStats: (from, to) => req(`/api/admin/stats/revenue?from=${from}&to=${to}`, null, "GET"),
+  userStats: (from, to, status) => req(`/api/admin/stats/users?from=${from}&to=${to}&status=${status||"all"}`, null, "GET"),
   // zalo
   startZaloQR: () => req("/api/zalo/login-qr", {}),
   logoutZalo: () => req("/api/zalo/logout", {}),
