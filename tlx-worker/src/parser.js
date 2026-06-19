@@ -84,7 +84,7 @@ export function parseCar(t) {
 export function parseSeats(t) {
   const l = t.toLowerCase();
   if (/2\s*ghế|2ghế|2\s*khách|2k\b/.test(l)) return "2 khách";
-  if (/bao\s*hàng|bao\s*xe|bxe|1bx|\bbx\b/.test(l)) return "Bao xe";
+  if (/bao\s*hàng|bao\s*xe|bxe|1bx|\bbx\b|bx\d+/.test(l)) return "Bao xe";
   if (/1\s*ghế|1ghế|1ghê|1\s*ghép|1k\b/.test(l)) return "1 ghế";
   return "Không rõ";
 }
@@ -92,7 +92,7 @@ export function parseSeats(t) {
 export function parseType(t) {
   const l = t.toLowerCase();
   if (/(bao\s*hàng|csct\s*đồ|\bđồ\b|gửi hàng|ship)/.test(l) && !/1\s*ghế|1k\b|gái|khách/.test(l)) return "Hàng";
-  if (/bao\s*xe|\bbxe\b|\bbx\b/.test(l)) return "Bao xe";
+  if (/bao\s*xe|\bbxe\b|\bbx\b|bx\d+/.test(l)) return "Bao xe";
   if (/sân\s*bay|nội\s*bài|noi\s*bai|\bt1\b|\bt2\b|sảnh/.test(l)) return "Sân bay";
   if (/2\s*ghế|2ghế|2\s*khách/.test(l)) return "Ghép 2";
   return "Ghép 1";
@@ -131,11 +131,11 @@ function cleanPlace(s) {
     prev = s;
     s = s
       // các từ khoá ở ĐẦU. KHÔNG dùng \b (sai với chữ Việt có dấu); dùng (?=[\s.:,_-]|$)
-      .replace(/^\s*(csct|cs ct|cnct|cn ct|free+|fr+ee|fer+|vtri|vt|vị trí|yc|dự|sm|sáng mai|ngày mai|mai|gấp|gap)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")
+      .replace(/^\s*(csct|cs ct|cnct|cn ct|free+|fr+ee|fer+|vtri|vt|vị trí|yc|dự|sm|sd|sáng mai|ngày mai|mai|gấp|gap)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")
       .replace(/^\s*\d{1,2}\s*(?:[-–]\s*\d{1,2})?\s*[h:]\s*\d{0,2}\s*(?:[-–_]\s*\d{1,2}\s*[h:]?\s*\d{0,2})?\s*(sm|sáng mai)?[\s.:,_-]*/i, "") // "22h","6h30","5-6h","6h_6h30","5-6h sm"
       .replace(/^\s*\d{1,3}\s*p(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")  // "30p"
       .replace(/^\s*\d+\s*(ghép|ghế|ghê|ghé|gh|khách|khach|kh|k|g)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "") // "1 ghế","1ghép","1k","1g"
-      .replace(/^\s*(ghép|ghế|ghê|ghé|bao\s*xe|bao\s*hàng|bxe|bx|k|g)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")  // "ghép","bao xe","k","g" lẻ
+      .replace(/^\s*(ghép|ghế|ghê|ghé|bao\s*xe|bao\s*hàng|bxe|bx\d*|k|g)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")  // "ghép","bao xe","k","g" lẻ
       .replace(/^\s*(để|de|đồ|do|hàng|hang|gửi|gui|ship|chở|cho|đón|don|lấy|lay|trả|tra|màn\s*máy\s*tính|màn|man|máy\s*tính|may\s*tinh)(?=[\s.:,_-]|$)[\s.:,_-]*/i, ""); // ghi chú đồ vật
   } while (s !== prev && s.length > 0);
   return s
