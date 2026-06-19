@@ -85,13 +85,14 @@ async function loadGroups(sess) {
   sess.groups = [];
   for (const id of ids) {
     let name = id;
+    let link = null;
     try {
       const info = await api.getGroupInfo(id);
       const g = info?.gridInfoMap?.[id] || info?.[id] || info;
       name = g?.name || g?.groupName || id;
+      link = g?.linkJoin || g?.link || g?.inviteLink || null;
     } catch {}
     sess.groupNameById.set(id, name);
-    const link = g?.linkJoin || g?.link || g?.inviteLink || null;
     sess.groups.push({ id, name, link });
   }
   sess.onEvent(sess.userId, { type: "groups", groups: sess.groups, selected: [...sess.selected] });
