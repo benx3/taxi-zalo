@@ -3,7 +3,7 @@
 // ============================================================
 
 const CLAIM_RE = /\b(ok|oke|oki|okie|okib|ib)\b/i;
-const NOISE_RE = /(lịch hủy|huỷ lịch|hủy lịch|đã có ng|đã có người|đã bay|bay rồi|sản giúp|san giúp|san hộ|san ho|sản hộ|sản\b|san\b|lưu ý|luu y|dbcl|cảm ơn|cám ơn|thank|ck rồi|đã ck|nhận luôn|nhan luon|máu ko|máu không)/i;
+const NOISE_RE = /(lịch hủy|huỷ lịch|hủy lịch|đã có ng|đã có người|đã bay|bay rồi|sản giúp|san giúp|san hộ|san ho|sản hộ|lưu ý|luu y|dbcl|cảm ơn|cám ơn|thank|ck rồi|đã ck|nhận luôn|nhan luon|máu ko|máu không)/i;
 
 export function isClaimMessage(text) {
   if (!text) return false;
@@ -148,6 +148,45 @@ function cleanPlace(s) {
     .replace(/\s{2,}/g, " ")
     .trim()
     .slice(0, 32);
+}
+
+// Tách 1 tin nhắn có thể chứa NHIỀU cuốc → mảng cuốc
+// Quy tắc: CHỈ tách khi nhiều dòng đều có giá riêng.
+// Nếu ≤1 dòng có giá → nhiều khả năng là 1 cuốc viết nhiều dòng → parse tổng.
+export function parseMultipleTrips(raw) {
+  const fullText = (raw.text || "").trim();
+  if (!fullText) return [];
+
+  const lines = fullText.split(/\n+/).map(s => s.trim()).filter(s => s.length > 5);
+  if (lines.length <= 1) {
+    const t = parseTrip(raw);
+    return t ? [t] : [];
+  }
+
+  // Đếm số dòng có giá hợp lệ riêng
+  const linesWithPrice = lines.filter(l => {
+    const p = parsePrice(l);
+    return p !== null && p >= 50 && p <= 5000;
+  });
+
+  // ≤1 dòng có giá → 1 cuốc viết nhiều dòng, parse tổng
+  if (linesWithPrice.length <= 1) {
+    const t = parseTrip(raw);
+    return t ? [t] : [];
+  }
+
+  // Nhiều dòng có giá → tách thành nhiều cuốc
+  const results = [];
+  for (const line of lines) {
+    const t = parseTrip({ ...raw, text: line });
+    if (t) results.push(t);
+  }
+  // Fallback nếu split không parse được gì
+  if (results.length === 0) {
+    const t = parseTrip(raw);
+    return t ? [t] : [];
+  }
+  return results;
 }
 
 // Hàm chính: tin thô → object cuốc. Trả null nếu không phải cuốc.

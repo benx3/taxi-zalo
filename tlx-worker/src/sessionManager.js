@@ -6,7 +6,7 @@
 // nhóm đang theo dõi riêng, và các "claim" (cuốc đã xin) riêng.
 // ============================================================
 import { Zalo } from "zca-js";
-import { parseTrip, isConfirmMessage } from "./parser.js";
+import { parseMultipleTrips, isConfirmMessage } from "./parser.js";
 import * as dbm from "./dbLayer.js";
 
 const OK_MIN = Number(process.env.OK_DELAY_MIN || 400);
@@ -170,17 +170,23 @@ function onMessage(sess, msg) {
       return;
     }
 
-    // (B) cuốc mới
-    const trip = parseTrip({ groupId, groupName, senderId, senderName, msgId, text, time });
-    if (trip) {
-      // lưu object message GỐC để sau này reply (trích dẫn) đúng tin này
+    // (B) cuốc mới — 1 tin có thể chứa nhiều cuốc
+    const trips = parseMultipleTrips({ groupId, groupName, senderId, senderName, msgId, text, time });
+    if (trips.length > 0) {
       sess.rawMsgById.set(msgId, msg);
-      // giới hạn cache 30 tin gần nhất là đủ để reply
       if (sess.rawMsgById.size > 30) {
         const firstKey = sess.rawMsgById.keys().next().value;
         sess.rawMsgById.delete(firstKey);
       }
-      sess.onEvent(sess.userId, { type: "trip", trip });
+      for (let i = 0; i < trips.length; i++) {
+        const subMsgId = trips.length === 1 ? msgId : `${msgId}_${i}`;
+        const tripOut = { ...trips[i], msgId: subMsgId };
+        if (trips.length > 1) {
+          tripOut.replyMsgId = msgId; // reply về tin gốc chứa tất cả cuốc
+          sess.rawMsgById.set(subMsgId, msg);
+        }
+        sess.onEvent(sess.userId, { type: "trip", trip: tripOut });
+      }
     }
   } catch (e) {
     console.error(`[${sess.userId}] onMessage:`, e?.message || e);
@@ -208,8 +214,9 @@ export async function takeTrip(userId, { groupId, msgId, ownerId, text, trip }) 
   const savedId = await dbm.saveTrip(userId, trip || { groupId, group: sess.groupNameById.get(groupId), sender: "", text, price: null }, "pending");
   try {
     await sleep(rand(OK_MIN, OK_MAX));
-    const rawMsg = sess.rawMsgById.get(msgId);   // object tin gốc để reply
-    const sent = await replyOk(sess.api, groupId, rawMsg, msgId);  // sent = thông tin tin Ok vừa gửi
+    const replyMsgId = trip?.replyMsgId || msgId; // sub-trip reply về tin gốc
+    const rawMsg = sess.rawMsgById.get(replyMsgId) || sess.rawMsgById.get(msgId);
+    const sent = await replyOk(sess.api, groupId, rawMsg, replyMsgId);
     if (ownerId) sess.claims.set(`${groupId}:${ownerId}`, { savedId, msgId, text, takenAt: Date.now() });
     // lưu để có thể thu hồi khi hủy (key theo msgId của cuốc)
     sess.sentOks.set(msgId, { groupId, sent, savedId });

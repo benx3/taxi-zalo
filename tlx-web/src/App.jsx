@@ -190,17 +190,17 @@ const LIMIT_OPTIONS = [10, 20, 30, 50];
 function DriverApp({ me, onChangeZalo, setMe, searchQ: query = "", setSearchQ: setQuery }) {
   const wk = useWorker();
   const { connected, trips, states, take, cancel, wonTrip, clearWon, groups, selected, setWatchedGroups, limit, setLimit, zaloExpired } = wk;
-  const [typeF,setTypeF]=useState("Tất cả");
-  const [timeF,setTimeF]=useState("all"); const [carF,setCarF]=useState("Tất cả xe");
+  const [typeF,setTypeF]=useState(new Set());   // Set rỗng = tất cả loại
+  const [timeF,setTimeF]=useState("all"); const [carF,setCarF]=useState(new Set()); // Set rỗng = tất cả xe
   const [freeOnly,setFreeOnly]=useState(false); const [showMenu,setShowMenu]=useState(false); const [showFilter,setShowFilter]=useState(false);
   const [tab,setTab]=useState("live");        // live | dispatch | history | account
   const [destB,setDestB]=useState("");        // điểm đến cho tab điều phối
   const [fromA,setFromA]=useState("");        // điểm đang ở (ghi chú)
 
   const filtered = useMemo(()=>trips.filter(t=>{
-    if(typeF!=="Tất cả"&&t.type!==typeF)return false;
+    if(typeF.size>0&&!typeF.has(t.type))return false;
     if(timeF!=="all"&&t.time?.bucket!==timeF)return false;
-    if(carF!=="Tất cả xe"&&t.car!==carF)return false;
+    if(carF.size>0&&!carF.has(t.car))return false;
     if(freeOnly&&!t.free)return false;
     if(query.trim()&&!((t.text||"")+(t.group||"")+(t.sender||"")).toLowerCase().includes(query.toLowerCase()))return false;
     return true;
@@ -241,7 +241,14 @@ function DriverApp({ me, onChangeZalo, setMe, searchQ: query = "", setSearchQ: s
         </div>
 
         {(()=>{
-          const active=[timeF!=="all"&&TIME_FILTERS.find(f=>f.key===timeF)?.label,typeF!=="Tất cả"&&typeF,carF!=="Tất cả xe"&&carF,freeOnly&&"Free"].filter(Boolean);
+          const toggleType=f=>setTypeF(p=>{const n=new Set(p);n.has(f)?n.delete(f):n.add(f);return n;});
+          const toggleCar=f=>setCarF(p=>{const n=new Set(p);n.has(f)?n.delete(f):n.add(f);return n;});
+          const active=[
+            timeF!=="all"&&TIME_FILTERS.find(f=>f.key===timeF)?.label,
+            typeF.size>0&&[...typeF].join("+"),
+            carF.size>0&&[...carF].join("+"),
+            freeOnly&&"Free"
+          ].filter(Boolean);
           return(
             <div style={{marginBottom:10,background:"var(--card)",border:"1px solid var(--line)",borderRadius:12,overflow:"hidden"}}>
               <button onClick={()=>setShowFilter(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",gap:8,padding:"9px 13px",background:"none",border:"none",color:"var(--ink)",cursor:"pointer",fontSize:13,fontWeight:700}}>
@@ -253,8 +260,15 @@ function DriverApp({ me, onChangeZalo, setMe, searchQ: query = "", setSearchQ: s
               </button>
               {showFilter&&<div style={{padding:"0 13px 12px",borderTop:"1px solid var(--line)"}}>
                 <FilterRow label="Giờ đón" icon={Clock}>{TIME_FILTERS.map(f=><Chip key={f.key} active={timeF===f.key} onClick={()=>setTimeF(f.key)}>{f.label}</Chip>)}</FilterRow>
-                <FilterRow label="Loại cuốc" icon={Filter}>{TYPE_FILTERS.map(f=><Chip key={f} active={typeF===f} onClick={()=>setTypeF(f)} solid>{f}</Chip>)}</FilterRow>
-                <FilterRow label="Loại xe" icon={Car}>{CAR_FILTERS.map(f=><Chip key={f} active={carF===f} onClick={()=>setCarF(f)}>{f}</Chip>)}<Chip active={freeOnly} onClick={()=>setFreeOnly(!freeOnly)}><Sparkles size={12} style={{marginRight:3,verticalAlign:-1}}/>Chỉ cuốc free</Chip></FilterRow>
+                <FilterRow label="Loại cuốc" icon={Filter}>
+                  <Chip active={typeF.size===0} onClick={()=>setTypeF(new Set())} solid>Tất cả</Chip>
+                  {TYPE_FILTERS.filter(f=>f!=="Tất cả").map(f=><Chip key={f} active={typeF.has(f)} onClick={()=>toggleType(f)} solid>{f}</Chip>)}
+                </FilterRow>
+                <FilterRow label="Loại xe" icon={Car}>
+                  <Chip active={carF.size===0} onClick={()=>setCarF(new Set())}>Tất cả xe</Chip>
+                  {CAR_FILTERS.filter(f=>f!=="Tất cả xe").map(f=><Chip key={f} active={carF.has(f)} onClick={()=>toggleCar(f)}>{f}</Chip>)}
+                  <Chip active={freeOnly} onClick={()=>setFreeOnly(!freeOnly)}><Sparkles size={12} style={{marginRight:3,verticalAlign:-1}}/>Chỉ cuốc free</Chip>
+                </FilterRow>
               </div>}
             </div>
           );
@@ -544,7 +558,7 @@ function TripCard({trip,state,onTake,onCancel}){
         {trip.car&&<Tag><Car size={12}/> {trip.car}</Tag>}{trip.free&&<Tag color="#34d399"><Sparkles size={11}/> free</Tag>}{trip.bonus&&<Tag color="#a78bfa">+{trip.bonus}</Tag>}
         {trip.price&&<span style={{marginLeft:"auto",display:"inline-flex",alignItems:"center",gap:5,fontWeight:800,fontSize:19,color:"#f87171",fontFamily:"var(--display)"}}><Wallet size={16}/> {trip.price}k</span>}
       </div>
-      <div style={{fontSize:13,color:"var(--ink-dim)",lineHeight:1.5,marginBottom:13,background:"rgba(0,0,0,.2)",padding:"8px 11px",borderRadius:9}}>{trip.text}</div>
+      <div style={{fontSize:15,color:"var(--ink-dim)",lineHeight:1.6,marginBottom:13,background:"rgba(0,0,0,.2)",padding:"10px 12px",borderRadius:9,whiteSpace:"pre-wrap"}}>{trip.text}</div>
       {pending ? (
         <div style={{display:"flex",gap:8}}>
           <div style={{flex:1,padding:"12px",borderRadius:12,fontWeight:800,fontSize:14.5,fontFamily:"var(--display)",display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:"rgba(245,158,11,.15)",color:"#f59e0b"}}><Hourglass size={16}/> ĐANG CHỜ CHỦ CHỐT…</div>
