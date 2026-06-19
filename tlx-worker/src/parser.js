@@ -67,7 +67,9 @@ export function parseTime(t) {
   if (m) {
     const hh = parseInt(m[1]);
     const mm = m[2] ? m[2] : "";
-    return { label: `${hh}h${mm}`, bucket: hh <= 8 ? "soon" : "today", hh };
+    const nowVN = new Date(Date.now() + 7 * 3600000);
+    const diff = ((hh - nowVN.getUTCHours()) + 24) % 24;
+    return { label: `${hh}h${mm}`, bucket: diff <= 8 ? "soon" : "today", hh };
   }
   return { label: "Linh hoạt", bucket: "today" };
 }

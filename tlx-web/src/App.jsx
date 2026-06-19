@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   Car, Package, Users, Plane, Search, Zap, Clock, Wallet, CheckCircle2,
   Shield, CreditCard, Ban, RefreshCw, X, Megaphone, User, TrendingUp,
   Radio, ArrowRight, Hourglass, Sparkles, Filter, MessageCircle, Lock,
   Phone, QrCode, LogOut, UserPlus, AlertTriangle, ChevronRight, Smartphone,
-  Settings, ListChecks, Wifi, WifiOff, MapPin
+  Settings, ListChecks, Wifi, WifiOff, MapPin, ChevronDown
 } from "lucide-react";
 import { useWorker } from "./useWorker.js";
 import { api, getToken, setToken } from "./api.js";
@@ -17,6 +17,7 @@ const CAR_FILTERS = ["Tất cả xe","Sedan/4c","Xe 7c+"];
 export default function App() {
   const [me, setMe] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [searchQ, setSearchQ] = useState("");
   const isAdmin = me?.role === "admin";
 
   // tự đăng nhập lại nếu còn token
@@ -32,21 +33,40 @@ export default function App() {
   return (
     <div style={{ minHeight:"100vh", background:"var(--bg)", color:"var(--ink)", fontFamily:"var(--body)" }}>
       <StyleVars />
-      <TopBar me={me} isAdmin={isAdmin} onLogout={logout} />
-      {isAdmin ? <AdminApp/> : <DriverFlow me={me} setMe={setMe}/>}
+      <TopBar me={me} isAdmin={isAdmin} onLogout={logout} showSearch={!isAdmin&&!!me} searchQ={searchQ} setSearchQ={setSearchQ}/>
+      {isAdmin ? <AdminApp/> : <DriverFlow me={me} setMe={setMe} searchQ={searchQ} setSearchQ={setSearchQ}/>}
     </div>
   );
 }
 
-function TopBar({ me, isAdmin, onLogout }) {
+function TopBar({ me, isAdmin, onLogout, showSearch, searchQ, setSearchQ }) {
+  const [expanded, setExpanded] = useState(false);
+  const inputRef = useRef(null);
+  const expand = () => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 40); };
+  const collapse = () => { if (!searchQ) setExpanded(false); };
   return (
     <div style={{position:"sticky",top:0,zIndex:50,display:"flex",gap:8,padding:"10px 16px",background:"rgba(7,11,22,.9)",backdropFilter:"blur(12px)",borderBottom:"1px solid var(--line)",alignItems:"center"}}>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginRight:"auto"}}>
-        <div style={{width:30,height:30,borderRadius:9,background:"linear-gradient(135deg,#34d399,#06b6d4)",display:"grid",placeItems:"center",boxShadow:"0 0 18px rgba(52,211,153,.5)"}}><Car size={18} color="#04121a" strokeWidth={2.5}/></div>
-        <div style={{fontFamily:"var(--display)",fontWeight:800,letterSpacing:"-.02em",fontSize:17}}>Trợ Lý Tài Xế <span style={{color:"var(--accent)"}}>AI</span></div>
-        {isAdmin&&<span style={{marginLeft:8,display:"inline-flex",alignItems:"center",gap:4,fontSize:11.5,fontWeight:700,color:"#a78bfa",background:"rgba(167,139,250,.15)",padding:"3px 9px",borderRadius:99,border:"1px solid rgba(167,139,250,.3)"}}><Shield size={12}/> Admin</span>}
-      </div>
-      {me&&isAdmin&&<>
+      {!expanded&&<div style={{display:"flex",alignItems:"center",gap:8,marginRight:"auto",minWidth:0}}>
+        <div style={{width:30,height:30,borderRadius:9,background:"linear-gradient(135deg,#34d399,#06b6d4)",display:"grid",placeItems:"center",boxShadow:"0 0 18px rgba(52,211,153,.5)",flexShrink:0}}><Car size={18} color="#04121a" strokeWidth={2.5}/></div>
+        <div style={{fontFamily:"var(--display)",fontWeight:800,letterSpacing:"-.02em",fontSize:17,whiteSpace:"nowrap"}}>Trợ Lý Tài Xế <span style={{color:"var(--accent)"}}>AI</span></div>
+        {isAdmin&&<span style={{marginLeft:4,display:"inline-flex",alignItems:"center",gap:4,fontSize:11.5,fontWeight:700,color:"#a78bfa",background:"rgba(167,139,250,.15)",padding:"3px 9px",borderRadius:99,border:"1px solid rgba(167,139,250,.3)"}}><Shield size={12}/> Admin</span>}
+      </div>}
+      {showSearch&&(expanded
+        ? <div style={{flex:1,display:"flex",alignItems:"center",gap:8}}>
+            <div style={{position:"relative",flex:1}}>
+              <Search size={15} style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"var(--ink-dim)",pointerEvents:"none"}}/>
+              <input ref={inputRef} value={searchQ} onChange={e=>setSearchQ(e.target.value)} onBlur={collapse}
+                placeholder="Tìm điểm đón, điểm đến, từ khoá…"
+                style={{width:"100%",padding:"8px 30px 8px 32px",borderRadius:10,background:"var(--card)",border:"1px solid var(--accent)",color:"var(--ink)",fontSize:13.5,outline:"none",fontFamily:"var(--body)"}}/>
+              {searchQ&&<button onMouseDown={e=>{e.preventDefault();setSearchQ("");}} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"var(--ink-dim)",cursor:"pointer",padding:2}}><X size={14}/></button>}
+            </div>
+            <button onClick={()=>{setSearchQ("");setExpanded(false);}} style={{flexShrink:0,padding:"6px 11px",borderRadius:9,border:"1px solid var(--line)",background:"transparent",color:"var(--ink-dim)",fontSize:13,fontWeight:700,cursor:"pointer"}}>Huỷ</button>
+          </div>
+        : <button onClick={expand} title="Tìm kiếm" style={{width:34,height:34,borderRadius:9,border:"1px solid "+(searchQ?"var(--accent)":"var(--line)"),background:searchQ?"rgba(52,211,153,.1)":"transparent",color:searchQ?"var(--accent)":"var(--ink-dim)",cursor:"pointer",display:"grid",placeItems:"center",flexShrink:0}}>
+            <Search size={16}/>
+          </button>
+      )}
+      {me&&isAdmin&&!expanded&&<>
         <span style={{fontSize:12.5,color:"var(--ink-dim)",fontWeight:600}}>{me.name}</span>
         <button onClick={onLogout} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"6px 11px",borderRadius:9,border:"1px solid var(--line)",background:"transparent",color:"var(--ink-dim)",fontSize:12.5,fontWeight:700,cursor:"pointer"}}><LogOut size={14}/> Thoát</button>
       </>}
@@ -55,7 +75,7 @@ function TopBar({ me, isAdmin, onLogout }) {
 }
 
 /* ============ LUỒNG TÀI XẾ ============ */
-function DriverFlow({ me, setMe }) {
+function DriverFlow({ me, setMe, searchQ, setSearchQ }) {
   const [screen, setScreen] = useState("login");
   const [zaloConnected, setZaloConnected] = useState(false);
   const [forceReconnect, setForceReconnect] = useState(false);
@@ -68,7 +88,7 @@ function DriverFlow({ me, setMe }) {
   if (me.status==="banned") return <GateScreen kind="banned" me={me} onLogout={()=>{api.logout();setMe(null);}}/>;
   const needZalo = forceReconnect || (!me.hasZalo && !zaloConnected);
   if (needZalo) return <ConnectZalo me={me} onConnected={()=>{setZaloConnected(true);setForceReconnect(false);}} onLogout={async()=>{await api.logout();setMe(null);}}/>;
-  return <DriverApp me={me} setMe={setMe} onChangeZalo={()=>{setZaloConnected(false);setForceReconnect(true);}}/>;
+  return <DriverApp me={me} setMe={setMe} onChangeZalo={()=>{setZaloConnected(false);setForceReconnect(true);}} searchQ={searchQ} setSearchQ={setSearchQ}/>;
 }
 
 function LoginScreen({ onLogin, goRegister }) {
@@ -167,12 +187,12 @@ function ConnectZalo({ me, onConnected, onLogout }) {
 /* ============ MÀN CUỐC (dữ liệu THẬT từ worker) ============ */
 const LIMIT_OPTIONS = [10, 20, 30, 50];
 
-function DriverApp({ me, onChangeZalo, setMe }) {
+function DriverApp({ me, onChangeZalo, setMe, searchQ: query = "", setSearchQ: setQuery }) {
   const wk = useWorker();
   const { connected, trips, states, take, cancel, wonTrip, clearWon, groups, selected, setWatchedGroups, limit, setLimit } = wk;
-  const [query,setQuery]=useState(""); const [typeF,setTypeF]=useState("Tất cả");
+  const [typeF,setTypeF]=useState("Tất cả");
   const [timeF,setTimeF]=useState("all"); const [carF,setCarF]=useState("Tất cả xe");
-  const [freeOnly,setFreeOnly]=useState(false); const [showMenu,setShowMenu]=useState(false);
+  const [freeOnly,setFreeOnly]=useState(false); const [showMenu,setShowMenu]=useState(false); const [showFilter,setShowFilter]=useState(false);
   const [tab,setTab]=useState("live");        // live | dispatch | history | account
   const [destB,setDestB]=useState("");        // điểm đến cho tab điều phối
   const [fromA,setFromA]=useState("");        // điểm đang ở (ghi chú)
@@ -215,15 +235,25 @@ function DriverApp({ me, onChangeZalo, setMe }) {
           <button onClick={()=>setShowMenu(true)} style={{marginLeft:"auto",display:"inline-flex",alignItems:"center",gap:5,maxWidth:200,padding:"6px 11px",borderRadius:9,border:"1px solid var(--line)",background:"var(--card)",color:"var(--ink-dim)",fontSize:12.5,fontWeight:700,cursor:"pointer"}}><Settings size={14} style={{flexShrink:0}}/> <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{watchLabel}</span></button>
         </div>
 
-        <div style={{position:"relative",marginBottom:12}}>
-          <Search size={17} style={{position:"absolute",left:13,top:13,color:"var(--ink-dim)"}}/>
-          <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Tìm điểm đón, điểm đến, từ khoá…" style={{width:"100%",padding:"11px 13px 11px 40px",borderRadius:12,background:"var(--card)",border:"1px solid var(--line)",color:"var(--ink)",fontSize:14.5,outline:"none",fontFamily:"var(--body)"}}/>
-          {query&&<button onClick={()=>setQuery("")} style={{position:"absolute",right:10,top:10,background:"none",border:"none",color:"var(--ink-dim)",cursor:"pointer"}}><X size={17}/></button>}
-        </div>
-
-        <FilterRow label="Giờ đón" icon={Clock}>{TIME_FILTERS.map(f=><Chip key={f.key} active={timeF===f.key} onClick={()=>setTimeF(f.key)}>{f.label}</Chip>)}</FilterRow>
-        <FilterRow label="Loại cuốc" icon={Filter}>{TYPE_FILTERS.map(f=><Chip key={f} active={typeF===f} onClick={()=>setTypeF(f)} solid>{f}</Chip>)}</FilterRow>
-        <FilterRow label="Loại xe" icon={Car}>{CAR_FILTERS.map(f=><Chip key={f} active={carF===f} onClick={()=>setCarF(f)}>{f}</Chip>)}<Chip active={freeOnly} onClick={()=>setFreeOnly(!freeOnly)}><Sparkles size={12} style={{marginRight:3,verticalAlign:-1}}/>Chỉ cuốc free</Chip></FilterRow>
+        {(()=>{
+          const active=[timeF!=="all"&&TIME_FILTERS.find(f=>f.key===timeF)?.label,typeF!=="Tất cả"&&typeF,carF!=="Tất cả xe"&&carF,freeOnly&&"Free"].filter(Boolean);
+          return(
+            <div style={{marginBottom:10,background:"var(--card)",border:"1px solid var(--line)",borderRadius:12,overflow:"hidden"}}>
+              <button onClick={()=>setShowFilter(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",gap:8,padding:"9px 13px",background:"none",border:"none",color:"var(--ink)",cursor:"pointer",fontSize:13,fontWeight:700}}>
+                <Filter size={14} color="var(--accent)"/>
+                <span style={{flex:1,textAlign:"left",color:active.length?"var(--accent)":"var(--ink-dim)"}}>
+                  {active.length?active.join(" · "):"Bộ lọc (mọi cuốc)"}
+                </span>
+                <ChevronDown size={15} color="var(--ink-dim)" style={{transition:"transform .2s",transform:showFilter?"rotate(180deg)":"rotate(0deg)"}}/>
+              </button>
+              {showFilter&&<div style={{padding:"0 13px 12px",borderTop:"1px solid var(--line)"}}>
+                <FilterRow label="Giờ đón" icon={Clock}>{TIME_FILTERS.map(f=><Chip key={f.key} active={timeF===f.key} onClick={()=>setTimeF(f.key)}>{f.label}</Chip>)}</FilterRow>
+                <FilterRow label="Loại cuốc" icon={Filter}>{TYPE_FILTERS.map(f=><Chip key={f} active={typeF===f} onClick={()=>setTypeF(f)} solid>{f}</Chip>)}</FilterRow>
+                <FilterRow label="Loại xe" icon={Car}>{CAR_FILTERS.map(f=><Chip key={f} active={carF===f} onClick={()=>setCarF(f)}>{f}</Chip>)}<Chip active={freeOnly} onClick={()=>setFreeOnly(!freeOnly)}><Sparkles size={12} style={{marginRight:3,verticalAlign:-1}}/>Chỉ cuốc free</Chip></FilterRow>
+              </div>}
+            </div>
+          );
+        })()}
 
         <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4,marginBottom:4,flexWrap:"wrap"}}>
           <span style={{fontSize:11,color:"var(--ink-dim)",fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",display:"inline-flex",alignItems:"center",gap:5}}><ListChecks size={12}/> Tối đa</span>
@@ -256,7 +286,7 @@ function DriverApp({ me, onChangeZalo, setMe }) {
         }} onLogout={async()=>{ await api.logout(); setMe?.(null); }}/>
       )}
 
-      {wonTrip&&<WonModal trip={wonTrip} onClose={clearWon}/>}
+      {wonTrip&&<WonModal trip={wonTrip} groupLink={groups.find(g=>g.id===wonTrip.groupId)?.link} onClose={clearWon}/>}
       {showMenu&&<GroupMenu groups={groups} selected={selected} onSave={setWatchedGroups} onClose={()=>setShowMenu(false)}/>}
 
       {/* ===== BOTTOM NAV ===== */}
@@ -526,9 +556,9 @@ function TripCard({trip,state,onTake,onCancel}){
 function StatusBanner({color,icon:Icon,text}){return(<div style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",borderRadius:8,background:color+"1a",color,fontSize:12,fontWeight:700,marginBottom:11,border:"1px solid "+color+"33"}}><Icon size={13}/> {text}</div>);}
 function Tag({children,color,icon:Icon}){return(<span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"4px 9px",borderRadius:8,fontSize:12,fontWeight:700,textTransform:"capitalize",background:color?color+"1a":"rgba(148,163,184,.1)",color:color||"var(--ink-dim)",border:"1px solid "+(color?color+"33":"transparent")}}>{Icon&&<Icon size={12}/>}{children}</span>);}
 
-function WonModal({trip,onClose}){
+function WonModal({trip,groupLink,onClose}){
   const meta=TYPE_META[trip.type]||{icon:Radio,color:"#94a3b8"};const Icon=meta.icon;
-  const openZalo=()=>{ if(trip.groupId) window.open(`https://zalo.me/g/${trip.groupId}`,"_blank"); onClose(); };
+  const openZalo=()=>{ window.open(groupLink||"https://chat.zalo.me/","_blank"); onClose(); };
   useEffect(()=>{const k=e=>e.key==="Escape"&&onClose();window.addEventListener("keydown",k);return()=>window.removeEventListener("keydown",k);},[onClose]);
   return (
     <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:200,display:"grid",placeItems:"center",background:"rgba(3,6,14,.72)",backdropFilter:"blur(4px)",padding:18}} className="overlay-in">

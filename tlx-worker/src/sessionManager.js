@@ -91,7 +91,8 @@ async function loadGroups(sess) {
       name = g?.name || g?.groupName || id;
     } catch {}
     sess.groupNameById.set(id, name);
-    sess.groups.push({ id, name });
+    const link = g?.linkJoin || g?.link || g?.inviteLink || null;
+    sess.groups.push({ id, name, link });
   }
   sess.onEvent(sess.userId, { type: "groups", groups: sess.groups, selected: [...sess.selected] });
 }
@@ -108,7 +109,7 @@ function onMessage(sess, msg) {
     const text = typeof msg.data?.content === "string" ? msg.data.content : (msg.data?.content?.title || "");
     const msgId = String(msg.data?.msgId || msg.data?.cliMsgId || Date.now());
     const groupName = sess.groupNameById.get(groupId) || msg.data?.groupName || groupId;
-    const time = new Date().toLocaleTimeString("vi-VN", { hour12: false });
+    const time = new Date().toLocaleTimeString("vi-VN", { hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
 
     // (A) chủ cuốc xác nhận cho mình?
     const key = `${groupId}:${senderId}`;
