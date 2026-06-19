@@ -23,6 +23,7 @@ export function useWorker() {
   const [selected, setSelected] = useState([]);
   const [qr, setQr] = useState(null);
   const [zaloReady, setZaloReady] = useState(false);
+  const [zaloExpired, setZaloExpired] = useState(false);
   const [limit, setLimitState] = useState(20);   // số cuốc tối đa hiển thị (10–50)
   const wsRef = useRef(null);
   const tripIndex = useRef(new Map());
@@ -47,10 +48,11 @@ export function useWorker() {
       ws.onerror = () => ws.close();
       ws.onmessage = (ev) => {
         let m; try { m = JSON.parse(ev.data); } catch { return; }
-        if (m.type === "groups") { setGroups(m.groups || []); setSelected(m.selected || []); }
+        if (m.type === "groups") { setGroups(m.groups || []); setSelected(m.selected || []); setZaloExpired(false); }
         if (m.type === "qr") setQr(m.image);
-        if (m.type === "zalo_ready") { setZaloReady(true); setQr(null); }
-        if (m.type === "zalo_logout") { setZaloReady(false); setQr(null); setGroups([]); setTrips([]); }
+        if (m.type === "zalo_ready") { setZaloReady(true); setQr(null); setZaloExpired(false); }
+        if (m.type === "zalo_logout") { setZaloReady(false); setQr(null); setGroups([]); setTrips([]); setZaloExpired(false); }
+        if (m.type === "zalo_expired") { setZaloExpired(true); setGroups([]); }
         if (m.type === "trip") {
           const t = m.trip; t._ts = Date.now();
           // chữ ký nội dung: chuẩn hoá để bắt tin GIỐNG HỆT post ở nhiều nhóm
@@ -94,5 +96,5 @@ export function useWorker() {
   const setWatchedGroups = useCallback((groupIds) => { setSelected(groupIds); send({ action: "setGroups", groupIds }); }, []);
   const clearWon = useCallback(() => setWonTrip(null), []);
 
-  return { connected, trips, states, take, cancel, wonTrip, clearWon, groups, selected, setWatchedGroups, qr, zaloReady, limit, setLimit };
+  return { connected, trips, states, take, cancel, wonTrip, clearWon, groups, selected, setWatchedGroups, qr, zaloReady, zaloExpired, limit, setLimit };
 }

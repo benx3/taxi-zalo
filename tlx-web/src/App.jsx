@@ -189,7 +189,7 @@ const LIMIT_OPTIONS = [10, 20, 30, 50];
 
 function DriverApp({ me, onChangeZalo, setMe, searchQ: query = "", setSearchQ: setQuery }) {
   const wk = useWorker();
-  const { connected, trips, states, take, cancel, wonTrip, clearWon, groups, selected, setWatchedGroups, limit, setLimit } = wk;
+  const { connected, trips, states, take, cancel, wonTrip, clearWon, groups, selected, setWatchedGroups, limit, setLimit, zaloExpired } = wk;
   const [typeF,setTypeF]=useState("Tất cả");
   const [timeF,setTimeF]=useState("all"); const [carF,setCarF]=useState("Tất cả xe");
   const [freeOnly,setFreeOnly]=useState(false); const [showMenu,setShowMenu]=useState(false); const [showFilter,setShowFilter]=useState(false);
@@ -226,6 +226,11 @@ function DriverApp({ me, onChangeZalo, setMe, searchQ: query = "", setSearchQ: s
 
   return (
     <div style={{maxWidth:760,margin:"0 auto",padding:"14px 14px 78px",minHeight:"calc(100vh - 52px)"}}>
+      {zaloExpired&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 15px",borderRadius:12,background:"rgba(239,68,68,.12)",border:"1px solid #ef444455",marginBottom:12,flexWrap:"wrap"}}>
+        <AlertTriangle size={18} color="#f87171" style={{flexShrink:0}}/>
+        <span style={{flex:1,fontSize:13.5,color:"#fca5a5",fontWeight:600}}>Phiên Zalo đã hết hạn — không nhận được cuốc mới. Vui lòng kết nối lại Zalo.</span>
+        <button onClick={onChangeZalo} style={{padding:"7px 14px",borderRadius:9,border:"none",background:"#ef4444",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0}}>Kết nối lại</button>
+      </div>}
       {/* ===== TAB CUỐC ===== */}
       {tab==="live" && <>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap"}}>

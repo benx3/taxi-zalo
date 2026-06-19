@@ -59,23 +59,71 @@ function attach(userId, api, onEvent) {
 
   const sess = {
     userId, api, selfId,
-    groups: [],                 // [{id,name}]
+    groups: [],                 // [{id,name,link}]
     selected: new Set(),        // nhóm theo dõi (rỗng = tất cả)
     groupNameById: new Map(),
     claims: new Map(),          // `${groupId}:${ownerId}` -> {savedId, msgId, text}
     rawMsgById: new Map(),      // msgId -> object message gốc (để reply đúng tin)
     sentOks: new Map(),         // msgId cuốc -> {groupId, sent, savedId} (để thu hồi khi huỷ)
     onEvent,
+    lastMsgAt: Date.now(),      // timestamp tin nhắn cuối (để phát hiện session chết)
   };
   sessions.set(userId, sess);
 
-  api.listener.on("message", (msg) => onMessage(sess, msg));
-  api.listener.on("error", (e) => console.error(`[${userId}] listener:`, e?.message || e));
+  api.listener.on("message", (msg) => { sess.lastMsgAt = Date.now(); onMessage(sess, msg); });
+
+  // Khi listener gặp lỗi hoặc bị đóng → thử tự reconnect
+  let recovering = false;
+  const handleDead = async (reason) => {
+    if (recovering || !sessions.has(userId)) return;
+    recovering = true;
+    console.warn(`[${userId}] Zalo listener chết (${reason}), thử kết nối lại…`);
+    sessions.delete(userId);
+    try {
+      await sleep(3000);
+      await startSessionFromStored(userId, onEvent);
+      console.log(`[${userId}] Zalo tự kết nối lại thành công`);
+    } catch (e) {
+      console.error(`[${userId}] Không tự kết nối lại được:`, e?.message || e);
+      onEvent(userId, { type: "zalo_expired" });
+    }
+  };
+
+  api.listener.on("error", (e) => {
+    console.error(`[${userId}] listener error:`, e?.message || e);
+    handleDead("error");
+  });
+  // zca-js có thể emit "close" hoặc "disconnect" tùy phiên bản
+  try { api.listener.on("close", () => handleDead("close")); } catch {}
+  try { api.listener.on("disconnect", () => handleDead("disconnect")); } catch {}
+
   api.listener.start();
 
   loadGroups(sess).catch(e => console.error(`[${userId}] loadGroups:`, e?.message || e));
   return sess;
 }
+
+// Kiểm tra định kỳ: nếu session im lặng > 30 phút → thử ping bằng getGroupList
+// (Zalo thường có tin nhóm mỗi vài phút nếu session còn sống)
+setInterval(async () => {
+  const STALE_MS = 30 * 60 * 1000;
+  for (const [userId, sess] of sessions.entries()) {
+    if (Date.now() - sess.lastMsgAt < STALE_MS) continue;
+    try {
+      await sess.api.getAllGroups();
+      sess.lastMsgAt = Date.now(); // ping thành công → session còn sống
+    } catch (e) {
+      console.warn(`[${userId}] Ping Zalo thất bại, session có thể đã chết:`, e?.message || e);
+      sessions.delete(userId);
+      try {
+        await startSessionFromStored(userId, sess.onEvent);
+        console.log(`[${userId}] Zalo tự phục hồi sau ping thất bại`);
+      } catch {
+        sess.onEvent(userId, { type: "zalo_expired" });
+      }
+    }
+  }
+}, 15 * 60 * 1000); // kiểm tra mỗi 15 phút
 
 async function loadGroups(sess) {
   const { api } = sess;
