@@ -14,7 +14,7 @@ export function isClaimMessage(text) {
 
 export function isConfirmMessage(text) {
   if (!text) return false;
-  return /ok\s*ib|okib/i.test(text);
+  return /ok\W*ib/i.test(text);
 }
 
 export function isNoiseMessage(text) {
