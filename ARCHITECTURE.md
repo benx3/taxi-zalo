@@ -2,6 +2,17 @@
 
 Tài liệu này trả lời: **app có chạy mượt cho 200–500 (và xa hơn 5000) người dùng đồng thời không?**
 
+## Kiến trúc hiện tại — 4 service
+
+```
+tlx-driver-service/  (port 8080) — backend tài xế (zca-js, API, WS)
+tlx-driver/          (port 5173) — frontend tài xế
+tlx-worker/          (port 8082) — backend admin + kế toán (zca-js kế toán, API, WS)
+tlx-web/             (port 5174) — frontend admin + kế toán
+```
+
+Hai backend dùng chung `tlx-worker/data/tlx.db` (SQLite WAL). Nâng cấp admin/kế toán không ảnh hưởng tài xế.
+
 ## Tóm tắt thẳng thắn
 
 Nút thắt **KHÔNG phải web app hay database** — mà là **số phiên zca-js**. Mỗi user =

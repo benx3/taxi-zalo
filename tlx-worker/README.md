@@ -1,39 +1,86 @@
-# TLX Worker — đa phiên (SQLite + zca-js)
+# tlx-worker — Backend Admin + Kế toán (port 8082)
 
-Server đa phiên: mỗi user tự quét QR Zalo của mình, chỉ thấy nhóm của chính mình.
-Cuốc đã nhận lưu SQLite (giữ 2 tháng, tự xoá). Admin duyệt/cấp gói.
+API + WebSocket cho admin và kế toán. Không phục vụ tài xế (tài xế dùng `tlx-driver-service`).
 
-## ⚠️ Cảnh báo
-zca-js không chính thức + tự gửi "ok ib" → rủi ro khoá. Dùng tài khoản phụ.
+## Chạy
 
-## Cài & chạy
 ```bash
-cd tlx-worker
-cp .env.example .env
+cp .env.example .env   # chỉnh PORT=8082, DATABASE_URL nếu dùng PostgreSQL
 npm install
 npm start
 ```
-Server lên ở cổng 8080 (HTTP API + WebSocket /ws). Admin mặc định: **admin / admin**.
 
-## Luồng test 5 account
-1. Mỗi tài xế mở web → **Đăng ký** (SĐT + mật khẩu) → trạng thái chờ duyệt.
-2. Đăng nhập **admin/admin** ở web → tab Admin → **Duyệt · Tuần/Tháng** cho từng người.
-3. Tài xế đăng nhập lại → màn **Kết nối Zalo** → bấm "Hiện mã QR" → quét bằng Zalo phụ của họ.
-4. Vào màn cuốc: chỉ thấy nhóm của tài khoản Zalo vừa quét. Cô lập hoàn toàn giữa 5 user.
+Server lên cổng **8082**. Tài khoản admin mặc định: `admin / admin`.
 
-## Cô lập & bảo mật
-- Mỗi WebSocket kèm token → worker chỉ đẩy cuốc của đúng user đó.
-- Mỗi user một phiên zca-js riêng (sessionManager) — cuốc/nhóm không lẫn sang nhau.
-- API admin luôn kiểm role ở server (không tin frontend).
-- Mật khẩu hash SHA-256 (test). Production nên dùng bcrypt + HTTPS + mã hoá cookie Zalo.
+## Cấu hình .env quan trọng
 
-## Lưu trữ
-- Cuốc CHƯA nhận = rác, chỉ ở RAM, tự trôi (không lưu DB).
-- Cuốc ĐÃ nhận → bảng saved_trips, giữ 2 tháng, cron xoá mỗi 6h.
-- File DB: data/tlx.db (SQLite). Đổi sang PostgreSQL: chỉ thay src/db.js.
+```
+PORT=8082
+DATA_DIR=./data                # SQLite tại data/tlx.db
+DATABASE_URL=                  # để trống = SQLite, điền = PostgreSQL
+APP_SECRET=                    # bắt buộc production (mã hoá cookie Zalo)
+FPT_STT_API_KEY=               # fallback nếu chưa cấu hình qua Admin UI
+CORS_ORIGIN=*                  # production: ghi đúng domain
+```
+
+## Endpoints
+
+```
+POST /api/login
+POST /api/logout
+GET  /api/me
+POST /api/change-password
+GET  /api/admin/users
+POST /api/admin/approve
+POST /api/admin/renew
+POST /api/admin/ban
+POST /api/admin/reset-password
+POST /api/admin/set-role
+GET  /api/admin/stats/revenue
+GET  /api/admin/stats/users
+GET  /api/admin/settings
+POST /api/admin/settings
+POST /api/zalo/login-qr        ← kế toán quét QR
+POST /api/zalo/logout
+GET  /api/zalo/pending-qr
+GET  /api/accountant/groups
+POST /api/accountant/confirm-groups
+GET  /api/accountant/zalo-groups
+GET  /api/accountant/members
+POST /api/accountant/members
+POST /api/accountant/sync-members
+GET  /api/accountant/transactions
+POST /api/accountant/adjust-points
+PATCH /api/accountant/transactions/:id
+DELETE /api/accountant/transactions/:id
+GET  /api/accountant/pending-transfers
+POST /api/accountant/pending-transfers/:id/approve
+POST /api/accountant/pending-transfers/:id/reject
+GET  /api/accountant/rules/:groupId
+POST /api/accountant/rules/:groupId
+GET  /health
+```
+
+## Files src/
+
+| File | Vai trò |
+|------|---------|
+| `index.js` | Express + WebSocket server |
+| `sessionManager.js` | Quản lý phiên Zalo (kế toán) |
+| `parser.js` | Tách tin nhắn → cuốc xe |
+| `dbLayer.js` | Auto-select SQLite / PostgreSQL |
+| `db.js` | SQLite implementation |
+| `db.pg.js` | PostgreSQL implementation |
+| `stt.js` | FPT.AI Speech-to-Text |
+| `config.js` | Cài đặt in-memory (voice, FPT key) |
+| `crypto.js` | Mã hoá cookie Zalo (AES-256-GCM) |
+
+## Chia sẻ DB với tlx-driver-service
+
+Cả 2 backend dùng chung `data/tlx.db`.  
+`tlx-driver-service` đặt `DATA_DIR=../tlx-worker/data` để trỏ vào đây.  
+SQLite WAL mode (bật trong `db.js`) cho phép 2 process đọc/ghi đồng thời an toàn.
 
 ## Lưu ý zca-js
-Tên hàm getAllGroups/getGroupInfo/sendMessage và field tin (uidFrom, quote, mentions,
-content.image của QR) có thể khác giữa phiên bản. Bật DEBUG_RAW, xem log, chỉnh
-trong parser.js / sessionManager.js cho khớp. Phần lấy ảnh QR ở index.js (ev.data.image)
-cũng có thể cần đổi field tuỳ phiên bản.
+
+Field của zca-js có thể đổi giữa phiên bản. Bật `DEBUG_RAW=true` trong `.env` để log cấu trúc raw content khi debug.

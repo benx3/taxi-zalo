@@ -1,230 +1,406 @@
-# Hướng dẫn Deploy lên VPS (từng bước)
+# Hướng dẫn Deploy lên VPS
 
-Dành cho giai đoạn 200–500 user. Một VPS chính chạy được. Khi đông hơn, xem ARCHITECTURE.md.
-
-## 0. Nên mua VPS nào?
-
-**Khuyến nghị giai đoạn đầu (200–500 user):**
-- **CPU:** 4 vCPU
-- **RAM:** 8 GB  (mỗi phiên zca-js ~20–60MB; 8GB gánh ~150–250 phiên + Postgres + Node)
-- **Ổ:** 80 GB SSD NVMe
-- **Băng thông:** càng cao càng tốt (realtime nhiều kết nối)
-- **OS:** Ubuntu 24.04 LTS
-
-**Nhà cung cấp gợi ý (chọn 1):**
-- **Quốc tế:** Hetzner (rẻ, mạnh — CPX31/CPX41), DigitalOcean, Vultr, Linode.
-- **Việt Nam (ping thấp cho user VN):** Vietserver, BizflyCloud, VNG Cloud, TinoHost VPS.
-  → Ưu tiên VPS đặt ở VN vì user là tài xế VN, độ trễ thấp quan trọng cho realtime.
-- Lưu ý IP: nên có **IP sạch**, và sau này khi scale cần **nhiều IP** (giảm rủi ro Zalo
-  chặn theo IP). Hỏi nhà cung cấp về việc thêm IP phụ.
-
-**Khi tiến tới 5000 user:** 1 VPS không đủ — cần 20–25 VPS worker + Redis + Load Balancer.
-Lúc đó cân nhắc cloud có auto-scaling (AWS/GCP) hoặc cụm VPS + script điều phối.
+Dành cho giai đoạn 200–500 user. 1 VPS chạy được tất cả 4 service.
 
 ---
 
-## 1. Kết nối VPS & cập nhật
+## 0. Chọn VPS
+
+**Cấu hình tối thiểu cho 200–500 user:**
+- CPU: 4 vCPU
+- RAM: 8 GB (mỗi phiên zca-js ~20–60 MB; 8 GB gánh ~150–250 phiên)
+- Ổ: 80 GB SSD NVMe
+- OS: Ubuntu 22.04 hoặc 24.04 LTS
+
+**Nhà cung cấp:**
+- Việt Nam (ping thấp): Vietserver, BizflyCloud, VNG Cloud, TinoHost
+- Quốc tế (rẻ, mạnh): Hetzner CPX31/CPX41, DigitalOcean, Vultr
+
+> Ưu tiên IP sạch — nhiều phiên zca-js cùng 1 IP dễ bị Zalo chặn theo IP.
+
+---
+
+## 1. Chuẩn bị VPS
 
 ```bash
 ssh root@<IP_VPS>
 apt update && apt upgrade -y
+apt install -y nodejs npm build-essential git nginx
+npm install -g n && n 20   # Node.js 20 LTS
 ```
 
-## 2. Cài Node.js 20 + công cụ build (cho better-sqlite3 nếu cần)
+Kiểm tra: `node -v` phải ra `v20.x`.
 
-```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-apt install -y nodejs build-essential git
-node -v   # phải ra v20.x
-```
+---
 
-## 3. Cài PostgreSQL
+## 2. Cài PostgreSQL (production)
 
 ```bash
 apt install -y postgresql postgresql-contrib
 systemctl enable --now postgresql
 
-# tạo database và user
 sudo -u postgres psql <<'SQL'
-CREATE USER tlx WITH PASSWORD 'doi_mat_khau_manh_o_day';
+CREATE USER tlx WITH PASSWORD 'MAT_KHAU_MANH';
 CREATE DATABASE tlx OWNER tlx;
 GRANT ALL PRIVILEGES ON DATABASE tlx TO tlx;
 SQL
 ```
-Chuỗi kết nối sẽ là: `postgres://tlx:doi_mat_khau_manh_o_day@localhost:5432/tlx`
 
-## 4. Tải code lên VPS
+Chuỗi kết nối: `postgres://tlx:MAT_KHAU_MANH@localhost:5432/tlx`
 
-Cách A — qua git (khuyến nghị):
+---
+
+## 3. Tải code lên VPS
+
 ```bash
 cd /opt
-git clone <repo-cua-ban> tlx
+git clone <repo-url> tlx
 cd tlx
 ```
-Cách B — upload zip rồi giải nén:
+
+Hoặc upload zip:
 ```bash
-# từ máy bạn: scp TroLyTaiXe-AI.zip root@<IP>:/opt/
+# Từ máy local:
+scp TroLyTaiXe-AI.zip root@<IP>:/opt/
+# Trên VPS:
 cd /opt && unzip TroLyTaiXe-AI.zip && mv TroLyTaiXe-AI tlx && cd tlx
 ```
 
-## 5. Cấu hình & chạy BACKEND (worker)
+---
+
+## 4. Tạo APP_SECRET dùng chung
+
+Cookie Zalo được mã hoá AES-256-GCM bằng `APP_SECRET`. **Dùng cùng 1 secret cho cả 2 backend.**
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+# Copy chuỗi này để dùng ở bước 5 và 6
+```
+
+> **Giữ APP_SECRET cố định.** Đổi secret sẽ khiến toàn bộ phiên Zalo đã lưu mất hiệu lực.
+
+---
+
+## 5. Cấu hình & chạy tlx-worker (Admin+KT backend, port 8082)
 
 ```bash
 cd /opt/tlx/tlx-worker
 cp .env.example .env
 nano .env
 ```
-Sửa trong `.env`:
+
+Nội dung `.env`:
 ```
-PORT=8080
-DATABASE_URL=postgres://tlx:doi_mat_khau_manh_o_day@localhost:5432/tlx
-CORS_ORIGIN=https://ten-mien-cua-ban.com
+PORT=8082
+DATABASE_URL=postgres://tlx:MAT_KHAU_MANH@localhost:5432/tlx
+APP_SECRET=<chuỗi vừa tạo ở bước 4>
+CORS_ORIGIN=https://ten-mien.com
+FPT_STT_API_KEY=
 DEBUG_RAW=false
-```
-Cài và chạy thử:
-```bash
-npm install
-npm start          # thấy "Dùng PostgreSQL" + "Server cổng 8080" là OK
-# Ctrl+C để dừng, ta sẽ chạy nền bằng PM2 ở bước 7
+OK_DELAY_MIN=400
+OK_DELAY_MAX=1200
 ```
 
-## 6. Build FRONTEND (web)
+```bash
+npm install
+npm start   # kiểm tra thấy "Server cổng 8082" và "Dùng PostgreSQL"
+# Ctrl+C → PM2 sẽ chạy nền ở bước 7
+```
+
+---
+
+## 6. Cấu hình & chạy tlx-driver-service (Driver backend, port 8080)
+
+```bash
+cd /opt/tlx/tlx-driver-service
+cp .env.example .env   # nếu chưa có, tạo thủ công:
+nano .env
+```
+
+Nội dung `.env`:
+```
+PORT=8080
+DATA_DIR=../tlx-worker/data
+APP_SECRET=<cùng chuỗi ở bước 4>
+CORS_ORIGIN=https://ten-mien.com
+OK_DELAY_MIN=400
+OK_DELAY_MAX=1200
+```
+
+```bash
+npm install
+npm start   # kiểm tra thấy "Server cổng 8080"
+# Ctrl+C → PM2 sẽ chạy nền ở bước 7
+```
+
+---
+
+## 7. Build frontend
+
+### Driver frontend (tlx-driver → phục vụ tại /)
+
+```bash
+cd /opt/tlx/tlx-driver
+cat > .env <<'ENV'
+VITE_API_BASE=https://ten-mien.com
+VITE_WS_BASE=wss://ten-mien.com/ws
+VITE_ADMIN_URL=https://admin.ten-mien.com
+ENV
+npm install && npm run build   # tạo dist/
+```
+
+### Admin+KT frontend (tlx-web → phục vụ tại admin.ten-mien.com)
 
 ```bash
 cd /opt/tlx/tlx-web
-# tạo file .env cho web trỏ tới API qua domain (HTTPS/WSS)
 cat > .env <<'ENV'
-VITE_API_BASE=https://ten-mien-cua-ban.com
-VITE_WS_BASE=wss://ten-mien-cua-ban.com/ws
+VITE_API_BASE=https://admin.ten-mien.com
+VITE_WS_BASE=wss://admin.ten-mien.com/ws
 ENV
-
-npm install
-npm run build      # tạo thư mục dist/ (web tĩnh)
+npm install && npm run build   # tạo dist/
 ```
 
-## 7. Chạy backend nền bằng PM2 (tự khởi động lại khi crash/reboot)
+> Nếu dùng 1 domain duy nhất, xem cấu hình Nginx option B ở bước 9.
+
+---
+
+## 8. Chạy backend nền bằng PM2
 
 ```bash
 npm install -g pm2
+
 cd /opt/tlx/tlx-worker
 pm2 start src/index.js --name tlx-worker
+
+cd /opt/tlx/tlx-driver-service
+pm2 start src/index.js --name tlx-driver-service
+
 pm2 save
-pm2 startup        # chạy dòng lệnh nó in ra để bật auto-start khi reboot
-pm2 logs tlx-worker   # xem log
+pm2 startup   # chạy dòng lệnh nó in ra để bật auto-start khi reboot
 ```
 
-## 8. Nginx: phục vụ web tĩnh + proxy API/WebSocket + HTTPS
+Kiểm tra: `pm2 list` — cả 2 process phải `online`.
+
+---
+
+## 9. Nginx — 2 option
+
+### Option A: 2 domain riêng (khuyến nghị)
+
+`ten-mien.com` → tlx-driver frontend  
+`admin.ten-mien.com` → tlx-web frontend
 
 ```bash
-apt install -y nginx
-nano /etc/nginx/sites-available/tlx
+nano /etc/nginx/sites-available/tlx-driver
 ```
-Dán cấu hình (đổi `ten-mien-cua-ban.com`):
+
 ```nginx
 server {
     listen 80;
-    server_name ten-mien-cua-ban.com;
+    server_name ten-mien.com;
 
-    # web tĩnh (React build)
-    root /opt/tlx/tlx-web/dist;
+    root /opt/tlx/tlx-driver/dist;
     index index.html;
 
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
+    location / { try_files $uri $uri/ /index.html; }
 
-    # API
     location /api/ {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
-    # WebSocket
     location /ws {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_read_timeout 3600s;   # giữ kết nối realtime lâu
+        proxy_read_timeout 3600s;
     }
 }
 ```
-Bật site:
+
 ```bash
-ln -s /etc/nginx/sites-available/tlx /etc/nginx/sites-enabled/
+nano /etc/nginx/sites-available/tlx-admin
+```
+
+```nginx
+server {
+    listen 80;
+    server_name admin.ten-mien.com;
+
+    root /opt/tlx/tlx-web/dist;
+    index index.html;
+
+    location / { try_files $uri $uri/ /index.html; }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8082;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /ws {
+        proxy_pass http://127.0.0.1:8082;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+    }
+}
+```
+
+```bash
+ln -s /etc/nginx/sites-available/tlx-driver /etc/nginx/sites-enabled/
+ln -s /etc/nginx/sites-available/tlx-admin /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 ```
 
-## 9. HTTPS miễn phí (Let's Encrypt) — BẮT BUỘC
+---
 
-WebSocket bảo mật (wss) và bảo vệ mật khẩu cần HTTPS.
+### Option B: 1 domain, phân biệt bằng path
+
+Nếu chỉ có 1 domain (`ten-mien.com`), đặt admin tại `/admin-ui/`:
+
+```nginx
+server {
+    listen 80;
+    server_name ten-mien.com;
+
+    # Driver frontend (mặc định)
+    root /opt/tlx/tlx-driver/dist;
+    location / { try_files $uri $uri/ /index.html; }
+
+    # Driver API + WS
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+    }
+    location /ws {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+    }
+
+    # Admin+KT frontend tại /admin-ui/
+    location /admin-ui/ {
+        alias /opt/tlx/tlx-web/dist/;
+        try_files $uri $uri/ /admin-ui/index.html;
+    }
+
+    # Admin+KT API (dùng prefix /admin-api/)
+    location /admin-api/ {
+        rewrite ^/admin-api/(.*)$ /api/$1 break;
+        proxy_pass http://127.0.0.1:8082;
+        proxy_set_header Host $host;
+    }
+    location /admin-ws {
+        proxy_pass http://127.0.0.1:8082/ws;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+    }
+}
+```
+
+> Với option B, cần cập nhật biến `VITE_API_BASE=/admin-api` và `VITE_WS_BASE=wss://ten-mien.com/admin-ws` trong `tlx-web/.env` trước khi build.
+
+---
+
+## 10. HTTPS bắt buộc
+
 ```bash
 apt install -y certbot python3-certbot-nginx
-certbot --nginx -d ten-mien-cua-ban.com
-```
-Certbot tự sửa Nginx sang 443 + tự gia hạn. Sau bước này dùng `https://` và `wss://`.
 
-## 10. Tường lửa
+# Option A (2 domain):
+certbot --nginx -d ten-mien.com -d admin.ten-mien.com
+
+# Option B (1 domain):
+certbot --nginx -d ten-mien.com
+```
+
+Certbot tự chỉnh Nginx sang port 443 và tự gia hạn hàng 3 tháng.
+
+---
+
+## 11. Tường lửa
 
 ```bash
 ufw allow 22
 ufw allow 80
 ufw allow 443
 ufw enable
-# KHÔNG mở cổng 8080 ra ngoài — chỉ Nginx (localhost) gọi nó.
+# KHÔNG mở port 8080 và 8082 ra ngoài — chỉ Nginx truy cập nội bộ
 ```
 
-## 11. Kiểm tra
+---
 
-- Mở `https://ten-mien-cua-ban.com` → thấy trang đăng nhập.
-- Đăng nhập `admin / admin` → ĐỔI MẬT KHẨU admin ngay.
-- `https://ten-mien-cua-ban.com/health` → trả số phiên đang chạy.
+## 12. Kiểm tra sau deploy
+
+```bash
+# Backend health
+curl https://ten-mien.com/health           # driver-service
+curl https://admin.ten-mien.com/health     # worker
+
+# PM2
+pm2 list
+pm2 logs tlx-worker --lines 50
+pm2 logs tlx-driver-service --lines 50
+```
+
+Trình duyệt:
+- `https://ten-mien.com` → màn đăng nhập tài xế
+- `https://admin.ten-mien.com/admin` → màn đăng nhập admin
+- Đăng nhập `admin / admin` → **ĐỔI MẬT KHẨU NGAY**
 
 ---
 
 ## Bảo trì & nâng cấp
 
 ```bash
-# cập nhật code mới
 cd /opt/tlx && git pull
+
+# Nâng cấp admin/KT (không cần dừng driver):
 cd tlx-worker && npm install && pm2 restart tlx-worker
-cd ../tlx-web && npm install && npm run build   # Nginx tự phục vụ dist mới
+cd ../tlx-web && npm install && npm run build
+
+# Nâng cấp driver (không cần dừng admin):
+cd ../tlx-driver-service && npm install && pm2 restart tlx-driver-service
+cd ../tlx-driver && npm install && npm run build
 ```
 
-## Sao lưu database (nên đặt cron hằng ngày)
+---
+
+## Sao lưu database
+
 ```bash
+# PostgreSQL — đặt cron hàng ngày
 pg_dump -U tlx tlx > /opt/backup/tlx-$(date +%F).sql
+
+# SQLite (nếu dùng)
+cp /opt/tlx/tlx-worker/data/tlx.db /opt/backup/tlx-$(date +%F).db
 ```
 
-## Khi nào cần thêm VPS?
-- `/health` báo > 200 phiên, hoặc RAM > 80% → thêm 1 VPS worker.
-- Xem ARCHITECTURE.md mục "Giai đoạn 2" để tách Redis + nhiều worker.
+---
 
 ## Checklist bảo mật production
-- [ ] Đổi mật khẩu admin mặc định.
-- [ ] Mật khẩu PostgreSQL mạnh, không để mặc định.
-- [ ] CORS_ORIGIN ghi đúng domain (không để `*`).
-- [ ] HTTPS bật (certbot).
-- [ ] Cổng 8080 KHÔNG mở ra internet.
-- [x] Mật khẩu hash bằng **bcrypt** (đã làm; hash SHA-256 cũ tự nâng cấp khi đăng nhập).
-- [ ] **Đặt APP_SECRET** trong `.env` để **mã hoá cookie Zalo** trong DB (xem bước bên dưới).
 
-## Đặt APP_SECRET để mã hoá cookie Zalo (QUAN TRỌNG)
+- [ ] Đổi mật khẩu admin mặc định (`admin / admin`)
+- [ ] Đặt `APP_SECRET` trong cả 2 `.env` (cùng 1 chuỗi)
+- [ ] `CORS_ORIGIN` ghi đúng domain, không để `*`
+- [ ] HTTPS bật (certbot)
+- [ ] Port 8080 và 8082 **không** mở ra internet
+- [ ] Mật khẩu PostgreSQL mạnh
+- [ ] Backup DB tự động bằng cron
 
-Cookie Zalo cho phép chiếm phiên Zalo của user — nếu DB lộ mà cookie không mã hoá thì rất nguy hiểm.
-Tạo khoá bí mật và đưa vào `.env`:
-```bash
-# tạo chuỗi ngẫu nhiên
-node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
-# copy kết quả, dán vào tlx-worker/.env:
-#   APP_SECRET=<chuỗi vừa tạo>
-```
-Lưu ý:
-- Khi CHƯA đặt APP_SECRET (dev): cookie lưu thẳng (tiện debug).
-- Khi ĐÃ đặt (production): cookie tự động mã hoá AES-256-GCM.
-- **Giữ APP_SECRET cố định** — đổi khoá sẽ khiến các cookie đã mã hoá cũ không giải mã được
-  (user phải quét lại QR Zalo). Sao lưu khoá an toàn, KHÔNG commit lên git.
-- Cookie cũ chưa mã hoá vẫn đọc được bình thường (tương thích ngược); chúng sẽ được mã hoá
-  lại trong lần lưu phiên kế tiếp.
+---
+
+## Scale khi vượt 250 user
+
+1 VPS (8 GB RAM) gánh được ~150–250 phiên zca-js. Khi vượt:
+- Thêm VPS worker thứ 2 cho driver-service
+- Tách Redis thay Map RAM để share token giữa các node
+- Xem **ARCHITECTURE.md** mục "Giai đoạn 2" để biết kiến trúc scale ngang đầy đủ

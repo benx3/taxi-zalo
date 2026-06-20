@@ -1,23 +1,63 @@
-# TLX Web — App tài xế (React + Vite)
+# tlx-web — Frontend Admin + Kế toán (port 5174)
 
-Frontend nối backend worker đa phiên. Đăng nhập/đăng ký thật, phân quyền,
-mỗi user tự quét QR Zalo, chỉ thấy nhóm của mình.
+UI cho admin (`/admin`) và kế toán (`/accountant`). Kết nối backend `tlx-worker` (port 8082).
 
-## Cài & chạy
+## Chạy
+
 ```bash
-cd tlx-web
 npm install
 npm run dev
+# → http://localhost:5174
 ```
-Mở http://localhost:5173 — worker phải đang chạy ở cổng 8080.
-Đổi địa chỉ backend ở đầu file `src/api.js` (BASE và WS_BASE) nếu khác máy.
 
-## Test 5 account
-- Admin: đăng nhập tài khoản admin (xem log worker lần đầu khởi động) → duyệt các tài khoản đăng ký.
-- Tài xế: Đăng ký → chờ admin duyệt → đăng nhập → quét QR Zalo → vào màn cuốc.
-- Token lưu ở localStorage, F5 không phải đăng nhập lại.
+`tlx-worker` phải đang chạy ở port 8082.
 
-## File
-- src/api.js — gọi HTTP API (login, register, admin, zalo QR)
-- src/useWorker.js — WebSocket kèm token, nhận cuốc/QR realtime
-- src/App.jsx — toàn bộ UI
+## URL
+
+| Ai | URL |
+|----|-----|
+| Admin | http://localhost:5174/admin |
+| Kế toán | http://localhost:5174/accountant |
+
+Tài xế truy cập `tlx-driver` (port 5173), không phải app này.
+
+## Cấu hình .env (nếu backend khác localhost)
+
+```
+VITE_API_BASE=http://server:8082
+VITE_WS_BASE=ws://server:8082/ws
+```
+
+## Cấu trúc src/
+
+```
+src/
+  App.jsx               — Admin UI (AdminLoginScreen + AdminApp)
+  main.jsx              — Route dispatcher: /accountant → AccountantApp, else App
+  api.js                — HTTP client, BASE=http://localhost:8082
+  accountant/
+    App.jsx             — Entry kế toán (login + token từ hash + role check)
+    AccountantApp.jsx   — Layout kế toán (tabs: Thành viên/Giao dịch/Chờ duyệt/Barem/TK)
+    api.js              — HTTP client kế toán, BASE=http://localhost:8082
+    useAccountantWorker.js — WebSocket hook
+    MembersTab.jsx
+    TransactionsTab.jsx
+    PendingTab.jsx
+    BaremTab.jsx
+```
+
+## Redirect flow (khi tài xế login nhầm)
+
+Nếu tài khoản kế toán đăng nhập vào `tlx-driver` (port 5173), app tự redirect sang:
+```
+http://localhost:5174/accountant#token=xxx
+```
+`tlx-web/src/accountant/App.jsx` đọc token từ URL hash, set vào localStorage, xoá hash, load AccountantApp.
+
+## Build production
+
+```bash
+npm run build   # tạo dist/
+```
+
+Nginx phục vụ `dist/` như static files. Xem `DEPLOY.md` để biết cấu hình Nginx đầy đủ.

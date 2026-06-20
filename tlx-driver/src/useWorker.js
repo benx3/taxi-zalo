@@ -1,13 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getToken, WS_BASE } from "./api.js";
 
-function tripSignature(t) {
-  const norm = (s) => (s || "").toLowerCase().replace(/[\s\W_]+/g, " ").trim();
-  const byText = norm(t.text);
-  if (byText.length >= 8) return "t:" + byText;
-  return "k:" + [t.price, norm(t.route?.from), norm(t.route?.to), norm(t.sender)].join("|");
-}
-
 export function useWorker() {
   const [connected, setConnected] = useState(false);
   const [trips, setTrips] = useState([]);
@@ -48,17 +41,7 @@ export function useWorker() {
         if (m.type === "zalo_expired") { setZaloExpired(true); setGroups([]); }
         if (m.type === "trip") {
           const t = m.trip; t._ts = Date.now();
-          t._sig = tripSignature(t);
           setTrips(prev => {
-            const idx = prev.findIndex(p => p._sig === t._sig);
-            if (idx >= 0) {
-              const ex = prev[idx];
-              const groupsSet = new Set([...(ex._groups || [ex.group]), t.group]);
-              const merged = { ...ex, _groups: [...groupsSet], _dupCount: groupsSet.size };
-              const copy = [...prev]; copy[idx] = merged;
-              tripIndex.current.set(ex.msgId, merged);
-              return copy;
-            }
             tripIndex.current.set(t.msgId, t);
             const next = [t, ...prev].slice(0, limitRef.current);
             const keep = new Set(next.map(x => x.msgId));
