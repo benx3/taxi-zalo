@@ -23,4 +23,10 @@ export const {
   saveZaloSession, getZaloSession, clearZaloSession,
   saveTrip, markTripWon, deleteSavedTrip, listSavedTrips, purgeOld,
   getSetting, setSetting,
+  getAccountantGroups, addAccountantGroup, removeAccountantGroup,
+  listMembers, getMemberByZaloUid, upsertMember, deleteRemovedMembers,
+  adjustPoints, listTransactions, updateTransaction, deleteTransaction,
+  createPendingTransfer, listPendingTransfers, approvePendingTransfer, rejectPendingTransfer,
+  lockAccountantGroups, isGroupsLocked,
+  getRules, saveRules,
 } = impl;

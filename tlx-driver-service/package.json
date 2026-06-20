@@ -1,0 +1,19 @@
+{
+  "name": "tlx-driver-service",
+  "version": "1.0.0",
+  "description": "Trợ Lý Tài Xế AI — service riêng cho tài xế (port 8080)",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "2.4.3",
+    "better-sqlite3": "11.3.0",
+    "pg": "8.13.1",
+    "zca-js": "^2.0.0",
+    "ws": "8.18.0",
+    "express": "4.21.2",
+    "dotenv": "16.4.7"
+  }
+}

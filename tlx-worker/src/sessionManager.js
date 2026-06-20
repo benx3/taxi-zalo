@@ -15,6 +15,8 @@ const OK_MIN = Number(process.env.OK_DELAY_MIN || 400);
 const OK_MAX = Number(process.env.OK_DELAY_MAX || 1200);
 const rand = (a, b) => Math.floor(a + Math.random() * (b - a));
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+// Nhường event loop cho driver messages / HTTP requests khác xử lý
+const yieldLoop = () => new Promise(r => setImmediate(r));
 
 // userId -> phiên
 const sessions = new Map();
@@ -69,7 +71,11 @@ function attach(userId, api, onEvent) {
     sentOks: new Map(),         // msgId cuốc -> {groupId, sent, savedId} (để thu hồi khi huỷ)
     onEvent,
     lastMsgAt: Date.now(),      // timestamp tin nhắn cuối (để phát hiện session chết)
+    isAccountant: false,        // set sau khi getUserPublic
   };
+  // Đánh dấu role để onMessage biết có thu thập member hay không
+  // Dùng await (hoạt động với cả SQLite sync và PostgreSQL async)
+  ;(async () => { try { const u = await dbm.getUserPublic(userId); if (u?.role === "accountant") sess.isAccountant = true; } catch {} })();
   sessions.set(userId, sess);
 
   api.listener.on("message", (msg) => { sess.lastMsgAt = Date.now(); onMessage(sess, msg); });
@@ -133,19 +139,43 @@ async function loadGroups(sess) {
   const ids = res?.gridVerMap ? Object.keys(res.gridVerMap)
     : Array.isArray(res) ? res : Object.keys(res || {});
   sess.groups = [];
-  for (const id of ids) {
-    let name = id;
-    let link = null;
-    try {
-      const info = await api.getGroupInfo(id);
-      const g = info?.gridInfoMap?.[id] || info?.[id] || info;
-      name = g?.name || g?.groupName || id;
-      link = g?.linkJoin || g?.link || g?.inviteLink || null;
-    } catch {}
-    sess.groupNameById.set(id, name);
-    sess.groups.push({ id, name, link });
+
+  // Parallel getGroupInfo (5 nhóm/lần) — không để tuần tự lock event loop
+  const CHUNK = 5;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const batch = ids.slice(i, i + CHUNK);
+    const results = await Promise.allSettled(batch.map(async (id) => {
+      let name = id, link = null;
+      try {
+        const info = await api.getGroupInfo(id);
+        const g = info?.gridInfoMap?.[id] || info?.[id] || info;
+        name = g?.name || g?.groupName || id;
+        link = g?.linkJoin || g?.link || g?.inviteLink || null;
+      } catch {}
+      return { id, name, link };
+    }));
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        const { id, name, link } = r.value;
+        sess.groupNameById.set(id, name);
+        sess.groups.push({ id, name, link });
+      }
+    }
+    await yieldLoop(); // nhường event loop giữa các batch
   }
+
   sess.onEvent(sess.userId, { type: "groups", groups: sess.groups, selected: [...sess.selected] });
+
+  // Auto-import thành viên sau khi load groups (dành cho kế toán)
+  try {
+    const u = await dbm.getUserPublic(sess.userId);
+    if (u?.role === "accountant") {
+      const acctGroups = await dbm.getAccountantGroups(sess.userId);
+      for (const ag of acctGroups) {
+        importGroupMembers(sess, ag.group_id).catch(() => {});
+      }
+    }
+  } catch {}
 }
 
 function onMessage(sess, msg) {
@@ -179,6 +209,31 @@ function onMessage(sess, msg) {
     }
 
     const text = typeof msg.data?.content === "string" ? msg.data.content : (msg.data?.content?.title || "");
+
+    // Thu thập thành viên thụ động: mỗi tin nhắn trong nhóm được theo dõi → lưu sender
+    if (senderId && sess.isAccountant) {
+      dbm.upsertMember(groupId, senderId, { display_name: senderName !== "Không rõ" ? senderName : null })
+        .catch(() => {});
+    }
+
+    // (A.0) San điểm: ai đó tag kế toán + "san" + số điểm → tạo pending transfer
+    if (senderId !== String(sess.selfId)) {
+      const sanResult = detectSanDiem(text, msg.data?.mentions || [], sess.selfId);
+      if (sanResult) {
+        Promise.resolve(dbm.createPendingTransfer(
+          groupId, senderId, sanResult.toUid, sanResult.amount, text
+        )).then(txId => {
+          sess.onEvent(sess.userId, {
+            type: "pending_transfer", txId,
+            groupId, groupName,
+            fromUid: senderId, fromName: senderName,
+            toUid: sanResult.toUid, toName: sanResult.toName,
+            points: sanResult.amount, rawText: text,
+          });
+        }).catch(e => console.error(`[${sess.userId}] san điểm:`, e?.message || e));
+        return;
+      }
+    }
 
     // (A) chủ cuốc xác nhận cho mình?
     const key = `${groupId}:${senderId}`;
@@ -236,6 +291,22 @@ async function handleVoiceTrip(sess, base, rawMsg, voiceUrl) {
   }
 }
 
+// Phát hiện "san điểm" — khi tin nhắn có "san" + mention kế toán + số điểm
+function detectSanDiem(text, mentions, selfUid) {
+  if (!/\bsan\b/i.test(text)) return null;
+  // Phải tag kế toán (selfUid)
+  const selfStr = String(selfUid);
+  if (!mentions.some(m => String(m.uid) === selfStr)) return null;
+  // Trích số điểm
+  const m = text.match(/(\d+(?:[.,]\d+)?)\s*(?:đ\b|điểm|d\b)/i);
+  if (!m) return null;
+  const amount = parseFloat(m[1].replace(",", "."));
+  if (!amount || amount <= 0) return null;
+  // Người nhận = mention không phải kế toán
+  const recv = mentions.find(mn => String(mn.uid) !== selfStr);
+  return { amount, toUid: recv?.uid || null, toName: recv?.display_name || recv?.dName || null };
+}
+
 function isTaggingSelf(sess, msg) {
   const q = msg.data?.quote?.ownerId || msg.data?.quote?.uidFrom;
   if (q && String(q) === String(sess.selfId)) return true;
@@ -244,10 +315,118 @@ function isTaggingSelf(sess, msg) {
   return false;
 }
 
+// Trích member list từ response getGroupInfo
+// GroupInfo thực tế có: currentMems=[{id,dName,zaloName,...}], memberIds=[uid,...]
+function extractMemberList(info, groupId) {
+  // Tìm đúng GroupInfo object trong gridInfoMap
+  let g = info?.gridInfoMap?.[groupId];
+  if (!g && info?.gridInfoMap) {
+    // Zalo đôi khi trả groupId dạng số, thử tất cả values
+    g = Object.values(info.gridInfoMap)[0];
+  }
+
+  if (g) {
+    // currentMems có đủ thông tin: id + dName (display name)
+    if (g.currentMems?.length) {
+      const result = [...g.currentMems];
+      // Nếu hasMoreMember=1: memberIds có thể có thêm UID chưa có trong currentMems
+      if (g.hasMoreMember && g.memberIds?.length) {
+        const seenIds = new Set(result.map(m => String(m.id)));
+        for (const uid of g.memberIds) {
+          if (!seenIds.has(String(uid))) result.push({ id: String(uid) });
+        }
+      }
+      return result;
+    }
+    // Fallback: chỉ có UIDs (không có tên)
+    if (g.memberIds?.length) return g.memberIds.map(uid => ({ id: String(uid) }));
+  }
+
+  // Legacy fallbacks (các version cũ của zca-js hoặc format khác)
+  if (info?.currentMems?.length) return info.currentMems;
+  if (info?.memberIds?.length)   return info.memberIds.map(uid => ({ id: String(uid) }));
+  if (info?.memberList?.length)  return info.memberList;
+  if (info?.members?.length)     return info.members;
+  return [];
+}
+
+// Import thành viên từ nhóm Zalo khi kế toán chọn nhóm
+async function importGroupMembers(sess, groupId) {
+  try {
+    let memberList = [];
+    const info = await sess.api.getGroupInfo(groupId);
+
+    memberList = extractMemberList(info, groupId);
+
+    // Fallback: thử các tên hàm khác nhau tuỳ phiên bản zca-js
+    if (!memberList.length) {
+      const tryMethods = ["getGroupMemberList", "fetchGroupMembers", "getGroupMembers"];
+      for (const fn of tryMethods) {
+        if (typeof sess.api[fn] !== "function") continue;
+        try {
+          const res = await sess.api[fn](groupId);
+          memberList = Array.isArray(res) ? res : extractMemberList(res, groupId);
+          if (memberList.length) { console.log(`[${sess.userId}] Dùng ${fn}() → ${memberList.length} member`); break; }
+        } catch {}
+      }
+    }
+
+    const g = info?.gridInfoMap?.[groupId] || Object.values(info?.gridInfoMap || {})[0];
+    console.log(`[${sess.userId}] importGroupMembers ${groupId}: ${memberList.length} thành viên (currentMems=${g?.currentMems?.length ?? "n/a"} memberIds=${g?.memberIds?.length ?? "n/a"} hasMore=${g?.hasMoreMember ?? "n/a"})`);
+
+    let count = 0;
+    for (const m of memberList) {
+      const uid = m?.uid || m?.userId || m?.id;
+      if (!uid) continue;
+      await dbm.upsertMember(groupId, String(uid), {
+        display_name: m.dName || m.displayName || m.name || null,
+      });
+      count++;
+      if (count % 10 === 0) await yieldLoop();
+    }
+    if (count) console.log(`[${sess.userId}] Đã lưu ${count} thành viên nhóm ${groupId}`);
+  } catch (e) {
+    console.error(`[${sess.userId}] importGroupMembers ${groupId}:`, e?.message || e);
+  }
+}
+
 // ----- thao tác từ app -----
-export function setWatchedGroups(userId, groupIds) {
+export async function setWatchedGroups(userId, groupIds) {
   const sess = sessions.get(userId); if (!sess) return;
-  sess.selected = new Set(groupIds || []);
+  let ids = groupIds || [];
+
+  try {
+    const u = await dbm.getUserPublic(userId);
+    if (u?.role === "accountant") {
+      // Lock tạm thời tắt — kế toán tự do đổi nhóm
+      // const locked = await dbm.isGroupsLocked(userId);
+      // if (locked) { sess.onEvent(userId, { type: "groups_locked" }); return; }
+      const limit = u.group_limit || 3;
+      if (ids.length > limit) ids = ids.slice(0, limit);
+      // Đồng bộ accountant_groups với lựa chọn hiện tại
+      const current = await dbm.getAccountantGroups(userId);
+      const currentSet = new Set(current.map(g => g.group_id));
+      const newGroups = ids.filter(gId => !currentSet.has(gId));
+      for (const gId of ids) {
+        if (!currentSet.has(gId)) {
+          const g = sess.groups.find(gr => gr.id === gId);
+          await dbm.addAccountantGroup(userId, gId, g?.name || gId);
+        }
+      }
+      const idsSet = new Set(ids);
+      for (const gId of currentSet) {
+        if (!idsSet.has(gId)) await dbm.removeAccountantGroup(userId, gId);
+      }
+      // Auto-import thành viên từ nhóm mới thêm
+      for (const gId of newGroups) {
+        importGroupMembers(sess, gId).catch(() => {});
+      }
+    }
+  } catch (e) {
+    console.error(`[${userId}] setWatchedGroups:`, e?.message || e);
+  }
+
+  sess.selected = new Set(ids);
   sess.onEvent(userId, { type: "groups", groups: sess.groups, selected: [...sess.selected] });
 }
 
@@ -316,6 +495,61 @@ async function undoMessage(api, groupId, sent) {
 function extractSentIds(sent) {
   const d = sent?.message || sent?.data || sent || {};
   return { msgId: d.msgId || d.msgID, cliMsgId: d.cliMsgId || d.cliMsgID };
+}
+
+/** Full sync: thêm mới + cập nhật tên + XÓA người đã rời nhóm (dùng cho nút thủ công) */
+async function fullSyncGroupMembers(sess, groupId) {
+  let memberList = [];
+  const info = await sess.api.getGroupInfo(groupId);
+  memberList = extractMemberList(info, groupId);
+
+  if (!memberList.length) {
+    const tryMethods = ["getGroupMemberList", "fetchGroupMembers", "getGroupMembers"];
+    for (const fn of tryMethods) {
+      if (typeof sess.api[fn] !== "function") continue;
+      try {
+        const res = await sess.api[fn](groupId);
+        memberList = Array.isArray(res) ? res : extractMemberList(res, groupId);
+        if (memberList.length) break;
+      } catch {}
+    }
+  }
+
+  const gDbg = info?.gridInfoMap?.[groupId] || Object.values(info?.gridInfoMap || {})[0];
+  console.log(`[fullSync] ${groupId}: ${memberList.length} thành viên (currentMems=${gDbg?.currentMems?.length ?? "n/a"} memberIds=${gDbg?.memberIds?.length ?? "n/a"} hasMore=${gDbg?.hasMoreMember ?? "n/a"})`);
+  if (!memberList.length) throw new Error(`Nhóm ${groupId}: không lấy được danh sách thành viên từ Zalo`);
+
+  const activeUids = [];
+  let added = 0, i = 0;
+  for (const m of memberList) {
+    const uid = String(m?.uid || m?.userId || m?.id || "");
+    if (!uid) continue;
+    const existing = await dbm.getMemberByZaloUid(groupId, uid);
+    if (!existing) added++;
+    await dbm.upsertMember(groupId, uid, {
+      display_name: m.dName || m.displayName || m.name || null,
+    });
+    activeUids.push(uid);
+    if (++i % 10 === 0) await yieldLoop(); // nhường event loop mỗi 10 member
+  }
+  const removed = await dbm.deleteRemovedMembers(groupId, activeUids);
+  return { added, removed, total: activeUids.length };
+}
+
+/** Đồng bộ thủ công toàn bộ thành viên cho tất cả nhóm của kế toán (thêm + xóa) */
+export async function syncGroupMembers(userId) {
+  const sess = sessions.get(userId);
+  if (!sess) throw new Error("Chưa kết nối Zalo");
+  const groups = await dbm.getAccountantGroups(userId);
+  let totalAdded = 0, totalRemoved = 0, totalMembers = 0;
+  for (const g of groups) {
+    const r = await fullSyncGroupMembers(sess, g.group_id);
+    totalAdded += r.added;
+    totalRemoved += r.removed;
+    totalMembers += r.total;
+    await yieldLoop(); // nhường event loop giữa các nhóm
+  }
+  return { groups: groups.length, added: totalAdded, removed: totalRemoved, total: totalMembers };
 }
 
 export function stopSession(userId) {

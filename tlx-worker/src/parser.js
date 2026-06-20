@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // parser.js — bóc tách tin nhắn cuốc xe thành object có cấu trúc
 // ============================================================
 
@@ -26,7 +26,7 @@ export function isNoiseMessage(text) {
   return false;
 }
 function hasRouteHint(t) {
-  const hasArrow = />>>|--->|---->|=>|>>|->|→|về |ve |lên |len |đi |di /i.test(t);
+  const hasArrow = /={0,3}>{1,}|-{2,}>|→|về |ve |lên |len |đi |di /i.test(t);
   const hasPrice = /\d{2,4}\s*k|\dtr|\d[\d.]{2,}\s*đ/i.test(t);
   const hasTime = /\d{1,2}\s*h|\d{1,2}\s*p\b/i.test(t);
   return (hasArrow || hasTime) && hasPrice;
@@ -83,9 +83,11 @@ export function parseCar(t) {
 
 export function parseSeats(t) {
   const l = t.toLowerCase();
-  if (/2\s*ghế|2ghế|2\s*khách|2k\b/.test(l)) return "2 khách";
+  const nk = l.match(/\b([1-6])\s*k\b/);
+  if (nk) return nk[1] === "1" ? "1 ghế" : nk[1] + " khách";
+  if (/2\s*ghế|2ghế|2\s*khách|2ghép|2ghep/.test(l)) return "2 khách";
   if (/bao\s*hàng|bao\s*xe|bxe|1bx|\bbx\b|bx\d+/.test(l)) return "Bao xe";
-  if (/1\s*ghế|1ghế|1ghê|1\s*ghép|1k\b/.test(l)) return "1 ghế";
+  if (/1\s*ghế|1ghế|1ghê|1ghép|1ghep/.test(l)) return "1 ghế";
   return "Không rõ";
 }
 
@@ -94,14 +96,14 @@ export function parseType(t) {
   if (/(bao\s*hàng|csct\s*đồ|\bđồ\b|gửi hàng|ship)/.test(l) && !/1\s*ghế|1k\b|gái|khách/.test(l)) return "Hàng";
   if (/bao\s*xe|\bbxe\b|\bbx\b|bx\d+/.test(l)) return "Bao xe";
   if (/sân\s*bay|nội\s*bài|noi\s*bai|\bt1\b|\bt2\b|sảnh/.test(l)) return "Sân bay";
-  if (/2\s*ghế|2ghế|2\s*khách/.test(l)) return "Ghép 2";
+  if (/2\s*ghế|2ghế|2ghép|2ghep|2\s*khách|2k\b/.test(l)) return "Ghép 2";
   return "Ghép 1";
 }
 
 // ----- TUYẾN: tách điểm đón → điểm đến, làm sạch giờ/ghế/giá ở đầu -----
 // Dấu phân tách rất đa dạng: >>>, --->, =>>>, ==}}, ->, →, "về", "đi",
 // gạch dưới dài ____, gạch nối " - ", dấu ".." v.v.
-const ROUTE_SPLIT = /\s*(?:={0,3}[}>\]]{1,}|>{2,}|-{2,}>?|=>+|→|⇒|»+|_{2,}|\u2192|\.{3,}|\s-\s|\bvề\b|\bve\b|\blên\b|\blen\b|\bđi\b(?!\s*ngay)|\bra\b|\bsang\b)\s*/i;
+const ROUTE_SPLIT = /\s*(?:={0,3}>{1,}|-{2,}>?|->|→|⇒|»+|_{2,}|\u2192|\.{3,}|\s-\s|\bvề\b|\bve\b|\blên\b|\blen\b|\bđi\b(?!\s*ngay)|\bra\b|\bsang\b)\s*/i;
 
 export function parseRoute(t) {
   let parts = t.split(ROUTE_SPLIT).map(s => s.trim()).filter(s => s.length > 1);

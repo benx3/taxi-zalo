@@ -71,7 +71,59 @@ CREATE TABLE IF NOT EXISTS app_settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- ===== KẾ TOÁN =====
+
+CREATE TABLE IF NOT EXISTS accountant_groups (
+  accountant_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  group_id      TEXT NOT NULL,
+  group_name    TEXT,
+  PRIMARY KEY (accountant_id, group_id)
+);
+
+CREATE TABLE IF NOT EXISTS members (
+  id           TEXT PRIMARY KEY,
+  group_id     TEXT NOT NULL,
+  zalo_uid     TEXT NOT NULL,
+  phone        TEXT,
+  display_name TEXT,
+  points       REAL DEFAULT 0,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL,
+  UNIQUE(group_id, zalo_uid)
+);
+CREATE INDEX IF NOT EXISTS idx_members_group ON members(group_id);
+
+CREATE TABLE IF NOT EXISTS point_rules (
+  group_id   TEXT PRIMARY KEY,
+  rules_json TEXT NOT NULL DEFAULT '{"rules":[]}',
+  raw_text   TEXT DEFAULT '',
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS point_transactions (
+  id            TEXT PRIMARY KEY,
+  group_id      TEXT NOT NULL,
+  trip_msg_id   TEXT,
+  from_member   TEXT,
+  to_member     TEXT,
+  points        REAL NOT NULL,
+  reason        TEXT,
+  type          TEXT DEFAULT 'manual',
+  status        TEXT DEFAULT 'approved',
+  requester_uid TEXT,
+  created_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ptx_group ON point_transactions(group_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ptx_from  ON point_transactions(from_member, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ptx_to    ON point_transactions(to_member,   created_at DESC);
 `);
+
+// Migration: thêm cột mới cho DB cũ (SQLite không hỗ trợ ADD IF NOT EXISTS)
+try { db.exec("ALTER TABLE users ADD COLUMN group_limit INTEGER DEFAULT 3"); } catch {}
+try { db.exec("ALTER TABLE users ADD COLUMN groups_locked INTEGER DEFAULT 0"); } catch {}
+try { db.exec("ALTER TABLE point_transactions ADD COLUMN status TEXT DEFAULT 'approved'"); } catch {}
+try { db.exec("ALTER TABLE point_transactions ADD COLUMN requester_uid TEXT"); } catch {}
 
 const sessions = new Map(); // token -> userId (đăng nhập web)
 
@@ -134,6 +186,8 @@ export function getUserPublic(id) {
   return {
     id: fresh.id, phone: fresh.phone, name: fresh.name, role: fresh.role,
     status: fresh.status, plan: fresh.plan,
+    group_limit: fresh.group_limit ?? 3,
+    groups_locked: (fresh.groups_locked ?? 0) === 1,
     daysLeft: fresh.expires_at ? Math.max(0, Math.ceil((fresh.expires_at - now()) / 86400000)) : 0,
     hasZalo: !!db.prepare("SELECT 1 FROM zalo_sessions WHERE user_id=?").get(id),
   };
@@ -182,11 +236,25 @@ export async function changePassword(userId, oldPass, newPass) {
   return { ok: true };
 }
 
-// Cấp / gỡ quyền admin cho 1 user
-export function setRole(id, role) {
-  if (!["admin", "driver"].includes(role)) throw new Error("Vai trò không hợp lệ");
-  db.prepare("UPDATE users SET role=? WHERE id=?").run(role, id);
+// Cấp / gỡ quyền
+export function setRole(id, role, groupLimit) {
+  if (!["admin", "driver", "accountant"].includes(role)) throw new Error("Vai trò không hợp lệ");
+  if (role === "accountant") {
+    // Tự activate, reset groups_locked để kế toán chọn lại nhóm
+    db.prepare("UPDATE users SET role=?, status='active', group_limit=?, groups_locked=0 WHERE id=?")
+      .run(role, Number(groupLimit) || 3, id);
+  } else {
+    db.prepare("UPDATE users SET role=? WHERE id=?").run(role, id);
+  }
   return getUserPublic(id);
+}
+
+export function lockAccountantGroups(userId) {
+  db.prepare("UPDATE users SET groups_locked=1 WHERE id=?").run(userId);
+}
+export function isGroupsLocked(userId) {
+  const r = db.prepare("SELECT groups_locked FROM users WHERE id=?").get(userId);
+  return (r?.groups_locked ?? 0) === 1;
 }
 
 // ---------- Phiên Zalo của user ----------
@@ -210,7 +278,7 @@ export function clearZaloSession(userId) {
 }
 export function listUsersWithZalo() {
   return db.prepare(`SELECT u.id FROM users u JOIN zalo_sessions z ON z.user_id=u.id
-    WHERE u.status='active'`).all().map(r => r.id);
+    WHERE u.status='active' OR u.role IN ('accountant','admin')`).all().map(r => r.id);
 }
 
 // ---------- Cuốc đã nhận (lưu 2 tháng) ----------
@@ -283,6 +351,138 @@ export function purgeOld() {
   const cutoff = now() - 60 * 86400000;
   const r = db.prepare("DELETE FROM saved_trips WHERE taken_at < ?").run(cutoff);
   if (r.changes) console.log(`🧹 Đã xoá ${r.changes} cuốc cũ hơn 2 tháng.`);
+}
+
+// ---------- Kế toán: nhóm phụ trách ----------
+export function getAccountantGroups(accountantId) {
+  return db.prepare("SELECT * FROM accountant_groups WHERE accountant_id=?").all(accountantId);
+}
+export function addAccountantGroup(accountantId, groupId, groupName) {
+  db.prepare("INSERT OR REPLACE INTO accountant_groups(accountant_id,group_id,group_name) VALUES(?,?,?)").run(accountantId, groupId, groupName || groupId);
+}
+export function removeAccountantGroup(accountantId, groupId) {
+  db.prepare("DELETE FROM accountant_groups WHERE accountant_id=? AND group_id=?").run(accountantId, groupId);
+}
+
+// ---------- Kế toán: thành viên ----------
+export function listMembers(groupId) {
+  return db.prepare("SELECT * FROM members WHERE group_id=? ORDER BY display_name COLLATE NOCASE ASC").all(groupId);
+}
+export function getMemberByZaloUid(groupId, zaloUid) {
+  return db.prepare("SELECT * FROM members WHERE group_id=? AND zalo_uid=?").get(groupId, zaloUid);
+}
+export function upsertMember(groupId, zaloUid, { phone, display_name } = {}) {
+  const existing = getMemberByZaloUid(groupId, zaloUid);
+  if (existing) {
+    db.prepare("UPDATE members SET phone=COALESCE(?,phone), display_name=COALESCE(?,display_name), updated_at=? WHERE id=?")
+      .run(phone || null, display_name || null, now(), existing.id);
+    return existing.id;
+  }
+  const id = uid();
+  db.prepare("INSERT INTO members(id,group_id,zalo_uid,phone,display_name,points,created_at,updated_at) VALUES(?,?,?,?,?,0,?,?)")
+    .run(id, groupId, zaloUid, phone || null, display_name || null, now(), now());
+  return id;
+}
+export function deleteRemovedMembers(groupId, activeUids) {
+  if (!activeUids.length) return 0; // an toàn: không xóa cả nhóm nếu Zalo trả về rỗng
+  const placeholders = activeUids.map(() => "?").join(",");
+  return db.prepare(`DELETE FROM members WHERE group_id=? AND zalo_uid NOT IN (${placeholders})`)
+    .run(groupId, ...activeUids).changes;
+}
+
+// ---------- Kế toán: giao dịch điểm ----------
+export function adjustPoints(groupId, zaloUid, delta, reason, type = "manual", tripMsgId = null, fromMember = null, toMember = null) {
+  const memberId = upsertMember(groupId, zaloUid);
+  db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
+    .run(delta, now(), groupId, zaloUid);
+  const txId = uid();
+  db.prepare("INSERT INTO point_transactions(id,group_id,trip_msg_id,from_member,to_member,points,reason,type,created_at) VALUES(?,?,?,?,?,?,?,?,?)")
+    .run(txId, groupId, tripMsgId, fromMember, toMember, Math.abs(delta), reason || null, type, now());
+  return txId;
+}
+export function listTransactions(groupId, { zaloUid, limit = 100 } = {}) {
+  if (zaloUid) {
+    return db.prepare("SELECT * FROM point_transactions WHERE group_id=? AND (from_member=? OR to_member=?) ORDER BY created_at DESC LIMIT ?")
+      .all(groupId, zaloUid, zaloUid, limit);
+  }
+  return db.prepare("SELECT * FROM point_transactions WHERE group_id=? ORDER BY created_at DESC LIMIT ?").all(groupId, limit);
+}
+export function updateTransaction(id, { reason, points }) {
+  const tx = db.prepare("SELECT * FROM point_transactions WHERE id=?").get(id);
+  if (!tx) throw new Error("Không tìm thấy giao dịch");
+  const diff = (points !== undefined ? points : tx.points) - tx.points;
+  if (points !== undefined && diff !== 0) {
+    if (tx.to_member) db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
+      .run(-diff, now(), tx.group_id, tx.to_member);
+    if (tx.from_member) db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
+      .run(diff, now(), tx.group_id, tx.from_member);
+  }
+  db.prepare("UPDATE point_transactions SET reason=COALESCE(?,reason), points=COALESCE(?,points) WHERE id=?")
+    .run(reason || null, points !== undefined ? points : null, id);
+}
+export function deleteTransaction(id) {
+  const tx = db.prepare("SELECT * FROM point_transactions WHERE id=?").get(id);
+  if (!tx) throw new Error("Không tìm thấy giao dịch");
+  // Hoàn điểm: đảo ngược giao dịch
+  if (tx.to_member) db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
+    .run(tx.points, now(), tx.group_id, tx.to_member);
+  if (tx.from_member) db.prepare("UPDATE members SET points=ROUND(points-?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
+    .run(tx.points, now(), tx.group_id, tx.from_member);
+  db.prepare("DELETE FROM point_transactions WHERE id=?").run(id);
+}
+
+// ---------- Kế toán: giao dịch chờ duyệt (san điểm) ----------
+export function createPendingTransfer(groupId, fromUid, toUid, points, rawText) {
+  const txId = uid();
+  db.prepare(`INSERT INTO point_transactions
+    (id,group_id,from_member,to_member,points,reason,type,status,requester_uid,created_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?)`)
+    .run(txId, groupId, fromUid, toUid || null, Math.abs(points), rawText || null,
+      "manual", "pending", fromUid, now());
+  return txId;
+}
+
+export function listPendingTransfers(groupId) {
+  return db.prepare(
+    "SELECT * FROM point_transactions WHERE group_id=? AND status='pending' ORDER BY created_at DESC"
+  ).all(groupId);
+}
+
+export function approvePendingTransfer(txId) {
+  const tx = db.prepare("SELECT * FROM point_transactions WHERE id=? AND status='pending'").get(txId);
+  if (!tx) throw new Error("Không tìm thấy giao dịch đang chờ");
+  if (tx.from_member) {
+    const sender = db.prepare("SELECT points FROM members WHERE group_id=? AND zalo_uid=?")
+      .get(tx.group_id, tx.from_member);
+    if (sender && sender.points - tx.points < 0)
+      throw new Error("Người chuyển không đủ điểm (sẽ bị âm)");
+  }
+  if (tx.from_member) {
+    upsertMember(tx.group_id, tx.from_member);
+    db.prepare("UPDATE members SET points=ROUND(points-?,10),updated_at=? WHERE group_id=? AND zalo_uid=?")
+      .run(tx.points, now(), tx.group_id, tx.from_member);
+  }
+  if (tx.to_member) {
+    upsertMember(tx.group_id, tx.to_member);
+    db.prepare("UPDATE members SET points=ROUND(points+?,10),updated_at=? WHERE group_id=? AND zalo_uid=?")
+      .run(tx.points, now(), tx.group_id, tx.to_member);
+  }
+  db.prepare("UPDATE point_transactions SET status='approved' WHERE id=?").run(txId);
+}
+
+export function rejectPendingTransfer(txId) {
+  const tx = db.prepare("SELECT * FROM point_transactions WHERE id=? AND status='pending'").get(txId);
+  if (!tx) throw new Error("Không tìm thấy giao dịch đang chờ");
+  db.prepare("UPDATE point_transactions SET status='rejected' WHERE id=?").run(txId);
+}
+
+// ---------- Kế toán: barem ----------
+export function getRules(groupId) {
+  return db.prepare("SELECT * FROM point_rules WHERE group_id=?").get(groupId) || null;
+}
+export function saveRules(groupId, rulesJson, rawText) {
+  db.prepare("INSERT INTO point_rules(group_id,rules_json,raw_text,updated_at) VALUES(?,?,?,?) ON CONFLICT(group_id) DO UPDATE SET rules_json=excluded.rules_json, raw_text=excluded.raw_text, updated_at=excluded.updated_at")
+    .run(groupId, rulesJson, rawText || "", now());
 }
 
 export default db;

@@ -2,7 +2,7 @@
 // api.js — gọi HTTP API backend (đăng nhập, đăng ký, admin, Zalo QR)
 // ============================================================
 // Địa chỉ backend. Production: đặt VITE_API_BASE khi build (file .env của web).
-const BASE = import.meta.env?.VITE_API_BASE || "http://localhost:8080";
+const BASE = import.meta.env?.VITE_API_BASE || "http://localhost:8082";
 
 let token = localStorage.getItem("tlx_token") || null;
 export function getToken() { return token; }
@@ -20,26 +20,23 @@ async function req(path, body, method = "POST") {
 }
 
 export const api = {
-  register: (b) => req("/api/register", b),
   login: async (b) => { const r = await req("/api/login", b); setToken(r.token); return r.user; },
   logout: async () => { try { await req("/api/logout", {}); } catch {} setToken(null); },
   me: () => req("/api/me", null, "GET"),
-  changePassword: (oldPass, newPass) => req("/api/change-password", { oldPass, newPass }),
   // admin
   adminUsers: () => req("/api/admin/users", null, "GET"),
   approve: (id, plan, amount) => req("/api/admin/approve", { id, plan, amount }),
   renew: (id, amount) => req("/api/admin/renew", { id, amount }),
   ban: (id) => req("/api/admin/ban", { id }),
   setRole: (id, role) => req("/api/admin/set-role", { id, role }),
+  setAccountant: (id, groupLimit) => req("/api/admin/set-role", { id, role: "accountant", groupLimit: Number(groupLimit) || 3 }),
   resetPassword: (id, newPass) => req("/api/admin/reset-password", { id, newPass }),
   revenueStats: (from, to) => req(`/api/admin/stats/revenue?from=${from}&to=${to}`, null, "GET"),
   userStats: (from, to, status) => req(`/api/admin/stats/users?from=${from}&to=${to}&status=${status||"all"}`, null, "GET"),
   getSettings: () => req("/api/admin/settings", null, "GET"),
   setSetting: (key, value) => req("/api/admin/settings", { key, value }),
-  // zalo
-  startZaloQR: () => req("/api/zalo/login-qr", {}),
-  logoutZalo: () => req("/api/zalo/logout", {}),
-  savedTrips: () => req("/api/trips/saved", null, "GET"),
+  accountantGroups: (userId) => req(`/api/admin/accountant-groups/${userId}`, null, "GET"),
+  setAccountantGroup: (accountantId, groupId, groupName, action) => req("/api/admin/accountant-groups", { accountantId, groupId, groupName, action }),
 };
 
-export const WS_BASE = import.meta.env?.VITE_WS_BASE || "ws://localhost:8080/ws";
+export const WS_BASE = import.meta.env?.VITE_WS_BASE || "ws://localhost:8082/ws";
