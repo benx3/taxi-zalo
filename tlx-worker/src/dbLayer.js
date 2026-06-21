@@ -18,7 +18,7 @@ if (process.env.DATABASE_URL) {
 
 export const {
   ensureSeed, register, login, userIdFromToken, logout, getUserPublic,
-  listUsers, approveUser, renewUser, toggleBan, changePassword, setRole,
+  listUsers, listUsersWithZalo, approveUser, renewUser, toggleBan, changePassword, setRole,
   resetPassword, getRevenueStats, getUserStats,
   saveZaloSession, getZaloSession, clearZaloSession,
   saveTrip, markTripWon, deleteSavedTrip, listSavedTrips, purgeOld,

@@ -1,27 +1,65 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { api } from "./api.js";
-import { Edit2, Trash2, X, Clock, AlertTriangle } from "lucide-react";
+import { Edit2, Trash2, X, Clock, AlertTriangle, Search } from "lucide-react";
+
+const PAGE_SIZE = 20;
 
 const fmtTime = (ms) => new Date(ms).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+function buildPageList(cur, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  if (cur <= 4) return [1, 2, 3, 4, 5, "…", total];
+  if (cur >= total - 3) return [1, "…", total - 4, total - 3, total - 2, total - 1, total];
+  return [1, "…", cur - 1, cur, cur + 1, "…", total];
+}
 
 export default function TransactionsTab({ groupId }) {
   const [txs, setTxs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [page, setPage] = useState(1);
+  const [q, setQ] = useState("");
 
   const reload = () => {
     if (!groupId) return;
     setLoading(true);
-    api.listTransactions(groupId, null, 200).then(setTxs).catch(() => {}).finally(() => setLoading(false));
+    api.listTransactions(groupId, null, 500).then(data => { setTxs(data); setPage(1); setQ(""); }).catch(() => {}).finally(() => setLoading(false));
   };
   useEffect(() => { reload(); }, [groupId]);
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return txs;
+    return txs.filter(tx => {
+      const receiver = (tx.to_member_name || tx.to_member || "").toLowerCase();
+      const sender   = (tx.from_member_name || tx.from_member || "").toLowerCase();
+      return receiver.includes(s) || sender.includes(s);
+    });
+  }, [txs, q]);
+
+  const totalPages = Math.ceil(Math.max(filtered.length, 1) / PAGE_SIZE);
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div style={{ padding: "0 0 80px" }}>
       <div style={{ padding: "12px 16px 8px", display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontWeight: 700, fontSize: 14, flex: 1 }}>Giao dịch gần đây</span>
+        <span style={{ fontWeight: 700, fontSize: 14, flex: 1 }}>
+          Giao dịch{q.trim() ? ` — ${filtered.length}/${txs.length}` : ` — ${txs.length} bản ghi`}
+        </span>
         <button onClick={reload} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)", fontSize: 12 }}>↻ Tải lại</button>
+      </div>
+      <div style={{ padding: "0 16px 10px", position: "relative" }}>
+        <Search size={14} style={{ position: "absolute", left: 26, top: "50%", transform: "translateY(-50%)", color: "var(--ink-dim)", pointerEvents: "none" }} />
+        <input
+          value={q}
+          onChange={e => { setQ(e.target.value); setPage(1); }}
+          placeholder="Tìm theo tên người nhận hoặc người bị trừ…"
+          style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px 8px 34px", borderRadius: 10, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", fontSize: 13, outline: "none" }}
+        />
+        {q && (
+          <button onClick={() => { setQ(""); setPage(1); }} style={{ position: "absolute", right: 24, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)", fontSize: 16, lineHeight: 1 }}>×</button>
+        )}
       </div>
 
       {loading && <div style={{ textAlign: "center", color: "var(--ink-dim)", padding: 24 }}>Đang tải…</div>}
@@ -30,12 +68,30 @@ export default function TransactionsTab({ groupId }) {
       )}
 
       <div style={{ padding: "0 16px" }}>
-        {txs.map(tx => (
+        {paged.map(tx => (
           <TxRow key={tx.id} tx={tx}
             onEdit={() => setEditing(tx)}
             onDelete={() => setDeleting(tx)} />
         ))}
       </div>
+
+      {totalPages > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, padding: "16px 16px 0", flexWrap: "wrap" }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent", color: page === 1 ? "var(--ink-dim)" : "var(--ink)", cursor: page === 1 ? "default" : "pointer", fontSize: 13 }}>‹</button>
+          {buildPageList(page, totalPages).map((p, idx) =>
+            p === "…"
+              ? <span key={`e${idx}`} style={{ width: 28, textAlign: "center", color: "var(--ink-dim)", fontSize: 13 }}>…</span>
+              : <button key={p} onClick={() => setPage(p)}
+                  style={{ width: 34, height: 34, borderRadius: 8, border: "1px solid", borderColor: p === page ? "var(--accent)" : "var(--line)", background: p === page ? "rgba(52,211,153,.15)" : "transparent", color: p === page ? "var(--accent)" : "var(--ink)", fontWeight: p === page ? 800 : 400, fontSize: 13, cursor: "pointer" }}>
+                  {p}
+                </button>
+          )}
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent", color: page === totalPages ? "var(--ink-dim)" : "var(--ink)", cursor: page === totalPages ? "default" : "pointer", fontSize: 13 }}>›</button>
+          <span style={{ fontSize: 11, color: "var(--ink-dim)", marginLeft: 6 }}>{filtered.length} giao dịch</span>
+        </div>
+      )}
 
       {editing && (
         <EditTxModal tx={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); reload(); }} />

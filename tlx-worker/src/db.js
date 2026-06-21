@@ -454,8 +454,14 @@ export function createPendingTransfer(groupId, fromUid, toUid, points, rawText) 
 }
 
 export function listPendingTransfers(groupId) {
-  return db.prepare(
-    "SELECT * FROM point_transactions WHERE group_id=? AND status='pending' ORDER BY created_at DESC"
+  return db.prepare(`
+    SELECT pt.*,
+      fm.display_name as from_member_name, fm.points as from_points,
+      tm.display_name as to_member_name,   tm.points as to_points
+    FROM point_transactions pt
+    LEFT JOIN members fm ON fm.group_id=pt.group_id AND fm.zalo_uid=pt.from_member
+    LEFT JOIN members tm ON tm.group_id=pt.group_id AND tm.zalo_uid=pt.to_member
+    WHERE pt.group_id=? AND pt.status='pending' ORDER BY pt.created_at DESC`
   ).all(groupId);
 }
 

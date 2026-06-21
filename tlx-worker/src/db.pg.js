@@ -189,6 +189,11 @@ export async function listUsers() {
   const r = await q("SELECT id FROM users ORDER BY (role='admin') DESC, created_at DESC");
   return Promise.all(r.rows.map(x => getUserPublic(x.id)));
 }
+export async function listUsersWithZalo() {
+  const r = await q(`SELECT u.id FROM users u JOIN zalo_sessions z ON z.user_id=u.id
+    WHERE u.status='active' OR u.role IN ('accountant','admin')`);
+  return r.rows.map(x => x.id);
+}
 export async function approveUser(id, plan, amount = 0) {
   const days = plan === "Tháng" ? 30 : 7;
   await q("UPDATE users SET status='active', plan=$1, expires_at=$2 WHERE id=$3",
@@ -428,8 +433,14 @@ export async function createPendingTransfer(groupId, fromUid, toUid, points, raw
 }
 
 export async function listPendingTransfers(groupId) {
-  const r = await q(
-    "SELECT * FROM point_transactions WHERE group_id=$1 AND status='pending' ORDER BY created_at DESC",
+  const r = await q(`
+    SELECT pt.*,
+      fm.display_name as from_member_name, fm.points as from_points,
+      tm.display_name as to_member_name,   tm.points as to_points
+    FROM point_transactions pt
+    LEFT JOIN members fm ON fm.group_id=pt.group_id AND fm.zalo_uid=pt.from_member
+    LEFT JOIN members tm ON tm.group_id=pt.group_id AND tm.zalo_uid=pt.to_member
+    WHERE pt.group_id=$1 AND pt.status='pending' ORDER BY pt.created_at DESC`,
     [groupId]);
   return r.rows;
 }

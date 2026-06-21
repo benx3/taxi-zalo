@@ -374,3 +374,17 @@ async function handleWs(userId, raw) {
 }
 
 console.log("✅ Sẵn sàng.");
+
+// Auto-restore Zalo sessions của tất cả kế toán/admin khi service boot
+// Giúp barem và san điểm tự động tính mà không cần mở web app
+;(async () => {
+  await new Promise(r => setTimeout(r, 2000)); // đợi DB init xong
+  const userIds = await dbm.listUsersWithZalo().catch(() => []);
+  for (const userId of userIds) {
+    if (sm.hasSession(userId)) continue;
+    sm.startSessionFromStored(userId, pushToUser)
+      .then(() => console.log(`♻️  [boot] Restore phiên Zalo: ${userId}`))
+      .catch(e => console.warn(`⚠️  [boot] Không restore ${userId}:`, e?.message || e));
+    await new Promise(r => setTimeout(r, 500)); // stagger để tránh rate-limit Zalo
+  }
+})();

@@ -308,19 +308,25 @@ function onMessage(sess, msg) {
       }
     }
 
-    // (A.1) Auto san điểm: tag account kế toán nhóm → áp dụng ngay, không cần duyệt
+    // (A.1) San điểm qua account kế toán nhóm → tạo pending, kế toán duyệt mới thực hiện
     if (sess.isAccountant && senderId !== String(sess.selfId) && /\bsan\b/i.test(text)) {
       const mentions = msg.data?.mentions || [];
       if (mentions.length >= 2) {
         Promise.resolve((async () => {
           const ktUid = await dbm.getGroupKtUid(groupId);
-          if (!ktUid || ktUid === String(sess.selfId)) return;
+          if (!ktUid || ktUid === String(sess.selfId)) return; // A.0 đã xử lý
           const sanAuto = detectSanDiem(text, mentions, ktUid);
           if (!sanAuto?.toUid) return;
-          await dbm.adjustPoints(groupId, sanAuto.toUid,  sanAuto.amount, `Nhận san từ ${senderName}`, "san", msgId, null, sanAuto.toUid, text);
-          await dbm.adjustPoints(groupId, senderId, -sanAuto.amount, `San điểm`, "san", msgId, senderId, null, text);
-          console.log(`[${sess.userId}] 💸 Auto-san: ${senderId} → ${sanAuto.toUid} ${sanAuto.amount}đ nhóm=${groupId}`);
-        })()).catch(e => console.error(`[${sess.userId}] auto-san:`, e?.message || e));
+          const txId = await dbm.createPendingTransfer(groupId, senderId, sanAuto.toUid, sanAuto.amount, text);
+          console.log(`[${sess.userId}] 📋 Pending san: ${senderId} → ${sanAuto.toUid} ${sanAuto.amount}đ nhóm=${groupId}`);
+          sess.onEvent(sess.userId, {
+            type: "pending_transfer", txId,
+            groupId, groupName,
+            fromUid: senderId, fromName: senderName,
+            toUid: sanAuto.toUid, toName: sanAuto.toName || "",
+            points: sanAuto.amount, rawText: text,
+          });
+        })()).catch(e => console.error(`[${sess.userId}] auto-san pending:`, e?.message || e));
       }
     }
 
