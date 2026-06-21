@@ -25,6 +25,7 @@ export default function PendingTab({ groupId, liveItems, onProcessed }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(new Set());
+  const [warnId, setWarnId] = useState(null);
   const [page, setPage] = useState(1);
 
   const reload = () => {
@@ -42,11 +43,30 @@ export default function PendingTab({ groupId, liveItems, onProcessed }) {
   const totalPages = Math.ceil(Math.max(allItems.length, 1) / PAGE_SIZE);
   const paged = allItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const handle = async (id, action) => {
+  const doApprove = async (id) => {
+    setWarnId(null);
     setProcessing(prev => new Set(prev).add(id));
     try {
-      if (action === "approve") await api.approveTransfer(id);
-      else await api.rejectTransfer(id);
+      await api.approveTransfer(id);
+      onProcessed(id);
+      setItems(prev => prev.filter(i => i.id !== id));
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setProcessing(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  const handle = async (id, action, fromPoints, pts) => {
+    if (action === "approve") {
+      if (fromPoints != null && (fromPoints - pts) < 0) {
+        setWarnId(id); return;
+      }
+      return doApprove(id);
+    }
+    setProcessing(prev => new Set(prev).add(id));
+    try {
+      await api.rejectTransfer(id);
       onProcessed(id);
       setItems(prev => prev.filter(i => i.id !== id));
     } catch (e) {
@@ -147,15 +167,37 @@ export default function PendingTab({ groupId, liveItems, onProcessed }) {
 
               {/* Nút duyệt / từ chối */}
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => handle(id, "reject")} disabled={busy}
+                <button onClick={() => handle(id, "reject", fromPoints, pts)} disabled={busy}
                   style={{ flex: 1, padding: "10px", borderRadius: 10, border: "none", cursor: busy ? "default" : "pointer", fontWeight: 700, fontSize: 13, background: "rgba(248,113,113,.12)", color: "#f87171", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, opacity: busy ? .5 : 1 }}>
                   <XCircle size={14} /> Từ chối
                 </button>
-                <button onClick={() => handle(id, "approve")} disabled={busy}
+                <button onClick={() => handle(id, "approve", fromPoints, pts)} disabled={busy}
                   style={{ flex: 2, padding: "10px", borderRadius: 10, border: "none", cursor: busy ? "default" : "pointer", fontWeight: 800, fontSize: 13, background: "rgba(52,211,153,.15)", color: "#34d399", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, opacity: busy ? .5 : 1 }}>
                   <CheckCircle2 size={14} /> Duyệt san điểm
                 </button>
               </div>
+
+              {/* Cảnh báo điểm âm */}
+              {warnId === id && (
+                <div style={{ marginTop: 8, background: "rgba(245,158,11,.1)", border: "1px solid rgba(245,158,11,.4)", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13, color: "#f59e0b", marginBottom: 6 }}>
+                    ⚠️ Cảnh báo: điểm người chuyển sẽ âm
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--ink-dim)", marginBottom: 10 }}>
+                    Sau giao dịch, <b style={{ color: "var(--ink)" }}>{fromName}</b> sẽ có <b style={{ color: "#f87171" }}>{fmtPts(fromPoints - pts)}</b>. Vẫn tiếp tục?
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => setWarnId(null)}
+                      style={{ flex: 1, padding: "8px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent", color: "var(--ink-dim)", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>
+                      Huỷ
+                    </button>
+                    <button onClick={() => doApprove(id)} disabled={busy}
+                      style={{ flex: 2, padding: "8px", borderRadius: 8, border: "none", background: "rgba(245,158,11,.25)", color: "#f59e0b", fontSize: 13, cursor: busy ? "default" : "pointer", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                      <CheckCircle2 size={13} /> Vẫn duyệt
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

@@ -449,11 +449,6 @@ export async function approvePendingTransfer(txId) {
   const r = await q("SELECT * FROM point_transactions WHERE id=$1 AND status='pending'", [txId]);
   const tx = r.rows[0]; if (!tx) throw new Error("Không tìm thấy giao dịch đang chờ");
   if (tx.from_member) {
-    const s = await q("SELECT points FROM members WHERE group_id=$1 AND zalo_uid=$2", [tx.group_id, tx.from_member]);
-    const sender = s.rows[0];
-    if (sender && sender.points - tx.points < 0) throw new Error("Người chuyển không đủ điểm (sẽ bị âm)");
-  }
-  if (tx.from_member) {
     await upsertMember(tx.group_id, tx.from_member);
     await q("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
       [tx.points, now(), tx.group_id, tx.from_member]);

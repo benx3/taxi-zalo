@@ -469,12 +469,6 @@ export function approvePendingTransfer(txId) {
   const tx = db.prepare("SELECT * FROM point_transactions WHERE id=? AND status='pending'").get(txId);
   if (!tx) throw new Error("Không tìm thấy giao dịch đang chờ");
   if (tx.from_member) {
-    const sender = db.prepare("SELECT points FROM members WHERE group_id=? AND zalo_uid=?")
-      .get(tx.group_id, tx.from_member);
-    if (sender && sender.points - tx.points < 0)
-      throw new Error("Người chuyển không đủ điểm (sẽ bị âm)");
-  }
-  if (tx.from_member) {
     upsertMember(tx.group_id, tx.from_member);
     db.prepare("UPDATE members SET points=ROUND(points-?,10),updated_at=? WHERE group_id=? AND zalo_uid=?")
       .run(tx.points, now(), tx.group_id, tx.from_member);
