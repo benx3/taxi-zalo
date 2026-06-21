@@ -55,4 +55,8 @@ export const api = {
   // Barem
   getRules: (groupId) => req(`/api/accountant/rules/${encodeURIComponent(groupId)}`, null, "GET"),
   saveRules: (groupId, b) => req(`/api/accountant/rules/${encodeURIComponent(groupId)}`, b),
+
+  // KT Zalo UID của nhóm (auto san điểm)
+  getKtUid: (groupId) => req(`/api/accountant/kt-uid/${encodeURIComponent(groupId)}`, null, "GET"),
+  saveKtUid: (groupId, b) => req(`/api/accountant/kt-uid/${encodeURIComponent(groupId)}`, b),
 };

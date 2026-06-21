@@ -259,6 +259,19 @@ app.post("/api/accountant/rules/:groupId", async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// KT Zalo UID của nhóm (cho auto san điểm)
+app.get("/api/accountant/kt-uid/:groupId", async (req, res) => {
+  if (!await checkGroupAccess(req, res, req.params.groupId)) return;
+  res.json({ kt_uid: await dbm.getGroupKtUid(req.params.groupId) || "" });
+});
+app.post("/api/accountant/kt-uid/:groupId", async (req, res) => {
+  if (!await checkGroupAccess(req, res, req.params.groupId)) return;
+  try {
+    await dbm.setGroupKtUid(req.params.groupId, req.body.kt_uid || "");
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 // ---------- Đăng nhập Zalo (QR) ----------
 const pendingQR = new Map();
 app.post("/api/zalo/login-qr", async (req, res) => {

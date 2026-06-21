@@ -308,6 +308,22 @@ function onMessage(sess, msg) {
       }
     }
 
+    // (A.1) Auto san điểm: tag account kế toán nhóm → áp dụng ngay, không cần duyệt
+    if (sess.isAccountant && senderId !== String(sess.selfId) && /\bsan\b/i.test(text)) {
+      const mentions = msg.data?.mentions || [];
+      if (mentions.length >= 2) {
+        Promise.resolve((async () => {
+          const ktUid = await dbm.getGroupKtUid(groupId);
+          if (!ktUid || ktUid === String(sess.selfId)) return;
+          const sanAuto = detectSanDiem(text, mentions, ktUid);
+          if (!sanAuto?.toUid) return;
+          await dbm.adjustPoints(groupId, sanAuto.toUid,  sanAuto.amount, `Nhận san từ ${senderName}`, "san", msgId, null, sanAuto.toUid, text);
+          await dbm.adjustPoints(groupId, senderId, -sanAuto.amount, `San điểm`, "san", msgId, senderId, null, text);
+          console.log(`[${sess.userId}] 💸 Auto-san: ${senderId} → ${sanAuto.toUid} ${sanAuto.amount}đ nhóm=${groupId}`);
+        })()).catch(e => console.error(`[${sess.userId}] auto-san:`, e?.message || e));
+      }
+    }
+
     // (A) chủ cuốc xác nhận cho mình?
     const key = `${groupId}:${senderId}`;
     if (sess.claims.has(key) && isConfirmMessage(text) && isTaggingSelf(sess, msg)) {
@@ -331,9 +347,11 @@ function onMessage(sess, msg) {
         if (process.env.DEBUG_BAREM) console.log(`[BAREM_CLAIM] quoteOwnerId=${quoteOwnerId} cliMsgId=${qCliId} globalMsgId=${qGlobId} tripFound=${!!cachedTrip}`);
         if (cachedTrip && quoteOwnerId && quoteOwnerId !== senderId) {
           const claimData = {
-            tripPosterId: cachedTrip.senderId,
+            tripPosterId: cachedTrip.senderId, tripPosterName: cachedTrip.senderName,
             takerId: senderId, takerName: senderName,
             tripType: cachedTrip.type, tripPrice: cachedTrip.price,
+            tripText: cachedTrip.text, tripTime: cachedTrip.time,
+            claimText: text, claimTime: time,
           };
           sess.claimCache.set(msgId, claimData);
           if (msg.data.cliMsgId) sess.claimCache.set(String(msg.data.cliMsgId), claimData);
@@ -360,8 +378,13 @@ function onMessage(sess, msg) {
             const pts = calcBaremPoints(rulesRow, cachedClaim.tripType, cachedClaim.tripPrice);
             console.log(`[${sess.userId}] 📊 Barem confirm: type=${cachedClaim.tripType} price=${cachedClaim.tripPrice}k pts=${pts} rules=${rulesRow ? "ok" : "null"}`);
             if (pts > 0) {
-              await dbm.adjustPoints(groupId, cachedClaim.tripPosterId,  pts, "Đăng cuốc thành công", "barem", msgId, null, cachedClaim.tripPosterId);
-              await dbm.adjustPoints(groupId, cachedClaim.takerId,      -pts, "Nhận cuốc xe",         "barem", msgId, cachedClaim.takerId, null);
+              const convo = JSON.stringify({
+                tripTime: cachedClaim.tripTime, tripPoster: cachedClaim.tripPosterName, tripText: cachedClaim.tripText,
+                claimTime: cachedClaim.claimTime, claimer: cachedClaim.takerName, claimText: cachedClaim.claimText,
+                confirmTime: time, confirmPoster: senderName, confirmText: text,
+              });
+              await dbm.adjustPoints(groupId, cachedClaim.tripPosterId,  pts, "Đăng cuốc thành công", "barem", msgId, null, cachedClaim.tripPosterId, convo);
+              await dbm.adjustPoints(groupId, cachedClaim.takerId,      -pts, "Nhận cuốc xe",         "barem", msgId, cachedClaim.takerId, null, convo);
               console.log(`[${sess.userId}] ✅ Barem applied: +${pts}đ → ${cachedClaim.tripPosterId}, -${pts}đ → ${cachedClaim.takerId}`);
             } else {
               console.warn(`[${sess.userId}] ⚠️  Barem pts=0 — chưa có rule cho ${cachedClaim.tripType} ${cachedClaim.tripPrice}k`);
@@ -379,7 +402,7 @@ function onMessage(sess, msg) {
       if (sess.isAccountant) {
         for (const trip of trips) {
           if (!trip.price) continue;
-          const tripData = { type: trip.type, price: trip.price, senderId: trip.senderId };
+          const tripData = { type: trip.type, price: trip.price, senderId: trip.senderId, senderName, text, time };
           // Lưu bằng cả msgId (server) và cliMsgId (client) để quote lookup khớp
           sess.tripMsgCache.set(msgId, tripData);
           if (msg.data.cliMsgId) sess.tripMsgCache.set(String(msg.data.cliMsgId), tripData);

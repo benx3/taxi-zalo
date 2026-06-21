@@ -107,6 +107,7 @@ export async function initDb() {
       type          TEXT DEFAULT 'manual',
       status        TEXT DEFAULT 'approved',
       requester_uid TEXT,
+      raw_text      TEXT,
       created_at    BIGINT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_ptx_group ON point_transactions(group_id, created_at DESC);
@@ -118,6 +119,7 @@ export async function initDb() {
   await q("ALTER TABLE users ADD COLUMN IF NOT EXISTS groups_locked INTEGER DEFAULT 0");
   await q("ALTER TABLE point_transactions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'approved'");
   await q("ALTER TABLE point_transactions ADD COLUMN IF NOT EXISTS requester_uid TEXT");
+  await q("ALTER TABLE point_transactions ADD COLUMN IF NOT EXISTS raw_text TEXT");
 }
 
 const sessions = new Map(); // token -> userId (RAM; production lớn nên thay bằng Redis)
@@ -369,7 +371,7 @@ export async function deleteRemovedMembers(groupId, activeUids) {
 }
 
 // ---------- Kế toán: giao dịch điểm ----------
-export async function adjustPoints(groupId, zaloUid, delta, reason, type = "manual", tripMsgId = null, fromMember = null, toMember = null) {
+export async function adjustPoints(groupId, zaloUid, delta, reason, type = "manual", tripMsgId = null, fromMember = null, toMember = null, rawText = null) {
   await upsertMember(groupId, zaloUid);
   await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10), updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
     [delta, now(), groupId, zaloUid]);
@@ -378,17 +380,21 @@ export async function adjustPoints(groupId, zaloUid, delta, reason, type = "manu
     else fromMember = zaloUid;
   }
   const txId = uid();
-  await q("INSERT INTO point_transactions(id,group_id,trip_msg_id,from_member,to_member,points,reason,type,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
-    [txId, groupId, tripMsgId, fromMember, toMember, Math.abs(delta), reason || null, type, now()]);
+  await q("INSERT INTO point_transactions(id,group_id,trip_msg_id,from_member,to_member,points,reason,type,raw_text,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+    [txId, groupId, tripMsgId, fromMember, toMember, Math.abs(delta), reason || null, type, rawText || null, now()]);
   return txId;
 }
 export async function listTransactions(groupId, { zaloUid, limit = 100 } = {}) {
+  const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name
+    FROM point_transactions pt
+    LEFT JOIN members fm ON fm.group_id=pt.group_id AND fm.zalo_uid=pt.from_member
+    LEFT JOIN members tm ON tm.group_id=pt.group_id AND tm.zalo_uid=pt.to_member`;
   if (zaloUid) {
-    const r = await q("SELECT * FROM point_transactions WHERE group_id=$1 AND (from_member=$2 OR to_member=$2) ORDER BY created_at DESC LIMIT $3",
+    const r = await q(`${base} WHERE pt.group_id=$1 AND (pt.from_member=$2 OR pt.to_member=$2) ORDER BY pt.created_at DESC LIMIT $3`,
       [groupId, zaloUid, limit]);
     return r.rows;
   }
-  const r = await q("SELECT * FROM point_transactions WHERE group_id=$1 ORDER BY created_at DESC LIMIT $2", [groupId, limit]);
+  const r = await q(`${base} WHERE pt.group_id=$1 ORDER BY pt.created_at DESC LIMIT $2`, [groupId, limit]);
   return r.rows;
 }
 export async function updateTransaction(id, { reason, points }) {
@@ -453,6 +459,14 @@ export async function rejectPendingTransfer(txId) {
   const r = await q("SELECT id FROM point_transactions WHERE id=$1 AND status='pending'", [txId]);
   if (!r.rows[0]) throw new Error("Không tìm thấy giao dịch đang chờ");
   await q("UPDATE point_transactions SET status='rejected' WHERE id=$1", [txId]);
+}
+
+// ---------- Kế toán: account KT của nhóm (để auto san điểm) ----------
+export async function getGroupKtUid(groupId) {
+  return (await getSetting(`kt_uid_${groupId}`, null)) || null;
+}
+export async function setGroupKtUid(groupId, uid) {
+  return setSetting(`kt_uid_${groupId}`, uid || "");
 }
 
 // ---------- Kế toán: barem ----------

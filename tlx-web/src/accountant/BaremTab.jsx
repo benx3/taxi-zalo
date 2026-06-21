@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { api } from "./api.js";
-import { Plus, Trash2, Save, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash2, Save, X, ChevronDown, ChevronUp, Check, Search } from "lucide-react";
 
 const TRIP_TYPES = [
   { value: "bao_xe",        label: "Bao xe" },
@@ -25,14 +25,21 @@ export default function BaremTab({ groupId }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
   const [showRaw, setShowRaw] = useState(false);
+  const [ktUid, setKtUid] = useState("");
+  const [ktSaving, setKtSaving] = useState(false);
+  const [members, setMembers] = useState([]);
 
   const load = () => {
     if (!groupId) return;
     setLoading(true);
-    api.getRules(groupId).then(data => {
-      try { setRules(JSON.parse(data.rules_json)?.rules || []); } catch { setRules([]); }
-      setRawText(data.raw_text || "");
-    }).catch(() => {}).finally(() => setLoading(false));
+    Promise.all([
+      api.getRules(groupId).then(data => {
+        try { setRules(JSON.parse(data.rules_json)?.rules || []); } catch { setRules([]); }
+        setRawText(data.raw_text || "");
+      }).catch(() => {}),
+      api.getKtUid(groupId).then(data => setKtUid(data.kt_uid || "")).catch(() => {}),
+      api.listMembers(groupId).then(setMembers).catch(() => {}),
+    ]).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, [groupId]);
 
@@ -48,6 +55,15 @@ export default function BaremTab({ groupId }) {
     finally { setSaving(false); }
   };
 
+  const saveKt = async () => {
+    setKtSaving(true);
+    try {
+      await api.saveKtUid(groupId, { kt_uid: ktUid.trim() });
+      flash(true, "Đã lưu account kế toán nhóm.");
+    } catch (e) { flash(false, e.message); }
+    finally { setKtSaving(false); }
+  };
+
   const addRule = () => setRules(r => [...r, emptyRule()]);
   const removeRule = (i) => setRules(r => r.filter((_, idx) => idx !== i));
   const updateRule = (i, field, val) => setRules(r => r.map((rule, idx) => idx === i ? { ...rule, [field]: val } : rule));
@@ -55,6 +71,7 @@ export default function BaremTab({ groupId }) {
   const inputSt = { boxSizing: "border-box", padding: "8px 10px", borderRadius: 9, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", fontSize: 13, outline: "none", width: "100%" };
 
   if (loading) return <div style={{ textAlign: "center", color: "var(--ink-dim)", padding: 32 }}>Đang tải…</div>;
+
 
   return (
     <div style={{ padding: "0 16px 80px" }}>
@@ -102,6 +119,19 @@ export default function BaremTab({ groupId }) {
         <Plus size={15} /> Thêm quy tắc
       </button>
 
+      {/* Account kế toán nhóm — dùng để auto-san điểm */}
+      <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: "14px 14px 12px", marginBottom: 16 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>Account kế toán nhóm</div>
+        <div style={{ fontSize: 12, color: "var(--ink-dim)", marginBottom: 10, lineHeight: 1.5 }}>
+          Khi ai tag account này kèm <b style={{color:"var(--ink)"}}>san @Tài_xế 1đ</b>, hệ thống tự động san điểm ngay — không cần duyệt.
+        </div>
+        <MemberPicker members={members} value={ktUid} onChange={setKtUid} />
+        <button onClick={saveKt} disabled={ktSaving}
+          style={{ marginTop: 8, width: "100%", padding: "9px", borderRadius: 9, border: "none", background: "rgba(52,211,153,.15)", color: "#34d399", fontWeight: 700, fontSize: 13, cursor: ktSaving ? "default" : "pointer" }}>
+          {ktSaving ? "Đang lưu…" : "Lưu account kế toán"}
+        </button>
+      </div>
+
       {/* Ghi chú barem nguyên văn */}
       <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden", marginBottom: 16 }}>
         <button onClick={() => setShowRaw(p => !p)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", background: "none", border: "none", cursor: "pointer", color: "var(--ink)", fontWeight: 700, fontSize: 13 }}>
@@ -120,6 +150,86 @@ export default function BaremTab({ groupId }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function MemberPicker({ members, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+
+  const selected = members.find(m => m.zalo_uid === value);
+  const lower = q.toLowerCase().trim();
+  const filtered = (lower
+    ? members.filter(m => (m.display_name || m.zalo_uid).toLowerCase().includes(lower))
+    : members
+  ).slice(0, 40);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); setQ(""); }}
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderRadius: 9, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", cursor: "pointer", textAlign: "left", fontSize: 13, boxSizing: "border-box" }}
+      >
+        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {selected ? selected.display_name : <span style={{ color: "var(--ink-dim)" }}>— Chọn thành viên làm kế toán —</span>}
+        </span>
+        {selected && (
+          <span style={{ fontSize: 10, color: "var(--ink-dim)", fontFamily: "monospace", flexShrink: 0 }}>
+            …{value.slice(-8)}
+          </span>
+        )}
+        <ChevronDown size={14} color="var(--ink-dim)" style={{ flexShrink: 0 }} />
+      </button>
+
+      {open && (
+        <div style={{ position: "absolute", left: 0, right: 0, top: "calc(100% + 4px)", zIndex: 100, background: "var(--card)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,.5)" }}>
+          <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 6 }}>
+            <Search size={13} color="var(--ink-dim)" />
+            <input
+              autoFocus
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="Tìm tên thành viên…"
+              style={{ flex: 1, padding: "5px 0", border: "none", background: "transparent", color: "var(--ink)", fontSize: 13, outline: "none" }}
+            />
+          </div>
+          <div style={{ maxHeight: 220, overflowY: "auto" }}>
+            <button
+              type="button"
+              onClick={() => { onChange(""); setOpen(false); }}
+              style={{ width: "100%", padding: "9px 12px", textAlign: "left", background: !value ? "rgba(52,211,153,.08)" : "transparent", border: "none", borderBottom: "1px solid var(--line)", color: "var(--ink-dim)", fontSize: 12, cursor: "pointer" }}
+            >
+              — Bỏ chọn —
+            </button>
+            {filtered.length === 0 && (
+              <div style={{ padding: "12px", textAlign: "center", color: "var(--ink-dim)", fontSize: 12 }}>Không tìm thấy</div>
+            )}
+            {filtered.map(m => {
+              const isSelected = m.zalo_uid === value;
+              return (
+                <button
+                  key={m.zalo_uid}
+                  type="button"
+                  onClick={() => { onChange(m.zalo_uid); setOpen(false); setQ(""); }}
+                  style={{ width: "100%", padding: "9px 12px", textAlign: "left", background: isSelected ? "rgba(52,211,153,.08)" : "transparent", border: "none", borderBottom: "1px solid var(--line)", color: "var(--ink)", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}
+                >
+                  {isSelected && <Check size={13} color="#34d399" style={{ flexShrink: 0 }} />}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: isSelected ? 700 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {m.display_name || "—"}
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--ink-dim)", fontFamily: "monospace", marginTop: 1 }}>
+                      {m.zalo_uid}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

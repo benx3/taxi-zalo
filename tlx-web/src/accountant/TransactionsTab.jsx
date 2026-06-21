@@ -53,6 +53,36 @@ const STATUS_CFG = {
   rejected: { label: "Từ chối",   color: "#f87171", bg: "rgba(248,113,113,.12)" },
 };
 
+function ConvoThread({ raw }) {
+  let c = null;
+  try { c = typeof raw === "string" ? JSON.parse(raw) : null; } catch {}
+  if (c?.tripText) {
+    const row = (time, name, msg, color) => (
+      <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+        <span style={{ fontSize: 10, color: "var(--ink-dim)", whiteSpace: "nowrap", paddingTop: 1 }}>{time}</span>
+        <span style={{ fontSize: 11, color: color || "var(--ink-dim)" }}>
+          <b style={{ color: "var(--ink)", marginRight: 4 }}>{name}:</b>{msg}
+        </span>
+      </div>
+    );
+    return (
+      <div style={{ background: "rgba(0,0,0,.25)", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", marginBottom: 6, lineHeight: 1.4 }}>
+        {row(c.tripTime, c.tripPoster, c.tripText, null)}
+        {c.claimText && row(c.claimTime, c.claimer, c.claimText, "#60a5fa")}
+        {c.confirmText && row(c.confirmTime, c.confirmPoster, c.confirmText, "#34d399")}
+      </div>
+    );
+  }
+  if (raw) {
+    return (
+      <div style={{ background: "rgba(0,0,0,.2)", border: "1px solid var(--line)", borderRadius: 8, padding: "7px 10px", marginBottom: 6, fontSize: 12, color: "var(--ink-dim)", wordBreak: "break-word" }}>
+        {raw.length > 120 ? raw.slice(0, 120) + "…" : raw}
+      </div>
+    );
+  }
+  return null;
+}
+
 function TxRow({ tx, onEdit, onDelete }) {
   const pts = Number(tx.points);
   const ptsStr = pts % 1 === 0 ? pts.toFixed(0) : pts.toFixed(2);
@@ -65,7 +95,6 @@ function TxRow({ tx, onEdit, onDelete }) {
   return (
     <div style={{ background: "var(--card)", border: `1px solid ${isPending ? "rgba(245,158,11,.3)" : "var(--line)"}`, borderRadius: 12, padding: "11px 13px", marginBottom: 8, opacity: status === "rejected" ? 0.6 : 1 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
-        {/* Người nhận (kiểu ref app: "[người] nhận") */}
         {receiver
           ? <span style={{ fontWeight: 700, fontSize: 13, color: "#34d399" }}>{receiver} nhận</span>
           : sender
@@ -78,7 +107,9 @@ function TxRow({ tx, onEdit, onDelete }) {
         </span>
       </div>
 
-      {tx.reason && (
+      {tx.raw_text && <ConvoThread raw={tx.raw_text} />}
+
+      {tx.reason && !tx.raw_text && (
         <div style={{ fontSize: 12, color: "var(--ink-dim)", lineHeight: 1.45, marginBottom: 6, wordBreak: "break-word" }}>
           {tx.reason.length > 100 ? tx.reason.slice(0, 100) + "…" : tx.reason}
         </div>
@@ -89,7 +120,7 @@ function TxRow({ tx, onEdit, onDelete }) {
           {sCfg.label}
         </span>
         <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 6, background: "rgba(255,255,255,.05)", color: "var(--ink-dim)", fontWeight: 600 }}>
-          {tx.type === "auto" ? "tự động" : "thủ công"}
+          {tx.type === "barem" ? "barem" : tx.type === "san" ? "san điểm" : tx.type === "auto" ? "tự động" : "thủ công"}
         </span>
         <span style={{ fontSize: 11, color: "var(--ink-dim)", display: "flex", alignItems: "center", gap: 3, marginLeft: "auto" }}>
           <Clock size={10} /> {fmtTime(tx.created_at)}

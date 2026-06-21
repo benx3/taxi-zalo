@@ -36,6 +36,7 @@ export default function MembersTab({ groupId }) {
   const [showAdd, setShowAdd] = useState(false);
   const [page, setPage] = useState(1);
   const [inlineEdit, setInlineEdit] = useState(null);
+  const [sortBy, setSortBy] = useState("points_desc");
 
   const reload = () => {
     if (!groupId) return;
@@ -43,7 +44,7 @@ export default function MembersTab({ groupId }) {
     api.listMembers(groupId).then(setMembers).catch(() => {}).finally(() => setLoading(false));
   };
   useEffect(() => { reload(); }, [groupId]);
-  useEffect(() => { setPage(1); setInlineEdit(null); }, [q, groupId]);
+  useEffect(() => { setPage(1); setInlineEdit(null); }, [q, groupId, sortBy]);
 
   const syncFromZalo = async () => {
     setSyncing(true); setSyncMsg({ ok: null, text: "" });
@@ -71,7 +72,12 @@ export default function MembersTab({ groupId }) {
     );
   }, [members, q]);
 
-  const sorted = [...filtered].sort((a, b) => (b.points || 0) - (a.points || 0));
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === "name_asc")   return (a.display_name || "").localeCompare(b.display_name || "", "vi");
+    if (sortBy === "name_desc")  return (b.display_name || "").localeCompare(a.display_name || "", "vi");
+    if (sortBy === "points_asc") return (a.points || 0) - (b.points || 0);
+    return (b.points || 0) - (a.points || 0); // points_desc (default)
+  });
   const totalPages = Math.ceil(Math.max(sorted.length, 1) / PAGE_SIZE);
   const paged = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -142,8 +148,15 @@ export default function MembersTab({ groupId }) {
         <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
           {/* Header bảng */}
           <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 72px 38px", padding: "6px 4px 6px 12px", borderBottom: "1px solid var(--line)", fontSize: 11, fontWeight: 700, color: "var(--ink-dim)", textTransform: "uppercase", letterSpacing: ".06em" }}>
-            <span>#</span><span>Tên</span>
-            <span style={{ textAlign: "right", paddingRight: 8 }}>Điểm</span>
+            <span>#</span>
+            <button onClick={() => setSortBy(s => s === "name_asc" ? "name_desc" : "name_asc")}
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: sortBy.startsWith("name") ? "var(--accent)" : "var(--ink-dim)", display: "flex", alignItems: "center", gap: 3 }}>
+              Tên {sortBy === "name_asc" ? "↑" : sortBy === "name_desc" ? "↓" : ""}
+            </button>
+            <button onClick={() => setSortBy(s => s === "points_desc" ? "points_asc" : "points_desc")}
+              style={{ background: "none", border: "none", cursor: "pointer", padding: "0 8px 0 0", textAlign: "right", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: sortBy.startsWith("points") ? "var(--accent)" : "var(--ink-dim)", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>
+              {sortBy === "points_asc" ? "↑" : sortBy === "points_desc" ? "↓" : ""} Điểm
+            </button>
             <span />
           </div>
 
@@ -240,6 +253,36 @@ function pointColor(p) {
 }
 
 // ===== Chi tiết thành viên =====
+function ConvoThread({ raw }) {
+  let c = null;
+  try { c = typeof raw === "string" ? JSON.parse(raw) : null; } catch {}
+  if (c?.tripText) {
+    const row = (time, name, msg, color) => (
+      <div style={{ display: "flex", gap: 6, marginBottom: 3 }}>
+        <span style={{ fontSize: 10, color: "var(--ink-dim)", whiteSpace: "nowrap", paddingTop: 1 }}>{time}</span>
+        <span style={{ fontSize: 11, color: color || "var(--ink-dim)" }}>
+          <b style={{ color: "var(--ink)", marginRight: 3 }}>{name}:</b>{msg}
+        </span>
+      </div>
+    );
+    return (
+      <div style={{ background: "rgba(0,0,0,.25)", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", marginTop: 5, lineHeight: 1.45 }}>
+        {row(c.tripTime, c.tripPoster, c.tripText, null)}
+        {c.claimText && row(c.claimTime, c.claimer, c.claimText, "#60a5fa")}
+        {c.confirmText && row(c.confirmTime, c.confirmPoster, c.confirmText, "#34d399")}
+      </div>
+    );
+  }
+  if (raw && !raw.startsWith("{")) {
+    return (
+      <div style={{ background: "rgba(0,0,0,.2)", border: "1px solid var(--line)", borderRadius: 8, padding: "7px 10px", marginTop: 5, fontSize: 11, color: "var(--ink-dim)", wordBreak: "break-word" }}>
+        {raw.length > 120 ? raw.slice(0, 120) + "…" : raw}
+      </div>
+    );
+  }
+  return null;
+}
+
 function MemberDetail({ member, groupId, onBack }) {
   const [m, setM] = useState(member);
   const [txs, setTxs] = useState([]);
@@ -280,22 +323,25 @@ function MemberDetail({ member, groupId, onBack }) {
         {loadingTx && <div style={{ color: "var(--ink-dim)", fontSize: 13, textAlign: "center", padding: 20 }}>Đang tải…</div>}
         {!loadingTx && txs.length === 0 && <div style={{ color: "var(--ink-dim)", fontSize: 13, textAlign: "center", padding: 20 }}>Chưa có giao dịch nào</div>}
         {txs.map(tx => {
-          // to_member = người nhận điểm (+), from_member = người mất điểm (−)
           const delta = tx.to_member === member.zalo_uid ? +tx.points : -tx.points;
           return (
-            <div key={tx.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
-              <div style={{ width: 32, height: 32, borderRadius: 99, background: delta >= 0 ? "rgba(52,211,153,.15)" : "rgba(248,113,113,.15)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                {delta >= 0 ? <TrendingUp size={15} color="#34d399" /> : <TrendingDown size={15} color="#f87171" />}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.4 }}>{tx.reason || (tx.type === "auto" ? "Tự động" : "Thủ công")}</div>
-                <div style={{ fontSize: 11, color: "var(--ink-dim)", marginTop: 2, display: "flex", gap: 8 }}>
-                  <span><Clock size={10} /> {fmtTime(tx.created_at)}</span>
-                  {tx.type === "auto" && <span style={{ color: "#60a5fa" }}>auto</span>}
+            <div key={tx.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 99, background: delta >= 0 ? "rgba(52,211,153,.15)" : "rgba(248,113,113,.15)", display: "grid", placeItems: "center", flexShrink: 0, marginTop: 1 }}>
+                  {delta >= 0 ? <TrendingUp size={15} color="#34d399" /> : <TrendingDown size={15} color="#f87171" />}
                 </div>
-              </div>
-              <div style={{ fontWeight: 800, fontSize: 15, color: delta >= 0 ? "#34d399" : "#f87171", flexShrink: 0 }}>
-                {delta >= 0 ? "+" : ""}{delta.toFixed(delta % 1 === 0 ? 0 : 1)}đ
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.4 }}>{tx.reason || (tx.type === "auto" ? "Tự động" : "Thủ công")}</div>
+                  <div style={{ fontSize: 11, color: "var(--ink-dim)", marginTop: 2, display: "flex", gap: 8 }}>
+                    <span><Clock size={10} /> {fmtTime(tx.created_at)}</span>
+                    {tx.type === "barem" && <span style={{ color: "#a78bfa" }}>barem</span>}
+                    {tx.type === "san" && <span style={{ color: "#60a5fa" }}>san điểm</span>}
+                  </div>
+                  {tx.raw_text && <ConvoThread raw={tx.raw_text} />}
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: delta >= 0 ? "#34d399" : "#f87171", flexShrink: 0 }}>
+                  {delta >= 0 ? "+" : ""}{delta.toFixed(delta % 1 === 0 ? 0 : 1)}đ
+                </div>
               </div>
             </div>
           );

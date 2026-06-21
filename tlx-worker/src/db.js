@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS point_transactions (
   type          TEXT DEFAULT 'manual',
   status        TEXT DEFAULT 'approved',
   requester_uid TEXT,
+  raw_text      TEXT,
   created_at    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ptx_group ON point_transactions(group_id, created_at DESC);
@@ -124,6 +125,7 @@ try { db.exec("ALTER TABLE users ADD COLUMN group_limit INTEGER DEFAULT 3"); } c
 try { db.exec("ALTER TABLE users ADD COLUMN groups_locked INTEGER DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE point_transactions ADD COLUMN status TEXT DEFAULT 'approved'"); } catch {}
 try { db.exec("ALTER TABLE point_transactions ADD COLUMN requester_uid TEXT"); } catch {}
+try { db.exec("ALTER TABLE point_transactions ADD COLUMN raw_text TEXT"); } catch {}
 
 const sessions = new Map(); // token -> userId (đăng nhập web)
 
@@ -391,7 +393,7 @@ export function deleteRemovedMembers(groupId, activeUids) {
 }
 
 // ---------- Kế toán: giao dịch điểm ----------
-export function adjustPoints(groupId, zaloUid, delta, reason, type = "manual", tripMsgId = null, fromMember = null, toMember = null) {
+export function adjustPoints(groupId, zaloUid, delta, reason, type = "manual", tripMsgId = null, fromMember = null, toMember = null, rawText = null) {
   const memberId = upsertMember(groupId, zaloUid);
   db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
     .run(delta, now(), groupId, zaloUid);
@@ -401,16 +403,20 @@ export function adjustPoints(groupId, zaloUid, delta, reason, type = "manual", t
     else fromMember = zaloUid;
   }
   const txId = uid();
-  db.prepare("INSERT INTO point_transactions(id,group_id,trip_msg_id,from_member,to_member,points,reason,type,created_at) VALUES(?,?,?,?,?,?,?,?,?)")
-    .run(txId, groupId, tripMsgId, fromMember, toMember, Math.abs(delta), reason || null, type, now());
+  db.prepare("INSERT INTO point_transactions(id,group_id,trip_msg_id,from_member,to_member,points,reason,type,raw_text,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
+    .run(txId, groupId, tripMsgId, fromMember, toMember, Math.abs(delta), reason || null, type, rawText || null, now());
   return txId;
 }
 export function listTransactions(groupId, { zaloUid, limit = 100 } = {}) {
+  const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name
+    FROM point_transactions pt
+    LEFT JOIN members fm ON fm.group_id=pt.group_id AND fm.zalo_uid=pt.from_member
+    LEFT JOIN members tm ON tm.group_id=pt.group_id AND tm.zalo_uid=pt.to_member`;
   if (zaloUid) {
-    return db.prepare("SELECT * FROM point_transactions WHERE group_id=? AND (from_member=? OR to_member=?) ORDER BY created_at DESC LIMIT ?")
+    return db.prepare(`${base} WHERE pt.group_id=? AND (pt.from_member=? OR pt.to_member=?) ORDER BY pt.created_at DESC LIMIT ?`)
       .all(groupId, zaloUid, zaloUid, limit);
   }
-  return db.prepare("SELECT * FROM point_transactions WHERE group_id=? ORDER BY created_at DESC LIMIT ?").all(groupId, limit);
+  return db.prepare(`${base} WHERE pt.group_id=? ORDER BY pt.created_at DESC LIMIT ?`).all(groupId, limit);
 }
 export function updateTransaction(id, { reason, points }) {
   const tx = db.prepare("SELECT * FROM point_transactions WHERE id=?").get(id);
@@ -479,6 +485,14 @@ export function rejectPendingTransfer(txId) {
   const tx = db.prepare("SELECT * FROM point_transactions WHERE id=? AND status='pending'").get(txId);
   if (!tx) throw new Error("Không tìm thấy giao dịch đang chờ");
   db.prepare("UPDATE point_transactions SET status='rejected' WHERE id=?").run(txId);
+}
+
+// ---------- Kế toán: account KT của nhóm (để auto san điểm) ----------
+export function getGroupKtUid(groupId) {
+  return getSetting(`kt_uid_${groupId}`, null) || null;
+}
+export function setGroupKtUid(groupId, uid) {
+  return setSetting(`kt_uid_${groupId}`, uid || "");
 }
 
 // ---------- Kế toán: barem ----------
