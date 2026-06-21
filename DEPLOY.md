@@ -95,11 +95,12 @@ PORT=8082
 DATABASE_URL=postgres://tlx:MAT_KHAU_MANH@localhost:5432/tlx
 APP_SECRET=<chuỗi vừa tạo ở bước 4>
 CORS_ORIGIN=https://ten-mien.com
-FPT_STT_API_KEY=
 DEBUG_RAW=false
 OK_DELAY_MIN=400
 OK_DELAY_MAX=1200
 ```
+
+> **FPT STT API Key** (nhận dạng giọng nói): KHÔNG đặt trong `.env` — set qua Admin UI sau khi deploy xong (`Admin → Cài đặt → FPT API Key`).
 
 ```bash
 npm install
@@ -113,19 +114,20 @@ npm start   # kiểm tra thấy "Server cổng 8082" và "Dùng PostgreSQL"
 
 ```bash
 cd /opt/tlx/tlx-driver-service
-cp .env.example .env   # nếu chưa có, tạo thủ công:
 nano .env
 ```
 
 Nội dung `.env`:
 ```
 PORT=8080
-DATA_DIR=../tlx-worker/data
+DATABASE_URL=postgres://tlx:MAT_KHAU_MANH@localhost:5432/tlx
 APP_SECRET=<cùng chuỗi ở bước 4>
 CORS_ORIGIN=https://ten-mien.com
 OK_DELAY_MIN=400
 OK_DELAY_MAX=1200
 ```
+
+> `DATABASE_URL` phải **giống hệt** bước 5 — driver-service dùng chung DB với tlx-worker. Nếu để trống sẽ dùng SQLite riêng, dữ liệu không đồng bộ.
 
 ```bash
 npm install
