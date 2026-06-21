@@ -34,6 +34,23 @@ function hasRouteHint(t) {
   return (hasArrow || hasTime) && hasPrice;
 }
 
+// ----- ĐIỂM EXPLICIT: "1đ","1d","1điểm","1diem","0,5đ","0.5 d","0,5" cuối câu -----
+export function parseBonus(t) {
+  // Có đơn vị rõ: "1đ", "0,5 đ", "1điểm", "1 điểm", "1d", "1diem", "0.5diem"
+  const m = t.match(/(\d+(?:[,\.]\d+)?)\s*(điểm|diem|đ|d)(?=\s|$)/i);
+  if (m) {
+    const val = parseFloat(m[1].replace(",", "."));
+    if (val > 0 && val <= 20) return val;
+  }
+  // Số thập phân cuối câu không có đơn vị: "500k tg. 0,5"
+  const tail = t.match(/(?:^|\s)(\d+[,\.]\d+)\s*$/);
+  if (tail) {
+    const val = parseFloat(tail[1].replace(",", "."));
+    if (val > 0 && val <= 10) return val;
+  }
+  return null;
+}
+
 // ----- GIÁ: hỗ trợ 200k / 1tr / 1tr300 / 1tr300k / 200.000đ / 200000 -----
 export function parsePrice(t) {
   // 1tr300k, 1tr3, 1 triệu 300
@@ -211,6 +228,7 @@ export function parseTrip(raw) {
   if (isClaimMessage(text)) return null;       // chỉ ok/ib (không kèm giá thật)
   if (isHardNoise(text)) return null;          // hủy lịch / sản điểm / xác nhận rõ ràng
 
+  const explicitPoints = parseBonus(text);
   return {
     groupId: raw.groupId,
     group: raw.groupName,
@@ -226,7 +244,8 @@ export function parseTrip(raw) {
     type: parseType(text),
     route: parseRoute(text),
     free: /free+|fr+ee/i.test(text),
-    bonus: /0,5|0\.5/.test(text) ? "0.5đ" : null,
+    explicitPoints,
+    bonus: explicitPoints !== null ? `${explicitPoints}đ` : null,
   };
 }
 

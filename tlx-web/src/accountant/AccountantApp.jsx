@@ -165,11 +165,12 @@ export default function AccountantApp({ me: initMe, onLogout, worker }) {
 
 // ===== Zalo Panel — kết nối + tìm + chọn nhóm =====
 function ZaloPanel({ me, worker, onClose, onConfirmed }) {
-  const { zaloConnected, qrImage, zaloError, sessionExpired, zaloGroups, selectedGroups, setWatchedGroups } = worker;
+  const { wsConnected, zaloConnected, qrImage, zaloError, sessionExpired, zaloGroups, selectedGroups, setWatchedGroups, connect } = worker;
   const [generatingQR, setGeneratingQR] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [err, setErr] = useState("");
   const [search, setSearch] = useState("");
+  const [pendingStart, setPendingStart] = useState(false);
   const groupLimit = me?.group_limit || 3;
 
   // Tắt spinner khi QR đến hoặc có lỗi (server trả về async qua WS)
@@ -177,14 +178,37 @@ function ZaloPanel({ me, worker, onClose, onConfirmed }) {
     if (qrImage || zaloError || zaloConnected) setGeneratingQR(false);
   }, [qrImage, zaloError, zaloConnected]);
 
-  const filteredGroups = zaloGroups.filter(g =>
-    !search || (g.name || g.id).toLowerCase().includes(search.toLowerCase())
-  );
+  // Nếu user click QR trước khi WS kết nối xong → tự trigger khi WS sẵn sàng
+  useEffect(() => {
+    if (wsConnected && pendingStart) {
+      setPendingStart(false);
+      doStartQR();
+    }
+  }, [wsConnected, pendingStart]);
 
-  const startQR = async () => {
+  const filteredGroups = zaloGroups
+    .filter(g => !search || (g.name || g.id).toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      const asel = selectedGroups.includes(a.id) ? 0 : 1;
+      const bsel = selectedGroups.includes(b.id) ? 0 : 1;
+      return asel - bsel;
+    });
+
+  const doStartQR = async () => {
     setGeneratingQR(true); setErr("");
     try { await api.startZaloQR(); }
     catch (e) { setErr(e.message); setGeneratingQR(false); }
+  };
+
+  const startQR = () => {
+    if (!wsConnected) {
+      // WS chưa sẵn sàng — đánh dấu pending, connect lại và chờ
+      setPendingStart(true);
+      setGeneratingQR(true);
+      connect();
+      return;
+    }
+    doStartQR();
   };
 
   const toggleGroup = (gId) => {
@@ -246,8 +270,12 @@ function ZaloPanel({ me, worker, onClose, onConfirmed }) {
           {!zaloConnected && !qrImage && !zaloError && generatingQR && (
             <div style={{ textAlign: "center", padding: "20px 0" }}>
               <div style={{ fontSize: 28, marginBottom: 10 }}>⏳</div>
-              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", marginBottom: 4 }}>Đang tạo mã QR…</div>
-              <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>Vui lòng chờ vài giây</div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", marginBottom: 4 }}>
+                {!wsConnected ? "Đang kết nối server…" : "Đang tạo mã QR…"}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>
+                {!wsConnected ? "Sẽ tự động hiện QR khi kết nối xong" : "Vui lòng chờ vài giây"}
+              </div>
             </div>
           )}
 

@@ -379,7 +379,7 @@ console.log("✅ Sẵn sàng.");
 // Giúp barem và san điểm tự động tính mà không cần mở web app
 ;(async () => {
   await new Promise(r => setTimeout(r, 2000)); // đợi DB init xong
-  const userIds = await dbm.listUsersWithZalo().catch(() => []);
+  const userIds = await Promise.resolve(dbm.listUsersWithZalo()).catch(() => []);
   for (const userId of userIds) {
     if (sm.hasSession(userId)) continue;
     sm.startSessionFromStored(userId, pushToUser)

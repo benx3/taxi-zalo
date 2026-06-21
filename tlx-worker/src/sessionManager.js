@@ -41,10 +41,10 @@ export async function startSessionFromStored(userId, onEvent) {
   // Lưu lại cookies đã được Zalo refresh qua Set-Cookie trong quá trình login
   // (cookies trong DB có thể cũ — Zalo rotate chúng mỗi request)
   const ctx = api.getContext();
-  dbm.saveZaloSession(userId, {
+  Promise.resolve(dbm.saveZaloSession(userId, {
     cookie: ctx.cookie, imei: ctx.imei, userAgent: ctx.userAgent,
     zaloUid: ctx.uid || ctx.userId || stored.zaloUid || null,
-  }).catch(e => console.warn(`[${userId}] Không lưu cookie sau restore:`, e?.message || e));
+  })).catch(e => console.warn(`[${userId}] Không lưu cookie sau restore:`, e?.message || e));
 
   return attach(userId, api, onEvent);
 }
@@ -358,6 +358,7 @@ function onMessage(sess, msg) {
             tripType: cachedTrip.type, tripPrice: cachedTrip.price,
             tripText: cachedTrip.text, tripTime: cachedTrip.time,
             claimText: text, claimTime: time,
+            explicitPoints: cachedTrip.explicitPoints || 0,
           };
           sess.claimCache.set(msgId, claimData);
           if (msg.data.cliMsgId) sess.claimCache.set(String(msg.data.cliMsgId), claimData);
@@ -381,8 +382,9 @@ function onMessage(sess, msg) {
           if (qGlobId2) sess.claimCache.delete(qGlobId2);
           Promise.resolve((async () => {
             const rulesRow = await dbm.getRules(groupId);
-            const pts = calcBaremPoints(rulesRow, cachedClaim.tripType, cachedClaim.tripPrice);
-            console.log(`[${sess.userId}] 📊 Barem confirm: type=${cachedClaim.tripType} price=${cachedClaim.tripPrice}k pts=${pts} rules=${rulesRow ? "ok" : "null"}`);
+            const baremPts = calcBaremPoints(rulesRow, cachedClaim.tripType, cachedClaim.tripPrice);
+            const pts = cachedClaim.explicitPoints > 0 ? cachedClaim.explicitPoints : baremPts;
+            console.log(`[${sess.userId}] 📊 Barem confirm: type=${cachedClaim.tripType} price=${cachedClaim.tripPrice}k pts=${pts} ${cachedClaim.explicitPoints > 0 ? `(explicit từ tin đăng)` : `rules=${rulesRow ? "ok" : "null"}`}`);
             if (pts > 0) {
               const convo = JSON.stringify({
                 tripTime: cachedClaim.tripTime, tripPoster: cachedClaim.tripPosterName, tripText: cachedClaim.tripText,
@@ -408,7 +410,7 @@ function onMessage(sess, msg) {
       if (sess.isAccountant) {
         for (const trip of trips) {
           if (!trip.price) continue;
-          const tripData = { type: trip.type, price: trip.price, senderId: trip.senderId, senderName, text, time };
+          const tripData = { type: trip.type, price: trip.price, senderId: trip.senderId, senderName, text, time, explicitPoints: trip.explicitPoints || 0 };
           // Lưu bằng cả msgId (server) và cliMsgId (client) để quote lookup khớp
           sess.tripMsgCache.set(msgId, tripData);
           if (msg.data.cliMsgId) sess.tripMsgCache.set(String(msg.data.cliMsgId), tripData);
@@ -465,7 +467,7 @@ function detectSanDiem(text, mentions, selfUid) {
   const selfStr = String(selfUid);
   if (!mentions.some(m => String(m.uid) === selfStr)) return null;
   // Trích số điểm
-  const m = text.match(/(\d+(?:[.,]\d+)?)\s*(?:đ\b|điểm|d\b)/i);
+  const m = text.match(/(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ|d)(?!\w)/i);
   if (!m) return null;
   const amount = parseFloat(m[1].replace(",", "."));
   if (!amount || amount <= 0) return null;
