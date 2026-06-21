@@ -291,20 +291,48 @@ function onMessage(sess, msg) {
 
     // (A.0) San điểm: ai đó tag kế toán + "san" + số điểm → tạo pending transfer
     if (senderId !== String(sess.selfId)) {
-      const sanResult = detectSanDiem(text, msg.data?.mentions || [], sess.selfId);
-      if (sanResult) {
-        Promise.resolve(dbm.createPendingTransfer(
-          groupId, senderId, sanResult.toUid, sanResult.amount, text
-        )).then(txId => {
-          sess.onEvent(sess.userId, {
-            type: "pending_transfer", txId,
-            groupId, groupName,
-            fromUid: senderId, fromName: senderName,
-            toUid: sanResult.toUid, toName: sanResult.toName,
-            points: sanResult.amount, rawText: text,
-          });
-        }).catch(e => console.error(`[${sess.userId}] san điểm:`, e?.message || e));
+      const sanResults = detectSanDiem(text, msg.data?.mentions || [], sess.selfId);
+      if (sanResults.length > 0) {
+        for (const sr of sanResults) {
+          if (!sr.toUid) continue;
+          Promise.resolve(dbm.createPendingTransfer(
+            groupId, senderId, sr.toUid, sr.amount, text
+          )).then(txId => {
+            sess.onEvent(sess.userId, {
+              type: "pending_transfer", txId,
+              groupId, groupName,
+              fromUid: senderId, fromName: senderName,
+              toUid: sr.toUid, toName: sr.toName,
+              points: sr.amount, rawText: text,
+            });
+          }).catch(e => console.error(`[${sess.userId}] san điểm:`, e?.message || e));
+        }
         return;
+      }
+    }
+
+    // (A.0b) KT tự gửi san: "San cho @A Xd @B Yd" — kế toán là người chuyển
+    if (sess.isAccountant && senderId === String(sess.selfId) && /\bsan\b/i.test(text)) {
+      const mentions = msg.data?.mentions || [];
+      if (mentions.length > 0) {
+        const sanResults = detectSanDiem(text, mentions, null);
+        if (sanResults.length > 0) {
+          for (const sr of sanResults) {
+            if (!sr.toUid) continue;
+            Promise.resolve(dbm.createPendingTransfer(
+              groupId, senderId, sr.toUid, sr.amount, text
+            )).then(txId => {
+              sess.onEvent(sess.userId, {
+                type: "pending_transfer", txId,
+                groupId, groupName,
+                fromUid: senderId, fromName: senderName,
+                toUid: sr.toUid, toName: sr.toName,
+                points: sr.amount, rawText: text,
+              });
+            }).catch(e => console.error(`[${sess.userId}] san điểm (self):`, e?.message || e));
+          }
+          return;
+        }
       }
     }
 
@@ -315,17 +343,20 @@ function onMessage(sess, msg) {
         Promise.resolve((async () => {
           const ktUid = await dbm.getGroupKtUid(groupId);
           if (!ktUid || ktUid === String(sess.selfId)) return; // A.0 đã xử lý
-          const sanAuto = detectSanDiem(text, mentions, ktUid);
-          if (!sanAuto?.toUid) return;
-          const txId = await dbm.createPendingTransfer(groupId, senderId, sanAuto.toUid, sanAuto.amount, text);
-          console.log(`[${sess.userId}] 📋 Pending san: ${senderId} → ${sanAuto.toUid} ${sanAuto.amount}đ nhóm=${groupId}`);
-          sess.onEvent(sess.userId, {
-            type: "pending_transfer", txId,
-            groupId, groupName,
-            fromUid: senderId, fromName: senderName,
-            toUid: sanAuto.toUid, toName: sanAuto.toName || "",
-            points: sanAuto.amount, rawText: text,
-          });
+          const sanResults = detectSanDiem(text, mentions, ktUid);
+          if (!sanResults.length) return;
+          for (const sanAuto of sanResults) {
+            if (!sanAuto.toUid) continue;
+            const txId = await dbm.createPendingTransfer(groupId, senderId, sanAuto.toUid, sanAuto.amount, text);
+            console.log(`[${sess.userId}] 📋 Pending san: ${senderId} → ${sanAuto.toUid} ${sanAuto.amount}đ nhóm=${groupId}`);
+            sess.onEvent(sess.userId, {
+              type: "pending_transfer", txId,
+              groupId, groupName,
+              fromUid: senderId, fromName: senderName,
+              toUid: sanAuto.toUid, toName: sanAuto.toName || "",
+              points: sanAuto.amount, rawText: text,
+            });
+          }
         })()).catch(e => console.error(`[${sess.userId}] auto-san pending:`, e?.message || e));
       }
     }
@@ -460,20 +491,30 @@ async function handleVoiceTrip(sess, base, rawMsg, voiceUrl) {
   }
 }
 
-// Phát hiện "san điểm" — khi tin nhắn có "san" + mention kế toán + số điểm
+// Phát hiện "san điểm" — trả về Array<{amount, toUid, toName}>
+// selfUid: UID kế toán cần được tag (null = không yêu cầu, dùng khi KT tự gửi)
 function detectSanDiem(text, mentions, selfUid) {
-  if (!/\bsan\b/i.test(text)) return null;
-  // Phải tag kế toán (selfUid)
-  const selfStr = String(selfUid);
-  if (!mentions.some(m => String(m.uid) === selfStr)) return null;
-  // Trích số điểm
-  const m = text.match(/(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ|d)(?!\w)/i);
-  if (!m) return null;
-  const amount = parseFloat(m[1].replace(",", "."));
-  if (!amount || amount <= 0) return null;
-  // Người nhận = mention không phải kế toán
-  const recv = mentions.find(mn => String(mn.uid) !== selfStr);
-  return { amount, toUid: recv?.uid || null, toName: recv?.display_name || recv?.dName || null };
+  if (!/\bsan\b/i.test(text)) return [];
+  const selfStr = selfUid ? String(selfUid) : null;
+  if (selfStr && !mentions.some(m => String(m.uid) === selfStr)) return [];
+  const recipients = selfStr
+    ? mentions.filter(mn => String(mn.uid) !== selfStr)
+    : [...mentions];
+  if (!recipients.length) return [];
+  // Trích tất cả số điểm theo thứ tự xuất hiện
+  const amounts = [];
+  const amountRe = /(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ|d)(?!\w)/gi;
+  let m;
+  while ((m = amountRe.exec(text)) !== null) {
+    const val = parseFloat(m[1].replace(",", "."));
+    if (val > 0 && val <= 20) amounts.push(val);
+  }
+  if (!amounts.length) return [];
+  return recipients.map((recv, i) => ({
+    amount: amounts.length === 1 ? amounts[0] : (amounts[i] ?? amounts[amounts.length - 1]),
+    toUid: recv.uid || null,
+    toName: recv.display_name || recv.dName || null,
+  }));
 }
 
 function isTaggingSelf(sess, msg) {

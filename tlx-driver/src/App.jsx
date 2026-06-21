@@ -94,6 +94,8 @@ function DriverFlow({ me, setMe, searchQ, setSearchQ }) {
   const [screen, setScreen] = useState("login");
   const [zaloConnected, setZaloConnected] = useState(false);
   const [forceReconnect, setForceReconnect] = useState(false);
+  // useWorker ở đây để WS không bị đóng/mở lại khi chuyển ConnectZalo ↔ DriverApp
+  const worker = useWorker();
 
   if (!me) return screen==="login"
     ? <LoginScreen onLogin={setMe} goRegister={()=>setScreen("register")}/>
@@ -102,8 +104,8 @@ function DriverFlow({ me, setMe, searchQ, setSearchQ }) {
   if (me.status==="expired") return <GateScreen kind="expired" me={me} onLogout={()=>{api.logout();setMe(null);}}/>;
   if (me.status==="banned") return <GateScreen kind="banned" me={me} onLogout={()=>{api.logout();setMe(null);}}/>;
   const needZalo = forceReconnect || (!me.hasZalo && !zaloConnected);
-  if (needZalo) return <ConnectZalo me={me} onConnected={()=>{setZaloConnected(true);setForceReconnect(false);}} onLogout={async()=>{await api.logout();setMe(null);}}/>;
-  return <DriverApp me={me} setMe={setMe} onChangeZalo={()=>{setZaloConnected(false);setForceReconnect(true);}} searchQ={searchQ} setSearchQ={setSearchQ}/>;
+  if (needZalo) return <ConnectZalo worker={worker} me={me} onConnected={()=>{setZaloConnected(true);setForceReconnect(false);}} onLogout={async()=>{await api.logout();setMe(null);}}/>;
+  return <DriverApp worker={worker} me={me} setMe={setMe} onChangeZalo={()=>{setZaloConnected(false);setForceReconnect(true);}} searchQ={searchQ} setSearchQ={setSearchQ}/>;
 }
 
 function LoginScreen({ onLogin, goRegister }) {
@@ -170,8 +172,8 @@ function GateScreen({ kind, me, onLogout }) {
   );
 }
 
-function ConnectZalo({ me, onConnected, onLogout }) {
-  const { connected, qr, zaloReady } = useWorker();
+function ConnectZalo({ worker, me, onConnected, onLogout }) {
+  const { connected, qr, zaloReady } = worker;
   const [requested,setRequested]=useState(false);
   const [err,setErr]=useState("");
   useEffect(()=>{ if(zaloReady){ const t=setTimeout(onConnected,800); return ()=>clearTimeout(t);} },[zaloReady,onConnected]);
@@ -202,8 +204,8 @@ function ConnectZalo({ me, onConnected, onLogout }) {
 /* ============ MÀN CUỐC ============ */
 const LIMIT_OPTIONS = [10, 20, 30, 50];
 
-function DriverApp({ me, onChangeZalo, setMe, searchQ: query = "", setSearchQ: setQuery }) {
-  const wk = useWorker();
+function DriverApp({ worker, me, onChangeZalo, setMe, searchQ: query = "", setSearchQ: setQuery }) {
+  const wk = worker;
   const { connected, trips, states, take, cancel, wonTrip, clearWon, groups, selected, setWatchedGroups, limit, setLimit, zaloExpired } = wk;
   const [typeF,setTypeF]=useState(new Set());
   const [timeF,setTimeF]=useState("all"); const [carF,setCarF]=useState(new Set());
