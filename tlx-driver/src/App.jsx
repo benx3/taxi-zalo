@@ -107,9 +107,9 @@ function DriverFlow({ me, setMe, searchQ, setSearchQ }) {
 }
 
 function LoginScreen({ onLogin, goRegister }) {
-  const [phone,setPhone]=useState(""); const [pass,setPass]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  const [phone,setPhone]=useState(()=>localStorage.getItem("tlx_driver_phone")||""); const [pass,setPass]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
   const submit=async()=>{ setBusy(true); setErr("");
-    try { const u = await api.login({phone:phone.trim(),pass}); onLogin(u); }
+    try { const u = await api.login({phone:phone.trim(),pass}); localStorage.setItem("tlx_driver_phone",phone.trim()); onLogin(u); }
     catch(e){ setErr(e.message); } finally { setBusy(false); }
   };
   return (

@@ -342,11 +342,15 @@ wss.on("connection", async (ws, req) => {
 async function ensureZaloSession(userId) {
   if (sm.hasSession(userId)) return;
   const u = await dbm.getUserPublic(userId).catch(() => null);
-  if (!u || u.role !== "accountant") return; // chỉ khôi phục session cho kế toán
+  if (!u || (u.role !== "accountant" && u.role !== "admin")) return; // khôi phục session cho kế toán và admin
   const stored = await dbm.getZaloSession(userId);
   if (stored?.cookie) {
     try { await sm.startSessionFromStored(userId, pushToUser); console.log(`♻️  Khôi phục phiên Zalo ${userId}`); }
-    catch (e) { console.error(`Không khôi phục phiên ${userId}:`, e?.message || e); }
+    catch (e) {
+      console.error(`Không khôi phục phiên ${userId}:`, e?.message || e);
+      // Cookie hết hạn → báo frontend để hiện thông báo đăng nhập lại
+      pushToUser(userId, { type: "zalo_session_expired" });
+    }
   }
 }
 

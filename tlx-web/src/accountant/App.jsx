@@ -62,12 +62,12 @@ export default function App() {
     <div style={{ display: "grid", placeItems: "center", minHeight: "100dvh", color: "var(--ink-dim)" }}>Đang tải…</div>
   );
 
-  if (!me) return <LoginScreen onLogin={u => setMe(u)} error={error} />;
+  if (!me) return <LoginScreen onLogin={u => { setMe(u); worker.connect(); }} error={error} />;
   return <AccountantApp me={me} onLogout={logout} worker={worker} />;
 }
 
 function LoginScreen({ onLogin, error: outerErr }) {
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(()=>localStorage.getItem("tlx_kt_phone")||"");
   const [pass, setPass] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(outerErr || "");
@@ -77,6 +77,7 @@ function LoginScreen({ onLogin, error: outerErr }) {
     setLoading(true); setErr("");
     try {
       const u = await api.login({ phone, pass });
+      localStorage.setItem("tlx_kt_phone", phone.trim());
       if (u.role === "admin") {
         window.location.href = "/admin";
         return;

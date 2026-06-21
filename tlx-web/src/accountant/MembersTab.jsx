@@ -5,11 +5,26 @@ import {
   X, Check, Clock, Edit2, Trash2, AlertTriangle, RefreshCw
 } from "lucide-react";
 
+const PAGE_SIZE = 25;
+
+// Bỏ dấu tiếng Việt để tìm kiếm không phân biệt dấu
+const noMark = (s) => (s || "").toLowerCase()
+  .replace(/đ/gi, "d")
+  .normalize("NFD")
+  .replace(/\p{Mn}/gu, "");
+
 const fmtPts = (p) => {
   const n = Number(p) || 0;
   return (n >= 0 ? "+" : "") + n.toFixed(n % 1 === 0 ? 0 : 1) + "đ";
 };
 const fmtTime = (ms) => new Date(ms).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+function buildPageList(cur, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  if (cur <= 4) return [1, 2, 3, 4, 5, "…", total];
+  if (cur >= total - 3) return [1, "…", total - 4, total - 3, total - 2, total - 1, total];
+  return [1, "…", cur - 1, cur, cur + 1, "…", total];
+}
 
 export default function MembersTab({ groupId }) {
   const [members, setMembers] = useState([]);
@@ -19,6 +34,8 @@ export default function MembersTab({ groupId }) {
   const [syncMsg, setSyncMsg] = useState({ ok: null, text: "" });
   const [selected, setSelected] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [page, setPage] = useState(1);
+  const [inlineEdit, setInlineEdit] = useState(null);
 
   const reload = () => {
     if (!groupId) return;
@@ -26,6 +43,7 @@ export default function MembersTab({ groupId }) {
     api.listMembers(groupId).then(setMembers).catch(() => {}).finally(() => setLoading(false));
   };
   useEffect(() => { reload(); }, [groupId]);
+  useEffect(() => { setPage(1); setInlineEdit(null); }, [q, groupId]);
 
   const syncFromZalo = async () => {
     setSyncing(true); setSyncMsg({ ok: null, text: "" });
@@ -45,15 +63,36 @@ export default function MembersTab({ groupId }) {
 
   const filtered = useMemo(() => {
     if (!q.trim()) return members;
-    const s = q.toLowerCase();
+    const s = noMark(q);
     return members.filter(m =>
-      (m.display_name || "").toLowerCase().includes(s) ||
-      (m.phone || "").includes(s) ||
-      (m.zalo_uid || "").includes(s)
+      noMark(m.display_name).includes(s) ||
+      (m.phone || "").includes(q.trim()) ||
+      (m.zalo_uid || "").includes(q.trim())
     );
   }, [members, q]);
 
   const sorted = [...filtered].sort((a, b) => (b.points || 0) - (a.points || 0));
+  const totalPages = Math.ceil(Math.max(sorted.length, 1) / PAGE_SIZE);
+  const paged = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const startEdit = (e, m) => {
+    e.stopPropagation();
+    if (inlineEdit?.id === m.id) { setInlineEdit(null); return; }
+    setInlineEdit({ id: m.id, zaloUid: m.zalo_uid, name: m.display_name, delta: "", reason: "", saving: false, err: "" });
+  };
+
+  const saveInlineEdit = async () => {
+    const d = parseFloat(inlineEdit.delta);
+    if (isNaN(d) || d === 0) { setInlineEdit(ie => ({ ...ie, err: "Nhập số khác 0" })); return; }
+    setInlineEdit(ie => ({ ...ie, saving: true, err: "" }));
+    try {
+      await api.adjustPoints({ groupId, zaloUid: inlineEdit.zaloUid, delta: d, reason: inlineEdit.reason || "Kế toán chỉnh tay", displayName: inlineEdit.name });
+      setInlineEdit(null);
+      reload();
+    } catch (e) {
+      setInlineEdit(ie => ({ ...ie, saving: false, err: e.message }));
+    }
+  };
 
   if (selected) return (
     <MemberDetail member={selected} groupId={groupId} onBack={() => { setSelected(null); reload(); }} />
@@ -98,23 +137,87 @@ export default function MembersTab({ groupId }) {
             {q ? "Không tìm thấy thành viên" : "Chưa có thành viên nào"}
           </div>
         )}
-        {sorted.map(m => (
-          <button key={m.id} onClick={() => setSelected(m)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 12, border: "1px solid var(--line)", background: "var(--card)", marginBottom: 8, cursor: "pointer", textAlign: "left" }}>
-            <div style={{ width: 38, height: 38, borderRadius: 99, background: pointColor(m.points) + "22", display: "grid", placeItems: "center", flexShrink: 0 }}>
-              <span style={{ fontWeight: 800, fontSize: 15, color: pointColor(m.points) }}>
-                {(m.display_name || "?")[0].toUpperCase()}
-              </span>
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.display_name || m.zalo_uid}</div>
-              <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>{m.phone || m.zalo_uid}</div>
-            </div>
-            <div style={{ fontWeight: 800, fontSize: 17, color: pointColor(m.points), textAlign: "right", flexShrink: 0 }}>
-              {fmtPts(m.points)}
-            </div>
-            <ChevronRight size={15} color="var(--ink-dim)" />
-          </button>
-        ))}
+
+        {sorted.length > 0 && (
+        <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+          {/* Header bảng */}
+          <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 72px 38px", padding: "6px 4px 6px 12px", borderBottom: "1px solid var(--line)", fontSize: 11, fontWeight: 700, color: "var(--ink-dim)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+            <span>#</span><span>Tên</span>
+            <span style={{ textAlign: "right", paddingRight: 8 }}>Điểm</span>
+            <span />
+          </div>
+
+        {paged.map((m, i) => {
+          const rank = (page - 1) * PAGE_SIZE + i + 1;
+          const isEditing = inlineEdit?.id === m.id;
+          return (
+            <React.Fragment key={m.id}>
+              <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 72px 38px", alignItems: "center", borderBottom: "1px solid var(--line)", background: isEditing ? "rgba(52,211,153,.05)" : "transparent" }}>
+                <span style={{ padding: "0 0 0 12px", fontSize: 12, color: "var(--ink-dim)", fontWeight: 600 }}>{rank}</span>
+                <button onClick={() => setSelected(m)} style={{ padding: "11px 6px", background: "none", border: "none", cursor: "pointer", textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ink)", fontSize: 14, fontWeight: 600 }}>
+                  {m.display_name || m.zalo_uid}
+                </button>
+                <div style={{ fontWeight: 800, fontSize: 15, color: pointColor(m.points), textAlign: "right", paddingRight: 8 }}>
+                  {fmtPts(m.points)}
+                </div>
+                <button onClick={(e) => startEdit(e, m)} title="Chỉnh điểm nhanh"
+                  style={{ alignSelf: "stretch", display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", borderLeft: "1px solid var(--line)", cursor: "pointer", color: isEditing ? "var(--accent)" : "var(--ink-dim)" }}>
+                  <Edit2 size={13} />
+                </button>
+              </div>
+              {isEditing && (
+                <div style={{ background: "rgba(52,211,153,.05)", borderBottom: "1px solid var(--line)", borderTop: "1px solid rgba(52,211,153,.2)", padding: "10px 12px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <input
+                    type="number" step="0.5" placeholder="±điểm"
+                    value={inlineEdit.delta}
+                    onChange={e => setInlineEdit(ie => ({ ...ie, delta: e.target.value }))}
+                    onKeyDown={e => e.key === "Enter" && saveInlineEdit()}
+                    autoFocus
+                    style={{ width: 90, padding: "7px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "rgba(0,0,0,.25)", color: "var(--ink)", fontSize: 14, fontWeight: 700, outline: "none" }}
+                  />
+                  <input
+                    placeholder="Lý do (tuỳ chọn)"
+                    value={inlineEdit.reason}
+                    onChange={e => setInlineEdit(ie => ({ ...ie, reason: e.target.value }))}
+                    onKeyDown={e => e.key === "Enter" && saveInlineEdit()}
+                    style={{ flex: 1, minWidth: 120, padding: "7px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "rgba(0,0,0,.25)", color: "var(--ink)", fontSize: 13, outline: "none" }}
+                  />
+                  {inlineEdit.err && <span style={{ color: "#f87171", fontSize: 12, flexBasis: "100%" }}>{inlineEdit.err}</span>}
+                  <button onClick={saveInlineEdit} disabled={inlineEdit.saving}
+                    style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: "rgba(52,211,153,.2)", color: "#34d399", fontWeight: 700, fontSize: 13, cursor: inlineEdit.saving ? "default" : "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                    {inlineEdit.saving ? "…" : <><Check size={13} /> Lưu</>}
+                  </button>
+                  <button onClick={() => setInlineEdit(null)}
+                    style={{ padding: "7px 10px", borderRadius: 8, border: "none", background: "rgba(248,113,113,.1)", color: "#f87171", cursor: "pointer", display: "flex", alignItems: "center" }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+            </React.Fragment>
+          );
+        })}
+
+        </div>
+        )}{/* end table container */}
+
+        {/* Phân trang số */}
+        {totalPages > 1 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, paddingTop: 14, flexWrap: "wrap" }}>
+            <button onClick={() => { setPage(p => Math.max(1, p - 1)); setInlineEdit(null); }} disabled={page === 1}
+              style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent", color: page === 1 ? "var(--ink-dim)" : "var(--ink)", cursor: page === 1 ? "default" : "pointer", fontSize: 13 }}>‹</button>
+            {buildPageList(page, totalPages).map((p, idx) =>
+              p === "…"
+                ? <span key={`e${idx}`} style={{ width: 28, textAlign: "center", color: "var(--ink-dim)", fontSize: 13 }}>…</span>
+                : <button key={p} onClick={() => { setPage(p); setInlineEdit(null); }}
+                    style={{ width: 34, height: 34, borderRadius: 8, border: "1px solid", borderColor: p === page ? "var(--accent)" : "var(--line)", background: p === page ? "rgba(52,211,153,.15)" : "transparent", color: p === page ? "var(--accent)" : "var(--ink)", fontWeight: p === page ? 800 : 400, fontSize: 13, cursor: "pointer" }}>
+                    {p}
+                  </button>
+            )}
+            <button onClick={() => { setPage(p => Math.min(totalPages, p + 1)); setInlineEdit(null); }} disabled={page === totalPages}
+              style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent", color: page === totalPages ? "var(--ink-dim)" : "var(--ink)", cursor: page === totalPages ? "default" : "pointer", fontSize: 13 }}>›</button>
+            <span style={{ fontSize: 11, color: "var(--ink-dim)", marginLeft: 6 }}>{sorted.length} người</span>
+          </div>
+        )}
       </div>
 
       {showAdd && <AddMemberModal groupId={groupId} onClose={() => setShowAdd(false)} onDone={() => { setShowAdd(false); reload(); }} />}
@@ -177,8 +280,8 @@ function MemberDetail({ member, groupId, onBack }) {
         {loadingTx && <div style={{ color: "var(--ink-dim)", fontSize: 13, textAlign: "center", padding: 20 }}>Đang tải…</div>}
         {!loadingTx && txs.length === 0 && <div style={{ color: "var(--ink-dim)", fontSize: 13, textAlign: "center", padding: 20 }}>Chưa có giao dịch nào</div>}
         {txs.map(tx => {
-          const isSender = tx.from_member === member.zalo_uid;
-          const delta = isSender ? +tx.points : -tx.points;
+          // to_member = người nhận điểm (+), from_member = người mất điểm (−)
+          const delta = tx.to_member === member.zalo_uid ? +tx.points : -tx.points;
           return (
             <div key={tx.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
               <div style={{ width: 32, height: 32, borderRadius: 99, background: delta >= 0 ? "rgba(52,211,153,.15)" : "rgba(248,113,113,.15)", display: "grid", placeItems: "center", flexShrink: 0 }}>

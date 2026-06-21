@@ -366,7 +366,7 @@ export function removeAccountantGroup(accountantId, groupId) {
 
 // ---------- Kế toán: thành viên ----------
 export function listMembers(groupId) {
-  return db.prepare("SELECT * FROM members WHERE group_id=? ORDER BY display_name COLLATE NOCASE ASC").all(groupId);
+  return db.prepare("SELECT * FROM members WHERE group_id=? ORDER BY points DESC, display_name COLLATE NOCASE ASC").all(groupId);
 }
 export function getMemberByZaloUid(groupId, zaloUid) {
   return db.prepare("SELECT * FROM members WHERE group_id=? AND zalo_uid=?").get(groupId, zaloUid);
@@ -395,6 +395,11 @@ export function adjustPoints(groupId, zaloUid, delta, reason, type = "manual", t
   const memberId = upsertMember(groupId, zaloUid);
   db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
     .run(delta, now(), groupId, zaloUid);
+  // Gán member vào transaction để lịch sử per-member hiện đúng
+  if (fromMember === null && toMember === null) {
+    if (delta >= 0) toMember = zaloUid;
+    else fromMember = zaloUid;
+  }
   const txId = uid();
   db.prepare("INSERT INTO point_transactions(id,group_id,trip_msg_id,from_member,to_member,points,reason,type,created_at) VALUES(?,?,?,?,?,?,?,?,?)")
     .run(txId, groupId, tripMsgId, fromMember, toMember, Math.abs(delta), reason || null, type, now());
@@ -423,10 +428,10 @@ export function updateTransaction(id, { reason, points }) {
 export function deleteTransaction(id) {
   const tx = db.prepare("SELECT * FROM point_transactions WHERE id=?").get(id);
   if (!tx) throw new Error("Không tìm thấy giao dịch");
-  // Hoàn điểm: đảo ngược giao dịch
-  if (tx.to_member) db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
+  // Hoàn điểm: đảo ngược giao dịch (to_member nhận → trừ lại; from_member gửi → cộng lại)
+  if (tx.to_member) db.prepare("UPDATE members SET points=ROUND(points-?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
     .run(tx.points, now(), tx.group_id, tx.to_member);
-  if (tx.from_member) db.prepare("UPDATE members SET points=ROUND(points-?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
+  if (tx.from_member) db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
     .run(tx.points, now(), tx.group_id, tx.from_member);
   db.prepare("DELETE FROM point_transactions WHERE id=?").run(id);
 }

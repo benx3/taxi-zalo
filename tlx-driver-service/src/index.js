@@ -148,7 +148,11 @@ async function ensureZaloSession(userId) {
   const stored = await dbm.getZaloSession(userId);
   if (stored?.cookie) {
     try { await sm.startSessionFromStored(userId, pushToUser); console.log(`♻️  Khôi phục phiên Zalo tài xế ${userId}`); }
-    catch (e) { console.error(`Không khôi phục phiên ${userId}:`, e?.message || e); }
+    catch (e) {
+      console.error(`Không khôi phục phiên ${userId}:`, e?.message || e);
+      // Cookie hết hạn → báo frontend hiện banner "Phiên Zalo đã hết hạn"
+      pushToUser(userId, { type: "zalo_expired" });
+    }
   }
 }
 

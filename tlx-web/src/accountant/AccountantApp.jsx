@@ -23,7 +23,7 @@ export default function AccountantApp({ me: initMe, onLogout, worker }) {
   const [showZaloPanel, setShowZaloPanel] = useState(false);
 
   const { wsConnected, zaloConnected, qrImage, zaloGroups, selectedGroups,
-          setWatchedGroups, pendingTransfers, removePending, send } = worker;
+          setWatchedGroups, pendingTransfers, removePending, send, sessionExpired } = worker;
 
   const reloadMe = () => api.me().then(setMe).catch(() => {});
 
@@ -79,9 +79,9 @@ export default function AccountantApp({ me: initMe, onLogout, worker }) {
             ))
           }
           {/* Zalo connect button */}
-          <button onClick={() => setShowZaloPanel(true)} style={{ width: "100%", marginTop: 6, padding: "7px 10px", borderRadius: 8, border: "1px dashed var(--line)", background: "transparent", color: zaloConnected ? "#34d399" : "var(--ink-dim)", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
+          <button onClick={() => setShowZaloPanel(true)} style={{ width: "100%", marginTop: 6, padding: "7px 10px", borderRadius: 8, border: "1px dashed var(--line)", background: "transparent", color: zaloConnected ? "#34d399" : sessionExpired ? "#f59e0b" : "var(--ink-dim)", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
             {zaloConnected ? <Wifi size={13} /> : <WifiOff size={13} />}
-            Kết nối & chọn nhóm
+            {sessionExpired && !zaloConnected ? "Phiên hết hạn!" : "Kết nối & chọn nhóm"}
           </button>
         </div>
 
@@ -165,22 +165,26 @@ export default function AccountantApp({ me: initMe, onLogout, worker }) {
 
 // ===== Zalo Panel — kết nối + tìm + chọn nhóm =====
 function ZaloPanel({ me, worker, onClose, onConfirmed }) {
-  const { zaloConnected, qrImage, zaloError, zaloGroups, selectedGroups, setWatchedGroups } = worker;
-  const [starting, setStarting] = useState(false);
+  const { zaloConnected, qrImage, zaloError, sessionExpired, zaloGroups, selectedGroups, setWatchedGroups } = worker;
+  const [generatingQR, setGeneratingQR] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [err, setErr] = useState("");
   const [search, setSearch] = useState("");
   const groupLimit = me?.group_limit || 3;
+
+  // Tắt spinner khi QR đến hoặc có lỗi (server trả về async qua WS)
+  useEffect(() => {
+    if (qrImage || zaloError || zaloConnected) setGeneratingQR(false);
+  }, [qrImage, zaloError, zaloConnected]);
 
   const filteredGroups = zaloGroups.filter(g =>
     !search || (g.name || g.id).toLowerCase().includes(search.toLowerCase())
   );
 
   const startQR = async () => {
-    setStarting(true); setErr("");
+    setGeneratingQR(true); setErr("");
     try { await api.startZaloQR(); }
-    catch (e) { setErr(e.message); }
-    finally { setStarting(false); }
+    catch (e) { setErr(e.message); setGeneratingQR(false); }
   };
 
   const toggleGroup = (gId) => {
@@ -212,6 +216,13 @@ function ZaloPanel({ me, worker, onClose, onConfirmed }) {
         </div>
 
         <div style={{ padding: "16px 20px", flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Phiên Zalo hết hạn (cookie cũ không dùng được sau khi khởi động lại service) */}
+          {sessionExpired && !zaloConnected && !qrImage && (
+            <div style={{ background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "var(--ink-dim)" }}>
+              <span style={{ color: "#f59e0b", fontWeight: 700 }}>Phiên Zalo đã hết hạn</span> — vui lòng đăng nhập lại bằng QR.
+            </div>
+          )}
+
           {/* QR */}
           {qrImage && (
             <div style={{ textAlign: "center" }}>
@@ -225,16 +236,25 @@ function ZaloPanel({ me, worker, onClose, onConfirmed }) {
             <div style={{ background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.3)", borderRadius: 10, padding: "12px 14px" }}>
               <div style={{ color: "#f87171", fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Đăng nhập thất bại</div>
               <div style={{ color: "var(--ink-dim)", fontSize: 12, marginBottom: 10 }}>{zaloError}</div>
-              <button onClick={startQR} disabled={starting} style={{ padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13, background: "rgba(52,211,153,.2)", color: "var(--accent)" }}>
-                Thử lại
+              <button onClick={startQR} disabled={generatingQR} style={{ padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13, background: "rgba(52,211,153,.2)", color: "var(--accent)" }}>
+                {generatingQR ? "Đang tạo QR…" : "Thử lại"}
               </button>
             </div>
           )}
 
+          {/* Đang tạo QR — spinner hiển thị sau khi click cho đến khi QR đến qua WS */}
+          {!zaloConnected && !qrImage && !zaloError && generatingQR && (
+            <div style={{ textAlign: "center", padding: "20px 0" }}>
+              <div style={{ fontSize: 28, marginBottom: 10 }}>⏳</div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", marginBottom: 4 }}>Đang tạo mã QR…</div>
+              <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>Vui lòng chờ vài giây</div>
+            </div>
+          )}
+
           {/* Zalo status */}
-          {!zaloConnected && !qrImage && !zaloError && (
-            <button onClick={startQR} disabled={starting} style={{ width: "100%", padding: "12px", borderRadius: 12, border: "none", cursor: starting ? "default" : "pointer", fontWeight: 800, fontSize: 14, background: "linear-gradient(135deg,#22c55e,#16a34a)", color: "#04140a" }}>
-              {starting ? "Đang tạo mã QR…" : "Đăng nhập Zalo (QR)"}
+          {!zaloConnected && !qrImage && !zaloError && !generatingQR && (
+            <button onClick={startQR} style={{ width: "100%", padding: "12px", borderRadius: 12, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 14, background: "linear-gradient(135deg,#22c55e,#16a34a)", color: "#04140a" }}>
+              Đăng nhập Zalo (QR)
             </button>
           )}
 

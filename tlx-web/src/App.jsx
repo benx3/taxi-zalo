@@ -32,10 +32,11 @@ export default function App() {
 }
 
 function AdminLoginScreen({ onLogin }) {
-  const [phone,setPhone]=useState(""); const [pass,setPass]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  const [phone,setPhone]=useState(()=>localStorage.getItem("tlx_admin_phone")||""); const [pass,setPass]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
   const submit=async()=>{ setBusy(true); setErr("");
     try {
       const u = await api.login({phone:phone.trim(),pass});
+      localStorage.setItem("tlx_admin_phone",phone.trim());
       if (u.role === "accountant") { window.location.replace("/accountant"); return; }
       if (u.role !== "admin") { await api.logout(); setErr("Tài khoản này không có quyền Admin hoặc Kế Toán."); return; }
       onLogin(u);
@@ -186,6 +187,8 @@ function AdminApp({ me, onLogout }) {
   const [week,setWeek]=useState(30000);const [month,setMonth]=useState(99000);
   const [users,setUsers]=useState([]);
   const [q,setQ]=useState("");
+  const [adminPage,setAdminPage]=useState(1);
+  useEffect(()=>{setAdminPage(1);},[q]);
   const [adminTab,setAdminTab]=useState("users");
   const [resetTarget,setResetTarget]=useState(null);
   const [acctTarget,setAcctTarget]=useState(null);
@@ -197,6 +200,9 @@ function AdminApp({ me, onLogout }) {
     const s=q.toLowerCase();
     return (u.phone||"").toLowerCase().includes(s)||(u.name||"").toLowerCase().includes(s);
   });
+  const ADMIN_PG=25;
+  const pagedDrivers=drivers.slice((adminPage-1)*ADMIN_PG,adminPage*ADMIN_PG);
+  const totalAdminPgs=Math.ceil(Math.max(drivers.length,1)/ADMIN_PG);
   const stat=users.filter(u=>u.role!=="admin");
   const pending=stat.filter(u=>u.status==="pending").length;
   const active=stat.filter(u=>u.status==="active").length;
@@ -285,7 +291,7 @@ function AdminApp({ me, onLogout }) {
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:13.5,minWidth:820}}>
                     <thead><tr style={{color:"var(--ink-dim)",textAlign:"left",fontSize:11.5,textTransform:"uppercase",letterSpacing:".05em"}}><th style={th}>Tài khoản</th><th style={th}>SĐT</th><th style={th}>Vai trò</th><th style={th}>Gói</th><th style={th}>Zalo</th><th style={th}>Còn lại</th><th style={th}>Trạng thái</th><th style={{...th,textAlign:"right"}}>Thao tác</th></tr></thead>
                     <tbody>{drivers.length===0&&<tr><td colSpan={8} style={{...td,textAlign:"center",color:"var(--ink-dim)"}}>{q?`Không tìm thấy "${q}"`:"Chưa có tài khoản nào."}</td></tr>}
-                    {drivers.map(u=>{const isAdm=u.role==="admin";return(
+                    {pagedDrivers.map(u=>{const isAdm=u.role==="admin";return(
                       <tr key={u.id} style={{borderTop:"1px solid var(--line)",background:u.status==="pending"?"rgba(245,158,11,.05)":isAdm?"rgba(167,139,250,.05)":"transparent"}}>
                         <td style={{...td,fontWeight:600}}>{u.name}</td><td style={{...td,color:"var(--ink-dim)"}}>{u.phone}</td>
                         <td style={td}>{isAdm?<span style={{display:"inline-flex",alignItems:"center",gap:4,color:"#a78bfa",fontWeight:700,fontSize:12}}><Shield size={12}/> Admin</span>:u.role==="accountant"?<span style={{display:"inline-flex",alignItems:"center",gap:4,color:"#f59e0b",fontWeight:700,fontSize:12}}><Users size={12}/> Kế Toán</span>:<span style={{color:"var(--ink-dim)",fontSize:12.5}}>Tài xế</span>}</td>
@@ -315,6 +321,11 @@ function AdminApp({ me, onLogout }) {
                     );})}</tbody>
                   </table>
                 </div>
+                {totalAdminPgs>1&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"14px 0 8px"}}>
+                  <button onClick={()=>setAdminPage(p=>Math.max(1,p-1))} disabled={adminPage===1} style={{padding:"6px 16px",borderRadius:8,border:"1px solid var(--line)",background:"transparent",color:adminPage===1?"var(--ink-dim)":"var(--ink)",cursor:adminPage===1?"default":"pointer",fontSize:13,fontWeight:700}}>← Trước</button>
+                  <span style={{fontSize:13,color:"var(--ink-dim)",minWidth:110,textAlign:"center"}}>Trang {adminPage} / {totalAdminPgs} · {drivers.length} TK</span>
+                  <button onClick={()=>setAdminPage(p=>Math.min(totalAdminPgs,p+1))} disabled={adminPage===totalAdminPgs} style={{padding:"6px 16px",borderRadius:8,border:"1px solid var(--line)",background:"transparent",color:adminPage===totalAdminPgs?"var(--ink-dim)":"var(--ink)",cursor:adminPage===totalAdminPgs?"default":"pointer",fontSize:13,fontWeight:700}}>Sau →</button>
+                </div>}
               </div>
             </div>
           )}

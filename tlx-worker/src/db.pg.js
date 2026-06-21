@@ -340,7 +340,7 @@ export async function removeAccountantGroup(accountantId, groupId) {
 
 // ---------- Kế toán: thành viên ----------
 export async function listMembers(groupId) {
-  const r = await q("SELECT * FROM members WHERE group_id=$1 ORDER BY display_name ASC", [groupId]);
+  const r = await q("SELECT * FROM members WHERE group_id=$1 ORDER BY points DESC, display_name ASC", [groupId]);
   return r.rows;
 }
 export async function getMemberByZaloUid(groupId, zaloUid) {
@@ -373,6 +373,10 @@ export async function adjustPoints(groupId, zaloUid, delta, reason, type = "manu
   await upsertMember(groupId, zaloUid);
   await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10), updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
     [delta, now(), groupId, zaloUid]);
+  if (fromMember === null && toMember === null) {
+    if (delta >= 0) toMember = zaloUid;
+    else fromMember = zaloUid;
+  }
   const txId = uid();
   await q("INSERT INTO point_transactions(id,group_id,trip_msg_id,from_member,to_member,points,reason,type,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
     [txId, groupId, tripMsgId, fromMember, toMember, Math.abs(delta), reason || null, type, now()]);
@@ -401,8 +405,8 @@ export async function updateTransaction(id, { reason, points }) {
 export async function deleteTransaction(id) {
   const r = await q("SELECT * FROM point_transactions WHERE id=$1", [id]);
   const tx = r.rows[0]; if (!tx) throw new Error("Không tìm thấy giao dịch");
-  if (tx.to_member) await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [tx.points, now(), tx.group_id, tx.to_member]);
-  if (tx.from_member) await q("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [tx.points, now(), tx.group_id, tx.from_member]);
+  if (tx.to_member) await q("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [tx.points, now(), tx.group_id, tx.to_member]);
+  if (tx.from_member) await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [tx.points, now(), tx.group_id, tx.from_member]);
   await q("DELETE FROM point_transactions WHERE id=$1", [id]);
 }
 

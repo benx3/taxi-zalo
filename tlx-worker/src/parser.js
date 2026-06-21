@@ -8,8 +8,10 @@ const NOISE_RE = /(lịch hủy|huỷ lịch|hủy lịch|đã có ng|đã có n
 export function isClaimMessage(text) {
   if (!text) return false;
   const t = text.trim();
+  // Strip leading @mention so "@Tên đầy đủ ok" still counts as a claim
+  const core = t.replace(/^@.+?\s+(?=(?:ok|oke|oki|okie|okib|ib)(?:\W|$))/i, "").trim();
   const hasPrice = /\d{2,4}\s*k|\dtr|\d[\d.]{2,}\s*đ/i.test(t);
-  return !hasPrice && t.length <= 25 && CLAIM_RE.test(t);
+  return !hasPrice && core.length <= 25 && CLAIM_RE.test(core);
 }
 
 export function isConfirmMessage(text) {
@@ -94,7 +96,7 @@ export function parseSeats(t) {
 export function parseType(t) {
   const l = t.toLowerCase();
   if (/(bao\s*hàng|csct\s*đồ|\bđồ\b|gửi hàng|ship)/.test(l) && !/1\s*ghế|1k\b|gái|khách/.test(l)) return "Hàng";
-  if (/bao\s*xe|\bbxe\b|\bbx\b|bx\d+/.test(l)) return "Bao xe";
+  if (/bao\s*xe|\bbxe\b|\bbx\b|bx\d+|\bxe\s*7\b|7\s*chỗ|\b7c\b/.test(l)) return "Bao xe";
   if (/sân\s*bay|nội\s*bài|noi\s*bai|\bt1\b|\bt2\b|sảnh/.test(l)) return "Sân bay";
   if (/2\s*ghế|2ghế|2ghép|2ghep|2\s*khách|2k\b/.test(l)) return "Ghép 2";
   return "Ghép 1";
@@ -114,13 +116,15 @@ export function parseRoute(t) {
     const to = cleanPlace(parts[parts.length - 1]);
     if (from || to) return { from: from || "?", to: to || "?" };
   }
-  // không có dấu phân tách rõ → thử tách lại theo "về/ra/sang/đi" bên trong mảnh đã làm sạch
+  // không có dấu phân tách rõ → tách raw TRƯỚC (tránh cleanPlace.slice(32) cắt mất địa chỉ đến)
   if (parts.length === 1) {
-    let only = cleanPlace(parts[0]);
-    const m = only.split(/\s+(?:về|ve|ra|sang|đi)\s+/i);
-    if (m.length >= 2 && m[0].length > 1 && m[1].length > 1) {
-      return { from: m[0].trim().slice(0, 32), to: m[1].trim().slice(0, 32) };
+    const rawParts = parts[0].split(/\s+(?:về|ve|ra|sang|đi)\s+/i);
+    if (rawParts.length >= 2) {
+      const from = cleanPlace(rawParts[0]);
+      const to = cleanPlace(rawParts[rawParts.length - 1]);
+      if (from || to) return { from: from || "?", to: to || "?" };
     }
+    const only = cleanPlace(parts[0]);
     if (only) return { from: "?", to: only };
   }
   return null;

@@ -6,7 +6,7 @@
 // nhóm đang theo dõi riêng, và các "claim" (cuốc đã xin) riêng.
 // ============================================================
 import { Zalo } from "zca-js";
-import { parseMultipleTrips, isConfirmMessage } from "./parser.js";
+import { parseMultipleTrips, isConfirmMessage, isClaimMessage } from "./parser.js";
 import { transcribeVoice, getVoiceUrl } from "./stt.js";
 import { config } from "./config.js";
 import * as dbm from "./dbLayer.js";
@@ -37,6 +37,15 @@ export async function startSessionFromStored(userId, onEvent) {
 
   const zalo = new Zalo();
   const api = await zalo.login({ cookie: stored.cookie, imei: stored.imei, userAgent: stored.userAgent });
+
+  // Lưu lại cookies đã được Zalo refresh qua Set-Cookie trong quá trình login
+  // (cookies trong DB có thể cũ — Zalo rotate chúng mỗi request)
+  const ctx = api.getContext();
+  dbm.saveZaloSession(userId, {
+    cookie: ctx.cookie, imei: ctx.imei, userAgent: ctx.userAgent,
+    zaloUid: ctx.uid || ctx.userId || stored.zaloUid || null,
+  }).catch(e => console.warn(`[${userId}] Không lưu cookie sau restore:`, e?.message || e));
+
   return attach(userId, api, onEvent);
 }
 
@@ -56,6 +65,16 @@ export async function loginQR(userId, onQR, onEvent) {
   return attach(userId, api, onEvent);
 }
 
+// Lưu cookies hiện tại của 1 phiên về DB (gọi nhiều lần an toàn)
+async function persistCookies(userId, api) {
+  const ctx = api.getContext();
+  if (!ctx?.cookie) return;
+  await dbm.saveZaloSession(userId, {
+    cookie: ctx.cookie, imei: ctx.imei, userAgent: ctx.userAgent,
+    zaloUid: ctx.uid || ctx.userId || null,
+  });
+}
+
 // Gắn listener + state cho 1 phiên
 function attach(userId, api, onEvent) {
   const ctx = api.getContext();
@@ -69,9 +88,12 @@ function attach(userId, api, onEvent) {
     claims: new Map(),          // `${groupId}:${ownerId}` -> {savedId, msgId, text}
     rawMsgById: new Map(),      // msgId -> object message gốc (để reply đúng tin)
     sentOks: new Map(),         // msgId cuốc -> {groupId, sent, savedId} (để thu hồi khi huỷ)
+    tripMsgCache: new Map(),    // msgId → {type, price, senderId} — cuốc gần đây (barem tracking)
+    claimCache: new Map(),      // claimMsgId → {tripPosterId, takerId, takerName, tripType, tripPrice}
     onEvent,
     lastMsgAt: Date.now(),      // timestamp tin nhắn cuối (để phát hiện session chết)
     isAccountant: false,        // set sau khi getUserPublic
+    cookieSaveTimer: null,      // interval lưu cookies định kỳ
   };
   // Đánh dấu role để onMessage biết có thu thập member hay không
   // Dùng await (hoạt động với cả SQLite sync và PostgreSQL async)
@@ -80,12 +102,20 @@ function attach(userId, api, onEvent) {
 
   api.listener.on("message", (msg) => { sess.lastMsgAt = Date.now(); onMessage(sess, msg); });
 
+  // Lưu cookies định kỳ mỗi 20 phút để giữ phiên qua các lần restart
+  sess.cookieSaveTimer = setInterval(() => {
+    persistCookies(userId, api).catch(e => console.warn(`[${userId}] periodic cookie save:`, e?.message || e));
+  }, 20 * 60 * 1000);
+
   // Khi listener gặp lỗi hoặc bị đóng → thử tự reconnect
   let recovering = false;
   const handleDead = async (reason) => {
     if (recovering || !sessions.has(userId)) return;
     recovering = true;
+    clearInterval(sess.cookieSaveTimer);
     console.warn(`[${userId}] Zalo listener chết (${reason}), thử kết nối lại…`);
+    // Lưu cookies mới nhất trước khi tắt session (có thể đã được Zalo refresh)
+    await persistCookies(userId, api).catch(() => {});
     sessions.delete(userId);
     try {
       await sleep(3000);
@@ -120,6 +150,7 @@ setInterval(async () => {
     try {
       await sess.api.getAllGroups();
       sess.lastMsgAt = Date.now(); // ping thành công → session còn sống
+      persistCookies(userId, sess.api).catch(() => {}); // refresh cookies sau ping
     } catch (e) {
       console.warn(`[${userId}] Ping Zalo thất bại, session có thể đã chết:`, e?.message || e);
       sessions.delete(userId);
@@ -166,6 +197,9 @@ async function loadGroups(sess) {
 
   sess.onEvent(sess.userId, { type: "groups", groups: sess.groups, selected: [...sess.selected] });
 
+  // Sau khi gọi nhiều Zalo API (getAllGroups + getGroupInfo), cookies đã được refresh → lưu lại
+  persistCookies(sess.userId, sess.api).catch(() => {});
+
   // Auto-import thành viên sau khi load groups (dành cho kế toán)
   try {
     const u = await dbm.getUserPublic(sess.userId);
@@ -176,6 +210,45 @@ async function loadGroups(sess) {
       }
     }
   } catch {}
+}
+
+// Ánh xạ parseType (parser output) → barem type codes (lưu trong DB từ BaremTab)
+const PARSER_TO_BAREM = {
+  "Bao xe":  ["bao_xe"],
+  "Ghép 1":  ["ghep_1"],
+  "Ghép 2":  ["ghep_2"],
+  "Hàng":    ["ship"],
+  "Sân bay": ["san_bay_don", "san_bay_tien", "san_bay_2c"],
+};
+
+function calcBaremPoints(rulesRow, parserType, price) {
+  if (!rulesRow?.rules_json) return 0;
+  let parsed;
+  try { parsed = JSON.parse(rulesRow.rules_json); } catch { return 0; }
+  const rules = Array.isArray(parsed) ? parsed : (parsed?.rules || []);
+  if (!rules.length) return 0;
+
+  const targetCodes = PARSER_TO_BAREM[parserType] || [];
+
+  const matchRule = (rule) => {
+    const lo = Number(rule.min ?? rule.priceFrom ?? rule.from ?? 0);
+    const hi = Number(rule.max ?? rule.priceTo ?? rule.to ?? Infinity);
+    return price >= lo && price <= hi ? Number(rule.points || 0) : null;
+  };
+
+  // Tìm rule khớp chính xác loại cuốc
+  for (const rule of rules) {
+    if (!targetCodes.includes((rule.type || "").toLowerCase())) continue;
+    const pts = matchRule(rule);
+    if (pts !== null) return pts;
+  }
+  // Fallback "khac" nếu không khớp loại nào
+  for (const rule of rules) {
+    if ((rule.type || "").toLowerCase() !== "khac") continue;
+    const pts = matchRule(rule);
+    if (pts !== null) return pts;
+  }
+  return 0;
 }
 
 function onMessage(sess, msg) {
@@ -212,7 +285,7 @@ function onMessage(sess, msg) {
 
     // Thu thập thành viên thụ động: mỗi tin nhắn trong nhóm được theo dõi → lưu sender
     if (senderId && sess.isAccountant) {
-      dbm.upsertMember(groupId, senderId, { display_name: senderName !== "Không rõ" ? senderName : null })
+      Promise.resolve(dbm.upsertMember(groupId, senderId, { display_name: senderName !== "Không rõ" ? senderName : null }))
         .catch(() => {});
     }
 
@@ -245,10 +318,66 @@ function onMessage(sess, msg) {
       return;
     }
 
+    // (C) Kế toán: phát hiện người nhận cuốc reply "Ok" quoting trip → lưu claim
+    if (sess.isAccountant && senderId !== String(sess.selfId)) {
+      const qd = msg.data?.quote;
+      if (qd && isClaimMessage(text)) {
+        if (process.env.DEBUG_BAREM) console.log(`[BAREM_CLAIM] from=${senderId} quote=`, JSON.stringify(qd)?.slice(0, 300));
+        const quoteOwnerId = String(qd.ownerId || qd.uid || qd.senderId || "");
+        const quoteMsgId   = String(qd.msgId   || qd.cliMsgId || qd.globalMsgId || "");
+        const cachedTrip   = quoteMsgId ? sess.tripMsgCache.get(quoteMsgId) : null;
+        if (process.env.DEBUG_BAREM) console.log(`[BAREM_CLAIM] quoteOwnerId=${quoteOwnerId} quoteMsgId=${quoteMsgId} tripFound=${!!cachedTrip}`);
+        if (cachedTrip && quoteOwnerId && quoteOwnerId !== senderId) {
+          sess.claimCache.set(msgId, {
+            tripPosterId: cachedTrip.senderId,
+            takerId: senderId, takerName: senderName,
+            tripType: cachedTrip.type, tripPrice: cachedTrip.price,
+          });
+          if (sess.claimCache.size > 50)
+            sess.claimCache.delete(sess.claimCache.keys().next().value);
+        }
+      }
+    }
+
+    // (D) Kế toán: chủ cuốc xác nhận "ok ib" cho người nhận → áp dụng barem
+    if (sess.isAccountant && senderId !== String(sess.selfId) && isConfirmMessage(text)) {
+      const qd = msg.data?.quote;
+      if (qd) {
+        if (process.env.DEBUG_BAREM) console.log(`[BAREM_CONFIRM] from=${senderId} quote=`, JSON.stringify(qd)?.slice(0, 300));
+        const quoteMsgId  = String(qd.msgId || qd.cliMsgId || qd.globalMsgId || "");
+        const cachedClaim = quoteMsgId ? sess.claimCache.get(quoteMsgId) : null;
+        if (process.env.DEBUG_BAREM) console.log(`[BAREM_CONFIRM] quoteMsgId=${quoteMsgId} claimFound=${!!cachedClaim} posterMatch=${cachedClaim?.tripPosterId === senderId}`);
+        if (cachedClaim && senderId === cachedClaim.tripPosterId) {
+          sess.claimCache.delete(quoteMsgId);
+          Promise.resolve((async () => {
+            const rulesRow = await dbm.getRules(groupId);
+            const pts = calcBaremPoints(rulesRow, cachedClaim.tripType, cachedClaim.tripPrice);
+            console.log(`[${sess.userId}] 📊 Barem confirm: type=${cachedClaim.tripType} price=${cachedClaim.tripPrice}k pts=${pts} rules=${rulesRow ? "ok" : "null"}`);
+            if (pts > 0) {
+              await dbm.adjustPoints(groupId, cachedClaim.tripPosterId,  pts, "Đăng cuốc thành công", "barem", msgId, null, cachedClaim.tripPosterId);
+              await dbm.adjustPoints(groupId, cachedClaim.takerId,      -pts, "Nhận cuốc xe",         "barem", msgId, cachedClaim.takerId, null);
+              console.log(`[${sess.userId}] ✅ Barem applied: +${pts}đ → ${cachedClaim.tripPosterId}, -${pts}đ → ${cachedClaim.takerId}`);
+            } else {
+              console.warn(`[${sess.userId}] ⚠️  Barem pts=0 — chưa có rule cho ${cachedClaim.tripType} ${cachedClaim.tripPrice}k`);
+            }
+          })()).catch(e => console.error(`[${sess.userId}] barem apply:`, e?.message || e));
+        }
+      }
+    }
+
     // (B) cuốc mới — 1 tin có thể chứa nhiều cuốc
     const trips = parseMultipleTrips({ groupId, groupName, senderId, senderName, msgId, text, time });
     if (trips.length > 0) {
       cacheRawMsg(sess, msgId, msg);
+      // Kế toán: lưu cuốc vào tripMsgCache để (C) phát hiện claim sau
+      if (sess.isAccountant) {
+        for (const trip of trips) {
+          if (!trip.price) continue;
+          sess.tripMsgCache.set(msgId, { type: trip.type, price: trip.price, senderId: trip.senderId });
+          if (sess.tripMsgCache.size > 50)
+            sess.tripMsgCache.delete(sess.tripMsgCache.keys().next().value);
+        }
+      }
       for (let i = 0; i < trips.length; i++) {
         const subMsgId = trips.length === 1 ? msgId : `${msgId}_${i}`;
         const tripOut = { ...trips[i], msgId: subMsgId };
@@ -555,6 +684,7 @@ export async function syncGroupMembers(userId) {
 export function stopSession(userId) {
   const sess = sessions.get(userId);
   if (!sess) return;
+  clearInterval(sess.cookieSaveTimer);
   try { sess.api.listener.stop?.(); } catch {}
   sessions.delete(userId);
 }
