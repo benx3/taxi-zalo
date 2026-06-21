@@ -323,17 +323,21 @@ function onMessage(sess, msg) {
       const qd = msg.data?.quote;
       if (qd && isClaimMessage(text)) {
         if (process.env.DEBUG_BAREM) console.log(`[BAREM_CLAIM] from=${senderId} quote=`, JSON.stringify(qd)?.slice(0, 300));
-        const quoteOwnerId = String(qd.ownerId || qd.uid || qd.senderId || "");
-        const quoteMsgId   = String(qd.msgId   || qd.cliMsgId || qd.globalMsgId || "");
-        const cachedTrip   = quoteMsgId ? sess.tripMsgCache.get(quoteMsgId) : null;
-        if (process.env.DEBUG_BAREM) console.log(`[BAREM_CLAIM] quoteOwnerId=${quoteOwnerId} quoteMsgId=${quoteMsgId} tripFound=${!!cachedTrip}`);
+        const quoteOwnerId = String(qd.ownerId || "");
+        // TQuote không có msgId — chỉ có cliMsgId (number) và globalMsgId (number)
+        const qCliId = qd.cliMsgId != null ? String(qd.cliMsgId) : "";
+        const qGlobId = qd.globalMsgId != null ? String(qd.globalMsgId) : "";
+        const cachedTrip = sess.tripMsgCache.get(qCliId) || (qGlobId ? sess.tripMsgCache.get(qGlobId) : null);
+        if (process.env.DEBUG_BAREM) console.log(`[BAREM_CLAIM] quoteOwnerId=${quoteOwnerId} cliMsgId=${qCliId} globalMsgId=${qGlobId} tripFound=${!!cachedTrip}`);
         if (cachedTrip && quoteOwnerId && quoteOwnerId !== senderId) {
-          sess.claimCache.set(msgId, {
+          const claimData = {
             tripPosterId: cachedTrip.senderId,
             takerId: senderId, takerName: senderName,
             tripType: cachedTrip.type, tripPrice: cachedTrip.price,
-          });
-          if (sess.claimCache.size > 50)
+          };
+          sess.claimCache.set(msgId, claimData);
+          if (msg.data.cliMsgId) sess.claimCache.set(String(msg.data.cliMsgId), claimData);
+          while (sess.claimCache.size > 100)
             sess.claimCache.delete(sess.claimCache.keys().next().value);
         }
       }
@@ -344,11 +348,13 @@ function onMessage(sess, msg) {
       const qd = msg.data?.quote;
       if (qd) {
         if (process.env.DEBUG_BAREM) console.log(`[BAREM_CONFIRM] from=${senderId} quote=`, JSON.stringify(qd)?.slice(0, 300));
-        const quoteMsgId  = String(qd.msgId || qd.cliMsgId || qd.globalMsgId || "");
-        const cachedClaim = quoteMsgId ? sess.claimCache.get(quoteMsgId) : null;
-        if (process.env.DEBUG_BAREM) console.log(`[BAREM_CONFIRM] quoteMsgId=${quoteMsgId} claimFound=${!!cachedClaim} posterMatch=${cachedClaim?.tripPosterId === senderId}`);
+        const qCliId2  = qd.cliMsgId != null ? String(qd.cliMsgId) : "";
+        const qGlobId2 = qd.globalMsgId != null ? String(qd.globalMsgId) : "";
+        const cachedClaim = sess.claimCache.get(qCliId2) || (qGlobId2 ? sess.claimCache.get(qGlobId2) : null);
+        if (process.env.DEBUG_BAREM) console.log(`[BAREM_CONFIRM] cliMsgId=${qCliId2} globalMsgId=${qGlobId2} claimFound=${!!cachedClaim} posterMatch=${cachedClaim?.tripPosterId === senderId}`);
         if (cachedClaim && senderId === cachedClaim.tripPosterId) {
-          sess.claimCache.delete(quoteMsgId);
+          sess.claimCache.delete(qCliId2);
+          if (qGlobId2) sess.claimCache.delete(qGlobId2);
           Promise.resolve((async () => {
             const rulesRow = await dbm.getRules(groupId);
             const pts = calcBaremPoints(rulesRow, cachedClaim.tripType, cachedClaim.tripPrice);
@@ -373,8 +379,11 @@ function onMessage(sess, msg) {
       if (sess.isAccountant) {
         for (const trip of trips) {
           if (!trip.price) continue;
-          sess.tripMsgCache.set(msgId, { type: trip.type, price: trip.price, senderId: trip.senderId });
-          if (sess.tripMsgCache.size > 50)
+          const tripData = { type: trip.type, price: trip.price, senderId: trip.senderId };
+          // Lưu bằng cả msgId (server) và cliMsgId (client) để quote lookup khớp
+          sess.tripMsgCache.set(msgId, tripData);
+          if (msg.data.cliMsgId) sess.tripMsgCache.set(String(msg.data.cliMsgId), tripData);
+          while (sess.tripMsgCache.size > 100)
             sess.tripMsgCache.delete(sess.tripMsgCache.keys().next().value);
         }
       }
