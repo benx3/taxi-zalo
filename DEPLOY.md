@@ -18,6 +18,8 @@ Dành cho giai đoạn 200–500 user. 1 VPS chạy được tất cả 4 servic
 | Đường dẫn | Phục vụ | Backend |
 |---|---|---|
 | `/` | Homepage + App tài xế (tlx-driver) | port 8080 |
+| `/tinh-diem-tai-xe-zalo` | Tra cứu điểm công khai (không cần đăng nhập) | port 8080 |
+| `/api/public/` | Public API: groups, members, transactions | port 8080 |
 | `/api/` | Driver API | port 8080 |
 | `/ws` | Driver WebSocket | port 8080 |
 | `/admin/` | Admin panel (tlx-web) | port 8082 |
@@ -150,9 +152,12 @@ server {
         try_files $uri $uri/ /opt/tlx/tlx-web/dist/index.html;
     }
 
-    # ── Homepage + Driver SPA (tlx-driver dist) ──────────────────
+    # ── Homepage + Driver SPA + Tra cứu điểm (tlx-driver dist) ──
     root /opt/tlx/tlx-driver/dist;
     index index.html;
+    location /tinh-diem-tai-xe-zalo {
+        try_files $uri $uri/ /index.html;
+    }
     location / {
         try_files $uri $uri/ /index.html;
     }
@@ -173,9 +178,10 @@ curl -I http://103.38.237.63/api/health          # driver-service OK
 curl -I http://103.38.237.63/admin-api/health     # worker OK
 
 # Mở trình duyệt kiểm tra:
-# http://103.38.237.63/             → Homepage tài xế (có nút Đăng ký / Đăng nhập)
-# http://103.38.237.63/admin/       → Màn đăng nhập Admin
-# http://103.38.237.63/accountant/  → Màn đăng nhập Kế toán
+# http://103.38.237.63/                       → Homepage tài xế (có nút Đăng ký / Đăng nhập)
+# http://103.38.237.63/tinh-diem-tai-xe-zalo  → Trang tra cứu điểm công khai (không cần login)
+# http://103.38.237.63/admin/                 → Màn đăng nhập Admin
+# http://103.38.237.63/accountant/            → Màn đăng nhập Kế toán
 ```
 
 ---
@@ -317,6 +323,12 @@ npm start   # kiểm tra thấy "Server cổng 8080"
 
 ### Driver frontend (tlx-driver → phục vụ tại /)
 
+> **Thay đổi gần đây (build lại bắt buộc):**
+> - Trang công khai `/tinh-diem-tai-xe-zalo` — tra cứu điểm tài xế, không cần đăng nhập
+> - Bỏ TopBar trùng khi chưa đăng nhập (homepage chỉ còn 1 nav)
+> - Hỗ trợ `/?screen=login` và `/?screen=register` từ link ngoài
+> - `<body>` có `background:#070b16` — không còn white flash khi tải trang
+
 ```bash
 cd /opt/tlx/tlx-driver
 cat > .env <<'ENV'
@@ -380,6 +392,9 @@ server {
     root /opt/tlx/tlx-driver/dist;
     index index.html;
 
+    location /tinh-diem-tai-xe-zalo {
+        try_files $uri $uri/ /index.html;
+    }
     location / { try_files $uri $uri/ /index.html; }
 
     location /api/ {
@@ -447,6 +462,9 @@ server {
 
     # Driver frontend (mặc định)
     root /opt/tlx/tlx-driver/dist;
+    location /tinh-diem-tai-xe-zalo {
+        try_files $uri $uri/ /index.html;
+    }
     location / { try_files $uri $uri/ /index.html; }
 
     # Driver API + WS
@@ -530,8 +548,10 @@ pm2 logs tlx-driver-service --lines 50
 ```
 
 Trình duyệt:
-- `https://ten-mien.com` → màn đăng nhập tài xế
-- `https://admin.ten-mien.com/admin` → màn đăng nhập admin
+- `https://ten-mien.com` → Homepage tài xế (nav đơn, không double header)
+- `https://ten-mien.com/tinh-diem-tai-xe-zalo` → Trang tra cứu điểm công khai
+- `https://ten-mien.com/?screen=login` → Màn đăng nhập trực tiếp
+- `https://admin.ten-mien.com/admin` → Màn đăng nhập admin
 - Đăng nhập `admin / admin` → **ĐỔI MẬT KHẨU NGAY**
 
 ---

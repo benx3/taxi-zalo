@@ -333,6 +333,10 @@ export async function setSetting(key, value) {
 }
 
 // ---------- Kế toán: nhóm phụ trách ----------
+export async function listPublicGroups() {
+  const r = await q("SELECT DISTINCT group_id, group_name FROM accountant_groups ORDER BY group_name ASC");
+  return r.rows;
+}
 export async function getAccountantGroups(accountantId) {
   const r = await q("SELECT * FROM accountant_groups WHERE accountant_id=$1", [accountantId]);
   return r.rows;

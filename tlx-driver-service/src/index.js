@@ -111,6 +111,23 @@ app.get("/api/zalo/pending-qr", (req, res) => {
   res.json({ image: pendingQR.get(a.userId) || null });
 });
 
+// ---------- Public API — không cần đăng nhập ----------
+app.get("/api/public/groups", async (_req, res) => {
+  try { res.json(await dbm.listPublicGroups()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get("/api/public/members/:groupId", async (req, res) => {
+  try { res.json(await dbm.listMembers(req.params.groupId)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get("/api/public/transactions/:groupId/:zaloUid", async (req, res) => {
+  try {
+    const { groupId, zaloUid } = req.params;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    res.json(await dbm.listTransactions(groupId, { zaloUid, limit }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get("/", (_req, res) => res.send("TLX Driver Service đang chạy (port 8080)"));
 app.get("/health", (_req, res) => res.json({ ok: true, sessions: sm.sessionCount?.() ?? 0 }));
 

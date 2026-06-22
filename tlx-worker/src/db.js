@@ -356,6 +356,11 @@ export function purgeOld() {
 }
 
 // ---------- Kế toán: nhóm phụ trách ----------
+export function listPublicGroups() {
+  return db.prepare(
+    "SELECT DISTINCT group_id, group_name FROM accountant_groups ORDER BY group_name COLLATE NOCASE ASC"
+  ).all();
+}
 export function getAccountantGroups(accountantId) {
   return db.prepare("SELECT * FROM accountant_groups WHERE accountant_id=?").all(accountantId);
 }

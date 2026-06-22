@@ -53,7 +53,7 @@ export default function App() {
   return (
     <div style={{ minHeight:"100vh", background:"var(--bg)", color:"var(--ink)", fontFamily:"var(--body)" }}>
       <StyleVars />
-      <TopBar me={me} onLogout={logout} showSearch={!!me} searchQ={searchQ} setSearchQ={setSearchQ}/>
+      {me && <TopBar me={me} onLogout={logout} showSearch={true} searchQ={searchQ} setSearchQ={setSearchQ}/>}
       <DriverFlow me={me} setMe={handleSetMe} searchQ={searchQ} setSearchQ={setSearchQ}/>
     </div>
   );
@@ -92,7 +92,8 @@ function TopBar({ me, onLogout, showSearch, searchQ, setSearchQ }) {
 
 /* ============ LUỒNG TÀI XẾ ============ */
 function DriverFlow({ me, setMe, searchQ, setSearchQ }) {
-  const [screen, setScreen] = useState("home"); // "home" | "login" | "register"
+  const initScreen = (() => { const p = new URLSearchParams(window.location.search).get("screen"); return p === "login" || p === "register" ? p : "home"; })();
+  const [screen, setScreen] = useState(initScreen); // "home" | "login" | "register"
   const [zaloConnected, setZaloConnected] = useState(false);
   const [forceReconnect, setForceReconnect] = useState(false);
   // useWorker ở đây để WS không bị đóng/mở lại khi chuyển ConnectZalo ↔ DriverApp
@@ -581,7 +582,7 @@ function WonModal({trip,groupLink,onClose}){
 }
 
 /* ===== Shared UI ===== */
-function AuthShell({title,icon:Icon,children,accent="#34d399",wide}){return(<div style={{display:"grid",placeItems:"center",padding:"40px 16px",minHeight:"calc(100vh - 52px)"}}><div style={{width:"100%",maxWidth:wide?420:400}}><div style={{background:"var(--card)",border:"1px solid var(--line)",borderRadius:20,padding:"26px 24px",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}><div style={{width:38,height:38,borderRadius:11,background:accent+"1f",display:"grid",placeItems:"center"}}><Icon size={20} color={accent}/></div><div style={{fontFamily:"var(--display)",fontWeight:800,fontSize:21,letterSpacing:"-.02em"}}>{title}</div></div>{children}</div></div></div>);}
+function AuthShell({title,icon:Icon,children,accent="#34d399",wide}){return(<div style={{display:"grid",placeItems:"center",padding:"40px 16px",minHeight:"100vh"}}><div style={{width:"100%",maxWidth:wide?420:400}}><div style={{background:"var(--card)",border:"1px solid var(--line)",borderRadius:20,padding:"26px 24px",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}><div style={{width:38,height:38,borderRadius:11,background:accent+"1f",display:"grid",placeItems:"center"}}><Icon size={20} color={accent}/></div><div style={{fontFamily:"var(--display)",fontWeight:800,fontSize:21,letterSpacing:"-.02em"}}>{title}</div></div>{children}</div></div></div>);}
 function Field({label,icon:Icon,children}){return(<div style={{marginBottom:14}}><div style={{fontSize:12.5,color:"var(--ink-dim)",fontWeight:600,marginBottom:6,display:"flex",alignItems:"center",gap:5}}>{Icon&&<Icon size={13}/>} {label}</div>{children}</div>);}
 function ErrBox({children}){return(<div style={{display:"flex",alignItems:"center",gap:7,padding:"9px 12px",borderRadius:10,background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.3)",color:"#f87171",fontSize:13,fontWeight:600,marginBottom:14}}><AlertTriangle size={15}/> {children}</div>);}
 function Chip({children,active,onClick,solid}){return(<button onClick={onClick} style={{padding:"7px 13px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",border:"1px solid "+(active?"transparent":"var(--line)"),background:active?(solid?"var(--accent)":"rgba(52,211,153,.15)"):"var(--card)",color:active?(solid?"#04121a":"var(--accent)"):"var(--ink-dim)"}}>{children}</button>);}
