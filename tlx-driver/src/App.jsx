@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useWorker } from "./useWorker.js";
 import { api, getToken, setToken } from "./api.js";
+import HomePage from "./HomePage.jsx";
 
 // URL của app admin+kế toán (tlx-web chạy port 5174)
 const ADMIN_URL = import.meta.env.VITE_ADMIN_URL || "http://localhost:5174";
@@ -91,15 +92,17 @@ function TopBar({ me, onLogout, showSearch, searchQ, setSearchQ }) {
 
 /* ============ LUỒNG TÀI XẾ ============ */
 function DriverFlow({ me, setMe, searchQ, setSearchQ }) {
-  const [screen, setScreen] = useState("login");
+  const [screen, setScreen] = useState("home"); // "home" | "login" | "register"
   const [zaloConnected, setZaloConnected] = useState(false);
   const [forceReconnect, setForceReconnect] = useState(false);
   // useWorker ở đây để WS không bị đóng/mở lại khi chuyển ConnectZalo ↔ DriverApp
   const worker = useWorker();
 
-  if (!me) return screen==="login"
-    ? <LoginScreen onLogin={setMe} goRegister={()=>setScreen("register")}/>
-    : <RegisterScreen goLogin={()=>setScreen("login")}/>;
+  if (!me) {
+    if (screen === "home") return <HomePage goLogin={() => setScreen("login")} goRegister={() => setScreen("register")} />;
+    if (screen === "register") return <RegisterScreen goLogin={() => setScreen("login")} goHome={() => setScreen("home")} />;
+    return <LoginScreen onLogin={setMe} goRegister={() => setScreen("register")} goHome={() => setScreen("home")} />;
+  }
   if (me.status==="pending") return <GateScreen kind="pending" me={me} onLogout={()=>{api.logout();setMe(null);}}/>;
   if (me.status==="expired") return <GateScreen kind="expired" me={me} onLogout={()=>{api.logout();setMe(null);}}/>;
   if (me.status==="banned") return <GateScreen kind="banned" me={me} onLogout={()=>{api.logout();setMe(null);}}/>;
@@ -108,7 +111,7 @@ function DriverFlow({ me, setMe, searchQ, setSearchQ }) {
   return <DriverApp worker={worker} me={me} setMe={setMe} onChangeZalo={()=>{setZaloConnected(false);setForceReconnect(true);}} searchQ={searchQ} setSearchQ={setSearchQ}/>;
 }
 
-function LoginScreen({ onLogin, goRegister }) {
+function LoginScreen({ onLogin, goRegister, goHome }) {
   const [phone,setPhone]=useState(()=>localStorage.getItem("tlx_driver_phone")||""); const [pass,setPass]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
   const submit=async()=>{ setBusy(true); setErr("");
     try { const u = await api.login({phone:phone.trim(),pass}); localStorage.setItem("tlx_driver_phone",phone.trim()); onLogin(u); }
@@ -116,6 +119,7 @@ function LoginScreen({ onLogin, goRegister }) {
   };
   return (
     <AuthShell title="Đăng nhập" icon={Lock}>
+      {goHome&&<button onClick={goHome} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",color:"var(--ink-dim)",cursor:"pointer",fontSize:13,padding:"0 0 12px",fontFamily:"var(--body)"}}>← Trang chủ</button>}
       <Field label="Số điện thoại / Tài khoản" icon={Phone}><input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="SĐT tài xế" style={inputStyle} onKeyDown={e=>e.key==="Enter"&&submit()}/></Field>
       <Field label="Mật khẩu" icon={Lock}><input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="Nhập mật khẩu" style={inputStyle} onKeyDown={e=>e.key==="Enter"&&submit()}/></Field>
       {err&&<ErrBox>{err}</ErrBox>}
@@ -125,7 +129,7 @@ function LoginScreen({ onLogin, goRegister }) {
   );
 }
 
-function RegisterScreen({ goLogin }) {
+function RegisterScreen({ goLogin, goHome }) {
   const [name,setName]=useState(""); const [phone,setPhone]=useState(""); const [pass,setPass]=useState(""); const [pass2,setPass2]=useState(""); const [done,setDone]=useState(false); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
   const submit=async()=>{
     if(!name.trim()||phone.trim().length<9||pass.length<3){setErr("Điền đủ tên, SĐT hợp lệ và mật khẩu (≥3 ký tự).");return;}
@@ -143,6 +147,7 @@ function RegisterScreen({ goLogin }) {
   const mismatch = pass2.length>0 && pass!==pass2;
   return (
     <AuthShell title="Đăng ký" icon={UserPlus}>
+      {goHome&&<button onClick={goHome} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",color:"var(--ink-dim)",cursor:"pointer",fontSize:13,padding:"0 0 12px",fontFamily:"var(--body)"}}>← Trang chủ</button>}
       <Field label="Họ tên / Tên nhà xe" icon={User}><input value={name} onChange={e=>setName(e.target.value)} placeholder="VD: Nhà xe Thanh Thủy" style={inputStyle}/></Field>
       <Field label="Số điện thoại" icon={Phone}><input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Dùng để đăng nhập" style={inputStyle}/></Field>
       <Field label="Mật khẩu" icon={Lock}><input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="Tạo mật khẩu" style={inputStyle}/></Field>
