@@ -268,18 +268,18 @@ export async function getRevenueStats(fromMs, toMs) {
 export async function getUserStats(fromMs, toMs, status) {
   if (status && status !== "all") {
     const r = await q(`
-      SELECT to_char(to_timestamp(created_at/1000.0) + INTERVAL '7 hours', 'YYYY-MM-DD') as day,
-        status, COUNT(*) as count
+      SELECT id, name, phone, status,
+        to_char(to_timestamp(created_at/1000.0) + INTERVAL '7 hours', 'YYYY-MM-DD') as day, created_at
       FROM users WHERE role='driver' AND created_at>=$1 AND created_at<=$2 AND status=$3
-      GROUP BY day, status ORDER BY day ASC
+      ORDER BY created_at DESC
     `, [fromMs, toMs, status]);
     return r.rows;
   }
   const r = await q(`
-    SELECT to_char(to_timestamp(created_at/1000.0) + INTERVAL '7 hours', 'YYYY-MM-DD') as day,
-      status, COUNT(*) as count
+    SELECT id, name, phone, status,
+      to_char(to_timestamp(created_at/1000.0) + INTERVAL '7 hours', 'YYYY-MM-DD') as day, created_at
     FROM users WHERE role='driver' AND created_at>=$1 AND created_at<=$2
-    GROUP BY day, status ORDER BY day ASC
+    ORDER BY created_at DESC
   `, [fromMs, toMs]);
   return r.rows;
 }

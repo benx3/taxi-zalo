@@ -324,17 +324,17 @@ export function getRevenueStats(fromMs, toMs) {
 export function getUserStats(fromMs, toMs, status) {
   if (status && status !== "all") {
     return db.prepare(`
-      SELECT date(created_at/1000,'unixepoch','+7 hours') as day,
-        status, COUNT(*) as count
+      SELECT id, name, phone, status,
+        date(created_at/1000,'unixepoch','+7 hours') as day, created_at
       FROM users WHERE role='driver' AND created_at>=? AND created_at<=? AND status=?
-      GROUP BY day, status ORDER BY day ASC
+      ORDER BY created_at DESC
     `).all(fromMs, toMs, status);
   }
   return db.prepare(`
-    SELECT date(created_at/1000,'unixepoch','+7 hours') as day,
-      status, COUNT(*) as count
+    SELECT id, name, phone, status,
+      date(created_at/1000,'unixepoch','+7 hours') as day, created_at
     FROM users WHERE role='driver' AND created_at>=? AND created_at<=?
-    GROUP BY day, status ORDER BY day ASC
+    ORDER BY created_at DESC
   `).all(fromMs, toMs);
 }
 

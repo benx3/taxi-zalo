@@ -455,7 +455,7 @@ function AdminStatsTab() {
 
   const totalRev=(revData||[]).reduce((s,r)=>s+Number(r.total),0);
   const totalTx=(revData||[]).reduce((s,r)=>s+Number(r.count),0);
-  const totalUsr=(userData||[]).reduce((s,r)=>s+Number(r.count),0);
+  const totalUsr=(userData||[]).length;
   const fmt=n=>Number(n).toLocaleString("vi-VN")+"đ";
 
   return (
@@ -526,19 +526,20 @@ function AdminStatsTab() {
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13.5}}>
               <thead><tr style={{color:"var(--ink-dim)",fontSize:11.5,textTransform:"uppercase",letterSpacing:".05em",textAlign:"left"}}>
-                <th style={th}>Ngày đăng ký</th><th style={th}>Trạng thái</th><th style={{...th,textAlign:"right"}}>Số tài khoản</th>
+                <th style={th}>Ngày đăng ký</th><th style={th}>Tên</th><th style={th}>Số điện thoại</th><th style={th}>Trạng thái</th>
               </tr></thead>
               <tbody>{userData.map((r,i)=>{const c=STATUS_COLORS[r.status]||"#94a3b8";return(
                 <tr key={i} style={{borderTop:"1px solid var(--line)"}}>
                   <td style={td}>{r.day}</td>
+                  <td style={{...td,fontWeight:600}}>{r.name||"—"}</td>
+                  <td style={td}>{r.phone||"—"}</td>
                   <td style={td}><span style={{display:"inline-block",padding:"3px 10px",borderRadius:99,fontSize:12,fontWeight:700,color:c,background:c+"1f",border:"1px solid "+c+"33"}}>{STATUS_LABELS[r.status]||r.status}</span></td>
-                  <td style={{...td,textAlign:"right",fontWeight:700}}>{r.count}</td>
                 </tr>
               );})}
               </tbody>
               <tfoot><tr style={{borderTop:"2px solid var(--line)",background:"rgba(255,255,255,.03)"}}>
-                <td style={{...td,fontWeight:700}} colSpan={2}>Tổng</td>
-                <td style={{...td,textAlign:"right",fontWeight:800,fontSize:16}}>{totalUsr}</td>
+                <td style={{...td,fontWeight:700}} colSpan={3}>Tổng</td>
+                <td style={{...td,fontWeight:800,fontSize:16}}>{totalUsr} tài khoản</td>
               </tr></tfoot>
             </table>
           </div>
@@ -565,5 +566,8 @@ function StyleVars(){return(<style>{`
   .overlay-in{animation:fadeIn .18s ease;}@keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
   .modal-in{animation:modalIn .28s cubic-bezier(.2,.9,.3,1.2);}@keyframes modalIn{from{opacity:0;transform:scale(.95) translateY(10px);}to{opacity:1;transform:scale(1) translateY(0);}}
   table tr:hover td{background:rgba(255,255,255,.02);}
+  input[type="date"]{cursor:pointer;}
+  input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.8);cursor:pointer;padding:2px;border-radius:4px;}
+  input[type="date"]::-webkit-calendar-picker-indicator:hover{filter:invert(1);}
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
 `}</style>);}

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from "react";
+import * as XLSX from "xlsx";
 import { api } from "./api.js";
 import {
   Users, Search, Plus, ChevronRight, TrendingUp, TrendingDown,
-  X, Check, Clock, Edit2, Trash2, AlertTriangle, RefreshCw
+  X, Check, Clock, Edit2, Trash2, AlertTriangle, RefreshCw, Download
 } from "lucide-react";
 
 const PAGE_SIZE = 25;
@@ -104,6 +105,20 @@ export default function MembersTab({ groupId }) {
     }
   };
 
+  const exportExcel = () => {
+    const rows = sorted.map((m, i) => ({
+      "STT": i + 1,
+      "Tên Zalo": m.display_name || m.zalo_uid || "",
+      "Điểm": Number(m.points) || 0,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [{ wch: 6 }, { wch: 36 }, { wch: 10 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Thành viên");
+    const date = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `thanh-vien-${date}.xlsx`);
+  };
+
   if (selected) return (
     <MemberDetail member={selected} groupId={groupId} onBack={() => { setSelected(null); reload(); }} />
   );
@@ -120,6 +135,10 @@ export default function MembersTab({ groupId }) {
         <button onClick={syncFromZalo} disabled={syncing} title="Cập nhật thành viên từ Zalo: thêm mới + xóa người đã rời nhóm" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid var(--line)", background: "transparent", color: syncing ? "var(--ink-dim)" : "#60a5fa", fontWeight: 700, fontSize: 13, cursor: syncing ? "default" : "pointer", whiteSpace: "nowrap" }}>
           <RefreshCw size={14} style={{ animation: syncing ? "spin 1s linear infinite" : "none" }} />
           {syncing ? "Đang cập nhật…" : "Cập nhật thành viên"}
+        </button>
+        <button onClick={exportExcel} disabled={sorted.length === 0} title="Xuất danh sách ra file Excel"
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid rgba(96,165,250,.4)", background: "rgba(96,165,250,.1)", color: "#60a5fa", fontWeight: 700, fontSize: 13, cursor: sorted.length === 0 ? "default" : "pointer", whiteSpace: "nowrap", opacity: sorted.length === 0 ? 0.5 : 1 }}>
+          <Download size={14} /> Excel
         </button>
         <button onClick={() => setShowAdd(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid var(--accent-dim)", background: "rgba(52,211,153,.15)", color: "var(--accent)", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
           <Plus size={15} /> Thêm
