@@ -11,11 +11,15 @@ function buildPageList(cur, total) {
   return [1, "…", cur - 1, cur, cur + 1, "…", total];
 }
 
-const fmtTime = (ms) => new Date(ms).toLocaleString("vi-VN", {
-  timeZone: "Asia/Ho_Chi_Minh",
-  day: "2-digit", month: "2-digit", year: "numeric",
-  hour: "2-digit", minute: "2-digit",
-});
+const fmtTime = (ms) => {
+  const d = new Date(Number(ms));
+  if (!ms || isNaN(d.getTime())) return "—";
+  return d.toLocaleString("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+};
 const fmtPts = (p) => {
   const n = Number(p) || 0;
   return (n % 1 === 0 ? n.toFixed(0) : n.toFixed(2)) + "đ";
