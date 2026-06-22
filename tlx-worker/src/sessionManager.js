@@ -336,28 +336,73 @@ function onMessage(sess, msg) {
       }
     }
 
-    // (A.1) San điểm qua account kế toán nhóm → tạo pending, kế toán duyệt mới thực hiện
+    // (A.0a / A.0c / A.1) San điểm trong nhóm kế toán
+    // A.0a: Tài xế tag chỉ KT → tài xế bán/tặng điểm ngược cho KT ("San @KT 15d")
+    // A.0c: Chính KT nhóm gửi lệnh san trực tiếp cho người khác
+    // A.1 : Người khác tag KT + người nhận trong cùng tin
     if (sess.isAccountant && senderId !== String(sess.selfId) && /\bsan\b/i.test(text)) {
       const mentions = msg.data?.mentions || [];
-      if (mentions.length >= 2) {
+      if (mentions.length > 0) {
         Promise.resolve((async () => {
           const ktUid = await dbm.getGroupKtUid(groupId);
-          if (!ktUid || ktUid === String(sess.selfId)) return; // A.0 đã xử lý
-          const sanResults = detectSanDiem(text, mentions, ktUid);
-          if (!sanResults.length) return;
-          for (const sanAuto of sanResults) {
-            if (!sanAuto.toUid) continue;
-            const txId = await dbm.createPendingTransfer(groupId, senderId, sanAuto.toUid, sanAuto.amount, text);
-            console.log(`[${sess.userId}] 📋 Pending san: ${senderId} → ${sanAuto.toUid} ${sanAuto.amount}đ nhóm=${groupId}`);
-            sess.onEvent(sess.userId, {
-              type: "pending_transfer", txId,
-              groupId, groupName,
-              fromUid: senderId, fromName: senderName,
-              toUid: sanAuto.toUid, toName: sanAuto.toName || "",
-              points: sanAuto.amount, rawText: text,
-            });
+          // Tập hợp tất cả UID được coi là "kế toán" (bot session + KT thật của nhóm)
+          const ktUids = new Set([String(sess.selfId)]);
+          if (ktUid) ktUids.add(String(ktUid));
+
+          // A.0c: Chính KT nhóm gửi san → tất cả mentions là người nhận
+          if (ktUid && String(ktUid) === String(senderId)) {
+            const sanResults = detectSanDiem(text, mentions, null);
+            for (const sr of sanResults) {
+              if (!sr.toUid) continue;
+              const txId = await dbm.createPendingTransfer(groupId, senderId, sr.toUid, sr.amount, text);
+              console.log(`[${sess.userId}] 📋 KT san: ${senderId} → ${sr.toUid} ${sr.amount}đ nhóm=${groupId}`);
+              sess.onEvent(sess.userId, {
+                type: "pending_transfer", txId, groupId, groupName,
+                fromUid: senderId, fromName: senderName,
+                toUid: sr.toUid, toName: sr.toName || "", points: sr.amount, rawText: text,
+              });
+            }
+            return;
           }
-        })()).catch(e => console.error(`[${sess.userId}] auto-san pending:`, e?.message || e));
+
+          // A.0a: Tất cả mentions đều là KT → tài xế trả/bán điểm cho KT
+          const allToKT = mentions.every(mn => ktUids.has(String(mn.uid)));
+          if (allToKT) {
+            const amountRe = /(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ|d)(?!\w)/gi;
+            let m; const amounts = [];
+            while ((m = amountRe.exec(text)) !== null) {
+              const val = parseFloat(m[1].replace(",", "."));
+              if (val > 0 && val <= 20) amounts.push(val);
+            }
+            if (!amounts.length) return;
+            const toM = mentions[0];
+            const txId = await dbm.createPendingTransfer(groupId, senderId, String(toM.uid), amounts[0], text);
+            console.log(`[${sess.userId}] 💰 Driver→KT san: ${senderId} → ${toM.uid} ${amounts[0]}đ nhóm=${groupId}`);
+            sess.onEvent(sess.userId, {
+              type: "pending_transfer", txId, groupId, groupName,
+              fromUid: senderId, fromName: senderName,
+              toUid: String(toM.uid), toName: toM.display_name || toM.dName || "",
+              points: amounts[0], rawText: text,
+            });
+            return;
+          }
+
+          // A.1: Người khác tag KT + người nhận (ktUid khác sess.selfId)
+          if (!ktUid || ktUid === String(sess.selfId)) return;
+          if (mentions.length >= 2) {
+            const sanResults = detectSanDiem(text, mentions, ktUid);
+            for (const sr of sanResults) {
+              if (!sr.toUid) continue;
+              const txId = await dbm.createPendingTransfer(groupId, senderId, sr.toUid, sr.amount, text);
+              console.log(`[${sess.userId}] 📋 Pending san: ${senderId} → ${sr.toUid} ${sr.amount}đ nhóm=${groupId}`);
+              sess.onEvent(sess.userId, {
+                type: "pending_transfer", txId, groupId, groupName,
+                fromUid: senderId, fromName: senderName,
+                toUid: sr.toUid, toName: sr.toName || "", points: sr.amount, rawText: text,
+              });
+            }
+          }
+        })()).catch(e => console.error(`[${sess.userId}] auto-san:`, e?.message || e));
       }
     }
 
