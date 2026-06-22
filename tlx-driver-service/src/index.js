@@ -14,6 +14,13 @@ import { config } from "../../tlx-worker/src/config.js";
 
 const PORT = Number(process.env.PORT || 8080);
 
+if (!process.env.DATABASE_URL) {
+  console.warn("⚠️  CẢNH BÁO: DATABASE_URL chưa đặt → dùng SQLite riêng.");
+  console.warn("   Nếu tlx-worker dùng PostgreSQL, tài khoản admin duyệt sẽ KHÔNG phản ánh ở đây.");
+  console.warn("   → Tài xế sẽ luôn thấy 'Chờ duyệt' dù đã được duyệt.");
+  console.warn("   Hãy thêm DATABASE_URL=postgres://... vào tlx-driver-service/.env rồi restart.");
+}
+
 await dbm.ensureSeed();
 await dbm.purgeOld();
 config.voiceEnabled = (await dbm.getSetting("voice_enabled", "1")) === "1";

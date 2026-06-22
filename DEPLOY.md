@@ -32,6 +32,38 @@ cd /opt/tlx
 git pull
 ```
 
+### Bước A.1 — Kiểm tra `.env` driver-service (BẮT BUỘC nếu lần đầu hoặc sau khi đổi DB)
+
+```bash
+cat /opt/tlx/tlx-driver-service/.env
+```
+
+**Phải có `DATABASE_URL` giống hệt `tlx-worker/.env`.** Nếu thiếu hoặc bị comment → driver dùng SQLite riêng, tài khoản duyệt rồi vẫn hiện "Chờ duyệt":
+
+```bash
+# Xem DATABASE_URL đang dùng trong worker:
+grep DATABASE_URL /opt/tlx/tlx-worker/.env
+
+# Cập nhật driver-service/.env (thay MAT_KHAU_MANH cho đúng):
+cat > /opt/tlx/tlx-driver-service/.env <<'ENV'
+PORT=8080
+DATABASE_URL=postgres://tlx:MAT_KHAU_MANH@localhost:5432/tlx
+APP_SECRET=<cùng APP_SECRET với tlx-worker>
+CORS_ORIGIN=*
+OK_DELAY_MIN=400
+OK_DELAY_MAX=1200
+ENV
+```
+
+Sau khi sửa `.env` phải **restart driver-service** và kiểm tra log có dòng `🗄️  Dùng PostgreSQL` (không được thấy `SQLite`):
+
+```bash
+pm2 restart tlx-driver-service
+pm2 logs tlx-driver-service --lines 10
+```
+
+---
+
 ### Bước B — Cập nhật backend (khi có thay đổi code backend)
 
 ```bash
