@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 
-const ADMIN_URL = import.meta.env.VITE_ADMIN_URL || "http://localhost:5174";
+const ADMIN_URL = import.meta.env.VITE_ADMIN_URL || "http://103.38.237.63";
 
 /* ─── SVG Illustrations ──────────────────────────────── */
 function PhoneDriverIllustration() {

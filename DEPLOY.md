@@ -2,6 +2,150 @@
 
 Dành cho giai đoạn 200–500 user. 1 VPS chạy được tất cả 4 service.
 
+> **Server đang chạy:** `103.38.237.63`
+> - Tài xế (homepage + app): `http://103.38.237.63/`
+> - Admin: `http://103.38.237.63/admin/`
+> - Kế toán: `http://103.38.237.63/accountant/`
+
+---
+
+## QUICK DEPLOY — Server 103.38.237.63 (1 IP, phân loại theo đường dẫn)
+
+> Dùng hướng dẫn này nếu deploy lại hoặc cập nhật code lên server hiện tại.
+
+### Cấu trúc URL trên server
+
+| Đường dẫn | Phục vụ | Backend |
+|---|---|---|
+| `/` | Homepage + App tài xế (tlx-driver) | port 8080 |
+| `/api/` | Driver API | port 8080 |
+| `/ws` | Driver WebSocket | port 8080 |
+| `/admin/` | Admin panel (tlx-web) | port 8082 |
+| `/accountant/` | Kế toán panel (tlx-web) | port 8082 |
+| `/admin-api/` | Admin + KT API | port 8082 |
+| `/admin-ws` | Admin + KT WebSocket | port 8082 |
+
+### Bước A — Lấy code mới
+
+```bash
+cd /opt/tlx
+git pull
+```
+
+### Bước B — Cập nhật backend (khi có thay đổi code backend)
+
+```bash
+# Worker (Admin + KT backend, port 8082)
+cd /opt/tlx/tlx-worker && npm install && pm2 restart tlx-worker
+
+# Driver service (port 8080)
+cd /opt/tlx/tlx-driver-service && npm install && pm2 restart tlx-driver-service
+```
+
+### Bước C — Build frontend tài xế (tlx-driver → Homepage + App)
+
+```bash
+cd /opt/tlx/tlx-driver
+cat > .env <<'ENV'
+VITE_API_BASE=http://103.38.237.63
+VITE_WS_BASE=ws://103.38.237.63/ws
+VITE_ADMIN_URL=http://103.38.237.63
+ENV
+npm install && npm run build
+```
+
+### Bước D — Build frontend Admin + Kế toán (tlx-web)
+
+```bash
+cd /opt/tlx/tlx-web
+cat > .env <<'ENV'
+VITE_API_BASE=http://103.38.237.63/admin-api
+VITE_WS_BASE=ws://103.38.237.63/admin-ws
+ENV
+npm install && npm run build
+```
+
+> `tlx-web` dùng `base: "./"` trong `vite.config.js` — assets sẽ ở `/admin/assets/...` và `/accountant/assets/...`, không conflict với assets của tlx-driver ở `/assets/`.
+
+### Bước E — Nginx config (nếu chưa có hoặc cần sửa)
+
+Tạo file `/etc/nginx/sites-available/tlx`:
+
+```nginx
+server {
+    listen 80;
+    server_name 103.38.237.63;
+
+    # ── Admin + Kế Toán API (tlx-worker, port 8082) ──────────────
+    location /admin-api/ {
+        rewrite ^/admin-api/(.*)$ /api/$1 break;
+        proxy_pass http://127.0.0.1:8082;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    location /admin-ws {
+        proxy_pass http://127.0.0.1:8082/ws;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+    }
+
+    # ── Driver API (tlx-driver-service, port 8080) ────────────────
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    location /ws {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+    }
+
+    # ── Admin + Kế Toán SPA (tlx-web dist) ───────────────────────
+    location = /admin      { return 301 /admin/; }
+    location = /accountant { return 301 /accountant/; }
+
+    location /admin/ {
+        alias /opt/tlx/tlx-web/dist/;
+        try_files $uri $uri/ /opt/tlx/tlx-web/dist/index.html;
+    }
+    location /accountant/ {
+        alias /opt/tlx/tlx-web/dist/;
+        try_files $uri $uri/ /opt/tlx/tlx-web/dist/index.html;
+    }
+
+    # ── Homepage + Driver SPA (tlx-driver dist) ──────────────────
+    root /opt/tlx/tlx-driver/dist;
+    index index.html;
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+```bash
+ln -sf /etc/nginx/sites-available/tlx /etc/nginx/sites-enabled/tlx
+# Xoá default nếu còn
+rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl reload nginx
+```
+
+### Kiểm tra sau deploy
+
+```bash
+curl -I http://103.38.237.63/api/health          # driver-service OK
+curl -I http://103.38.237.63/admin-api/health     # worker OK
+
+# Mở trình duyệt kiểm tra:
+# http://103.38.237.63/             → Homepage tài xế (có nút Đăng ký / Đăng nhập)
+# http://103.38.237.63/admin/       → Màn đăng nhập Admin
+# http://103.38.237.63/accountant/  → Màn đăng nhập Kế toán
+```
+
 ---
 
 ## 0. Chọn VPS

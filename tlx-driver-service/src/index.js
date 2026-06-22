@@ -161,6 +161,7 @@ async function handleWs(userId, raw) {
   if (cmd.action === "take") sm.takeTrip(userId, cmd);
   if (cmd.action === "cancel") sm.cancelTake(userId, cmd);
   if (cmd.action === "startZalo") ensureZaloSession(userId);
+  if (cmd.action === "setGroups") sm.setWatchedGroups(userId, cmd.groupIds || []).catch(() => {});
 }
 
 console.log("✅ Driver Service sẵn sàng.");
