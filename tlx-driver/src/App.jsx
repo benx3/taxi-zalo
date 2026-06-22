@@ -96,7 +96,8 @@ function DriverFlow({ me, setMe, searchQ, setSearchQ }) {
   const [zaloConnected, setZaloConnected] = useState(false);
   const [forceReconnect, setForceReconnect] = useState(false);
   // useWorker ở đây để WS không bị đóng/mở lại khi chuyển ConnectZalo ↔ DriverApp
-  const worker = useWorker();
+  // Truyền me?.id: khi user login lần đầu (me thay đổi null→user), WS sẽ connect lại
+  const worker = useWorker(me?.id);
 
   if (!me) {
     if (screen === "home") return <HomePage goLogin={() => setScreen("login")} goRegister={() => setScreen("register")} />;

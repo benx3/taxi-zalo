@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getToken, WS_BASE } from "./api.js";
 
-export function useWorker() {
+export function useWorker(meId) {
   const [connected, setConnected] = useState(false);
   const [trips, setTrips] = useState([]);
   const [states, setStates] = useState({});
@@ -22,6 +22,9 @@ export function useWorker() {
     setTrips(prev => prev.slice(0, n));
   }, []);
 
+  // meId làm dependency: khi user login (meId thay đổi từ undefined → id),
+  // effect re-chạy và WS kết nối với token mới. Tránh lỗi "Chưa kết nối"
+  // khi user đăng nhập lần đầu mà chưa có token lúc component mount.
   useEffect(() => {
     const token = getToken();
     if (!token) return;
@@ -60,7 +63,7 @@ export function useWorker() {
     }
     connect();
     return () => { alive = false; clearTimeout(retry); wsRef.current?.close(); };
-  }, []);
+  }, [meId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = (obj) => { const ws = wsRef.current; if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj)); };
   const take = useCallback((trip) => { setStates(s => ({ ...s, [trip.msgId]: "pending" })); send({ action: "take", groupId: trip.groupId, msgId: trip.msgId, ownerId: trip.senderId, text: trip.text, trip }); }, []);
