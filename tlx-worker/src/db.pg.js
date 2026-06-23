@@ -457,12 +457,16 @@ export async function deleteTransaction(id) {
 }
 
 // ---------- Kế toán: giao dịch chờ duyệt ----------
-export async function createPendingTransfer(groupId, fromUid, toUid, points, rawText) {
+export async function createPendingTransfer(groupId, fromUid, toUid, points, rawText, msgId = null) {
+  if (msgId) {
+    const exists = await q("SELECT id FROM point_transactions WHERE group_id=$1 AND trip_msg_id=$2 AND status='pending'", [groupId, msgId]);
+    if (exists.rows[0]) return exists.rows[0].id;
+  }
   const txId = uid();
   await q(`INSERT INTO point_transactions
-    (id,group_id,from_member,to_member,points,reason,type,status,requester_uid,created_at)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [txId, groupId, fromUid, toUid || null, Math.abs(points), rawText || null,
+    (id,group_id,trip_msg_id,from_member,to_member,points,reason,type,status,requester_uid,created_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [txId, groupId, msgId || null, fromUid, toUid || null, Math.abs(points), rawText || null,
       "manual", "pending", fromUid, now()]);
   return txId;
 }

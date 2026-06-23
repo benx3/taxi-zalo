@@ -537,12 +537,17 @@ export function deleteTransaction(id) {
 }
 
 // ---------- Kế toán: giao dịch chờ duyệt (san điểm) ----------
-export function createPendingTransfer(groupId, fromUid, toUid, points, rawText) {
+export function createPendingTransfer(groupId, fromUid, toUid, points, rawText, msgId = null) {
+  // Dedup: nếu msgId đã tồn tại trong nhóm này → bỏ qua (2 Zalo account cùng theo dõi nhóm)
+  if (msgId) {
+    const exists = db.prepare("SELECT id FROM point_transactions WHERE group_id=? AND trip_msg_id=? AND status='pending'").get(groupId, msgId);
+    if (exists) return exists.id;
+  }
   const txId = uid();
   db.prepare(`INSERT INTO point_transactions
-    (id,group_id,from_member,to_member,points,reason,type,status,requester_uid,created_at)
-    VALUES(?,?,?,?,?,?,?,?,?,?)`)
-    .run(txId, groupId, fromUid, toUid || null, Math.abs(points), rawText || null,
+    (id,group_id,trip_msg_id,from_member,to_member,points,reason,type,status,requester_uid,created_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(txId, groupId, msgId || null, fromUid, toUid || null, Math.abs(points), rawText || null,
       "manual", "pending", fromUid, now());
   return txId;
 }

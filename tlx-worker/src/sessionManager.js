@@ -303,7 +303,7 @@ function onMessage(sess, msg) {
           if (!sr.toUid) continue;
           if (sr.toName) Promise.resolve(dbm.upsertMember(groupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
           Promise.resolve(dbm.createPendingTransfer(
-            groupId, senderId, sr.toUid, sr.amount, text
+            groupId, senderId, sr.toUid, sr.amount, text, msgId
           )).then(txId => {
             sess.onEvent(sess.userId, {
               type: "pending_transfer", txId,
@@ -328,7 +328,7 @@ function onMessage(sess, msg) {
             if (!sr.toUid) continue;
             if (sr.toName) Promise.resolve(dbm.upsertMember(groupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
             Promise.resolve(dbm.createPendingTransfer(
-              groupId, senderId, sr.toUid, sr.amount, text
+              groupId, senderId, sr.toUid, sr.amount, text, msgId
             )).then(txId => {
               sess.onEvent(sess.userId, {
                 type: "pending_transfer", txId,
@@ -363,7 +363,7 @@ function onMessage(sess, msg) {
             for (const sr of sanResults) {
               if (!sr.toUid) continue;
               if (sr.toName) Promise.resolve(dbm.upsertMember(groupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
-              const txId = await dbm.createPendingTransfer(groupId, senderId, sr.toUid, sr.amount, text);
+              const txId = await dbm.createPendingTransfer(groupId, senderId, sr.toUid, sr.amount, text, msgId);
               console.log(`[${sess.userId}] 📋 KT san: ${senderId} → ${sr.toUid} ${sr.amount}đ nhóm=${groupId}`);
               sess.onEvent(sess.userId, {
                 type: "pending_transfer", txId, groupId, groupName,
@@ -387,7 +387,7 @@ function onMessage(sess, msg) {
             const toM = mentions[0];
             const toMName = toM.display_name || toM.dName || "";
             if (toMName) Promise.resolve(dbm.upsertMember(groupId, String(toM.uid), { display_name: toMName })).catch(() => {});
-            const txId = await dbm.createPendingTransfer(groupId, senderId, String(toM.uid), amounts[0], text);
+            const txId = await dbm.createPendingTransfer(groupId, senderId, String(toM.uid), amounts[0], text, msgId);
             console.log(`[${sess.userId}] 💰 Driver→KT san: ${senderId} → ${toM.uid} ${amounts[0]}đ nhóm=${groupId}`);
             sess.onEvent(sess.userId, {
               type: "pending_transfer", txId, groupId, groupName,
@@ -405,7 +405,7 @@ function onMessage(sess, msg) {
             for (const sr of sanResults) {
               if (!sr.toUid) continue;
               if (sr.toName) Promise.resolve(dbm.upsertMember(groupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
-              const txId = await dbm.createPendingTransfer(groupId, senderId, sr.toUid, sr.amount, text);
+              const txId = await dbm.createPendingTransfer(groupId, senderId, sr.toUid, sr.amount, text, msgId);
               console.log(`[${sess.userId}] 📋 Pending san: ${senderId} → ${sr.toUid} ${sr.amount}đ nhóm=${groupId}`);
               sess.onEvent(sess.userId, {
                 type: "pending_transfer", txId, groupId, groupName,
