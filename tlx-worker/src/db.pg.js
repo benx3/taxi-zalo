@@ -372,6 +372,10 @@ export async function removeAccountantGroup(accountantId, groupId) {
 }
 
 // ---------- Kế toán: thành viên ----------
+export async function countMembers(groupId) {
+  const r = await q("SELECT COUNT(*) as cnt FROM members WHERE group_id=$1", [groupId]);
+  return Number(r.rows[0]?.cnt ?? 0);
+}
 export async function listMembers(groupId) {
   const r = await q("SELECT * FROM members WHERE group_id=$1 ORDER BY points DESC, display_name ASC", [groupId]);
   return r.rows;

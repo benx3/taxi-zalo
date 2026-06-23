@@ -202,12 +202,14 @@ async function loadGroups(sess) {
   persistCookies(sess.userId, sess.api).catch(() => {});
 
   // Auto-import thành viên sau khi load groups (dành cho kế toán)
+  // Chỉ import nếu nhóm chưa có thành viên trong DB — tránh sync lại không cần thiết
   try {
     const u = await dbm.getUserPublic(sess.userId);
     if (u?.role === "accountant") {
       const acctGroups = await dbm.getAccountantGroups(sess.userId);
       for (const ag of acctGroups) {
-        importGroupMembers(sess, ag.group_id).catch(() => {});
+        const cnt = await dbm.countMembers(ag.group_id);
+        if (cnt === 0) importGroupMembers(sess, ag.group_id).catch(() => {});
       }
     }
   } catch {}
@@ -687,9 +689,10 @@ export async function setWatchedGroups(userId, groupIds) {
       for (const gId of currentSet) {
         if (!idsSet.has(gId)) await dbm.removeAccountantGroup(userId, gId);
       }
-      // Auto-import thành viên từ nhóm mới thêm
+      // Auto-import thành viên từ nhóm mới thêm — chỉ khi chưa có dữ liệu
       for (const gId of newGroups) {
-        importGroupMembers(sess, gId).catch(() => {});
+        const cnt = await dbm.countMembers(gId);
+        if (cnt === 0) importGroupMembers(sess, gId).catch(() => {});
       }
     }
   } catch (e) {

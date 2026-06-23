@@ -399,6 +399,9 @@ export function removeAccountantGroup(accountantId, groupId) {
 }
 
 // ---------- Kế toán: thành viên ----------
+export function countMembers(groupId) {
+  return db.prepare("SELECT COUNT(*) as cnt FROM members WHERE group_id=?").get(groupId)?.cnt ?? 0;
+}
 export function listMembers(groupId) {
   return db.prepare("SELECT * FROM members WHERE group_id=? ORDER BY points DESC, display_name COLLATE NOCASE ASC").all(groupId);
 }
