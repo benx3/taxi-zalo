@@ -50,7 +50,7 @@ export const {
   saveZaloSession, getZaloSession, clearZaloSession,
   saveTrip, markTripWon, deleteSavedTrip, listSavedTrips, purgeOld,
   getSetting, setSetting,
-  getAccountantGroups, addAccountantGroup, removeAccountantGroup,
+  getAccountantGroups, addAccountantGroup, removeAccountantGroup, setGroupPublicVisible,
   listMembers, getMemberByZaloUid, upsertMember, deleteRemovedMembers, setMemberAlias,
   adjustPoints, listTransactions, updateTransaction, deleteTransaction,
   createPendingTransfer, listPendingTransfers, approvePendingTransfer, rejectPendingTransfer,

@@ -37,6 +37,7 @@ export const api = {
   setAlias: (b) => req("/api/accountant/members/alias", b, "PATCH"),
   syncMembers: () => req("/api/accountant/sync-members", {}),
   enrichMemberNames: (groupId) => req(`/api/accountant/groups/${encodeURIComponent(groupId)}/enrich-members`, {}),
+  setGroupPublicVisible: (groupId, visible) => req(`/api/accountant/groups/${encodeURIComponent(groupId)}/public-visible`, { visible }, "PATCH"),
   lookupUser: (phone) => req(`/api/accountant/lookup-user?phone=${encodeURIComponent(phone)}`, null, "GET"),
 
   // Giao dịch điểm

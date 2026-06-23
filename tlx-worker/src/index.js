@@ -244,6 +244,16 @@ app.get("/api/accountant/lookup-user", async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message || String(e) }); }
 });
 
+app.patch("/api/accountant/groups/:groupId/public-visible", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  const { visible } = req.body;
+  if (typeof visible !== "boolean") return res.status(400).json({ error: "visible phải là boolean" });
+  try {
+    await dbm.setGroupPublicVisible(a.userId, req.params.groupId, visible);
+    res.json({ ok: true, visible });
+  } catch (e) { res.status(400).json({ error: e.message || String(e) }); }
+});
+
 app.post("/api/accountant/groups/:groupId/enrich-members", async (req, res) => {
   const a = await requireAccountant(req, res); if (!a) return;
   if (!await checkGroupAccess(req, res, req.params.groupId)) return;

@@ -146,6 +146,9 @@ export async function ensureSeed() {
       .run(uid(), "admin", hash, "Quản trị viên", "admin", "active", now());
     console.log("👤 Đã tạo tài khoản admin. Đăng nhập lần đầu và đổi mật khẩu ngay.");
   }
+  // Migration: thêm cột public_visible nếu chưa có
+  try { db.prepare("ALTER TABLE accountant_groups ADD COLUMN public_visible INTEGER DEFAULT 1").run(); }
+  catch {}
 }
 
 // ---------- Auth ----------
@@ -362,11 +365,15 @@ export function purgeOld() {
 // ---------- Kế toán: nhóm phụ trách ----------
 export function listPublicGroups() {
   return db.prepare(
-    "SELECT DISTINCT group_id, group_name FROM accountant_groups ORDER BY group_name COLLATE NOCASE ASC"
+    "SELECT DISTINCT group_id, group_name FROM accountant_groups WHERE public_visible=1 ORDER BY group_name COLLATE NOCASE ASC"
   ).all();
 }
 export function getAccountantGroups(accountantId) {
   return db.prepare("SELECT * FROM accountant_groups WHERE accountant_id=?").all(accountantId);
+}
+export function setGroupPublicVisible(accountantId, groupId, visible) {
+  db.prepare("UPDATE accountant_groups SET public_visible=? WHERE accountant_id=? AND group_id=?")
+    .run(visible ? 1 : 0, accountantId, groupId);
 }
 export function addAccountantGroup(accountantId, groupId, groupName) {
   db.prepare("INSERT OR REPLACE INTO accountant_groups(accountant_id,group_id,group_name) VALUES(?,?,?)").run(accountantId, groupId, groupName || groupId);

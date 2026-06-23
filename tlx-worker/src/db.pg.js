@@ -136,6 +136,8 @@ export async function ensureSeed() {
       [uid(), "admin", hash, "Quản trị viên", "admin", "active", now()]);
     console.log("👤 Đã tạo tài khoản admin. Đăng nhập lần đầu và đổi mật khẩu ngay.");
   }
+  // Migration: thêm cột public_visible nếu chưa có
+  await q("ALTER TABLE accountant_groups ADD COLUMN IF NOT EXISTS public_visible INTEGER NOT NULL DEFAULT 1").catch(() => {});
 }
 
 // ---------- Auth ----------
@@ -338,12 +340,16 @@ export async function setSetting(key, value) {
 
 // ---------- Kế toán: nhóm phụ trách ----------
 export async function listPublicGroups() {
-  const r = await q("SELECT DISTINCT group_id, group_name FROM accountant_groups ORDER BY group_name ASC");
+  const r = await q("SELECT DISTINCT group_id, group_name FROM accountant_groups WHERE public_visible=1 ORDER BY group_name ASC");
   return r.rows;
 }
 export async function getAccountantGroups(accountantId) {
   const r = await q("SELECT * FROM accountant_groups WHERE accountant_id=$1", [accountantId]);
   return r.rows;
+}
+export async function setGroupPublicVisible(accountantId, groupId, visible) {
+  await q("UPDATE accountant_groups SET public_visible=$1 WHERE accountant_id=$2 AND group_id=$3",
+    [visible ? 1 : 0, accountantId, groupId]);
 }
 export async function addAccountantGroup(accountantId, groupId, groupName) {
   await q("INSERT INTO accountant_groups(accountant_id,group_id,group_name) VALUES($1,$2,$3) ON CONFLICT(accountant_id,group_id) DO UPDATE SET group_name=$3",
