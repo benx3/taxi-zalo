@@ -214,11 +214,14 @@ async function loadGroups(sess) {
 
 // Ánh xạ parseType (parser output) → barem type codes (lưu trong DB từ BaremTab)
 const PARSER_TO_BAREM = {
-  "Bao xe":  ["bao_xe"],
-  "Ghép 1":  ["ghep_1"],
-  "Ghép 2":  ["ghep_2"],
-  "Hàng":    ["ship"],
-  "Sân bay": ["san_bay_don", "san_bay_tien", "san_bay_2c"],
+  "Bao xe":          ["bao_xe"],
+  "Ghép 1":          ["ghep_1"],
+  "Ghép 2":          ["ghep_2"],
+  "Hàng":            ["ship"],
+  "Sân bay đón":     ["san_bay_don"],
+  "Sân bay tiễn":    ["san_bay_tien"],
+  "Sân bay 2 chiều": ["san_bay_2c"],
+  "Sân bay":         ["san_bay_don", "san_bay_tien", "san_bay_2c"], // fallback khi không detect được
 };
 
 function calcBaremPoints(rulesRow, parserType, price) {

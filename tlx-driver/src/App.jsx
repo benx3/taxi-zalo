@@ -12,10 +12,19 @@ import HomePage from "./HomePage.jsx";
 // URL của app admin+kế toán (tlx-web chạy port 5174)
 const ADMIN_URL = import.meta.env.VITE_ADMIN_URL || "http://localhost:5174";
 
-const TYPE_META = { "Bao xe":{icon:Car,color:"#22c55e"},"Ghép 1":{icon:Users,color:"#3b82f6"},"Ghép 2":{icon:Users,color:"#6366f1"},"Hàng":{icon:Package,color:"#f59e0b"},"Sân bay":{icon:Plane,color:"#06b6d4"} };
+const TYPE_META = {
+  "Bao xe":          {icon:Car,    color:"#22c55e"},
+  "Ghép 1":          {icon:Users,  color:"#3b82f6"},
+  "Ghép 2":          {icon:Users,  color:"#6366f1"},
+  "Hàng":            {icon:Package,color:"#f59e0b"},
+  "Sân bay":         {icon:Plane,  color:"#06b6d4"},
+  "Sân bay đón":     {icon:Plane,  color:"#06b6d4"},
+  "Sân bay tiễn":    {icon:Plane,  color:"#22d3ee"},
+  "Sân bay 2 chiều": {icon:Plane,  color:"#818cf8"},
+};
 const TYPE_FILTERS = ["Tất cả","Ghép 1","Ghép 2","Bao xe","Hàng","Sân bay"];
 const TIME_FILTERS = [{key:"all",label:"Mọi giờ"},{key:"soon",label:"Sắp tới (≤8h)"},{key:"today",label:"Hôm nay"},{key:"tomorrow",label:"Ngày mai"}];
-const CAR_FILTERS = ["Tất cả xe","Sedan/4c","Xe 7c+"];
+const CAR_FILTERS = ["Tất cả xe","Sedan/4c","Sedan/5c","Xe 7c+","Xe 16c","Xe 29c"];
 
 export default function App() {
   const [me, setMe] = useState(null);
@@ -222,7 +231,7 @@ function DriverApp({ worker, me, onChangeZalo, setMe, searchQ: query = "", setSe
   const [fromA,setFromA]=useState("");
 
   const filtered = useMemo(()=>trips.filter(t=>{
-    if(typeF.size>0&&!typeF.has(t.type))return false;
+    if(typeF.size>0&&![...typeF].some(f=>t.type===f||t.type?.startsWith(f+" ")))return false;
     if(timeF!=="all"&&t.time?.bucket!==timeF)return false;
     if(carF.size>0&&!carF.has(t.car))return false;
     if(freeOnly&&!t.free)return false;

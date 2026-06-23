@@ -16,7 +16,7 @@ export function isClaimMessage(text) {
 
 export function isConfirmMessage(text) {
   if (!text) return false;
-  return /ok\W*ib/i.test(text);
+  return /ok\W*i[bp]/i.test(text);
 }
 
 export function isNoiseMessage(text) {
@@ -72,7 +72,7 @@ export function parsePrice(t) {
 export function parseTime(t) {
   if (/sáng mai|ngày mai|\bmai\b/i.test(t)) return { label: "Ngày mai", bucket: "tomorrow" };
   // csct = càng sớm càng tốt, cnct = càng nhanh càng tốt → đi ngay
-  if (/\bcsct\b|cs ct|\bcnct\b|cn ct|đi ngay|đi luôn|gấp\b|gap\b/i.test(t)) {
+  if (/\bcsct\b|cs ct|\bcnct\b|cn ct|\bsnct\b|sn ct|đi ngay|đi luôn|gấp\b|gap\b/i.test(t)) {
     // nếu có kèm giờ cụ thể thì ưu tiên giờ (xử lý bên dưới), nếu không → "Đi ngay"
     if (!/\d{1,2}\s*h/i.test(t)) return { label: "Đi ngay", bucket: "soon" };
   }
@@ -95,8 +95,11 @@ export function parseTime(t) {
 
 export function parseCar(t) {
   const l = t.toLowerCase();
+  if (/x29|29\s*chỗ/.test(l)) return "Xe 29c";
+  if (/x16|16\s*chỗ/.test(l)) return "Xe 16c";
   if (/5vf6|x7|7\s*chỗ|7c|bx\s*7|1bx\s*7/.test(l)) return "Xe 7c+";
   if (/vf6|seđan|sedan|x4|4\s*chỗ|4c/.test(l)) return "Sedan/4c";
+  if (/\bx5\b|5\s*chỗ|\b5c\b/.test(l)) return "Sedan/5c";
   return null;
 }
 
@@ -113,8 +116,13 @@ export function parseSeats(t) {
 export function parseType(t) {
   const l = t.toLowerCase();
   if (/(bao\s*hàng|csct\s*đồ|\bđồ\b|gửi hàng|ship)/.test(l) && !/1\s*ghế|1k\b|gái|khách/.test(l)) return "Hàng";
-  if (/bao\s*xe|\bbxe\b|\bbx\b|bx\d+|\bxe\s*7\b|7\s*chỗ|\b7c\b/.test(l)) return "Bao xe";
-  if (/sân\s*bay|nội\s*bài|noi\s*bai|\bt1\b|\bt2\b|sảnh/.test(l)) return "Sân bay";
+  if (/bao\s*xe|\bbxe\b|\bbx\b|bx\d+|\bxe\s*7\b|7\s*chỗ|\b7c\b|\blịch\s*taxi\b|\btaxi\b/.test(l)) return "Bao xe";
+  if (/sân\s*bay|nội\s*bài|noi\s*bai|\bnb\b|\bsb\b|\bt1\b|\bt2\b|sảnh/.test(l)) {
+    if (/2\s*chi[eề]u|\b2c\b/.test(l)) return "Sân bay 2 chiều";
+    if (/ti[eễ]n|đưa\s*đi|dua\s*di/.test(l)) return "Sân bay tiễn";
+    if (/\bđón\b|\bdon\b|ra\s*đón|ra\s*don/.test(l)) return "Sân bay đón";
+    return "Sân bay";
+  }
   if (/2\s*ghế|2ghế|2ghép|2ghep|2\s*khách|2k\b/.test(l)) return "Ghép 2";
   return "Ghép 1";
 }
@@ -154,7 +162,7 @@ function cleanPlace(s) {
     prev = s;
     s = s
       // các từ khoá ở ĐẦU. KHÔNG dùng \b (sai với chữ Việt có dấu); dùng (?=[\s.:,_-]|$)
-      .replace(/^\s*(csct|cs ct|cnct|cn ct|free+|fr+ee|fer+|vtri|vt|vị trí|yc|dự|sm|sd|sáng mai|ngày mai|mai|gấp|gap)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")
+      .replace(/^\s*(csct|cs ct|cnct|cn ct|snct|sn ct|free+|fr+ee|fer+|vtri|vt|vị trí|yc|ycvt|dự|sm|sd|sáng mai|ngày mai|mai|gấp|gap)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")
       .replace(/^\s*\d{1,2}\s*(?:[-–]\s*\d{1,2})?\s*[h:]\s*\d{0,2}\s*(?:[-–_]\s*\d{1,2}\s*[h:]?\s*\d{0,2})?\s*(sm|sáng mai)?[\s.:,_-]*/i, "") // "22h","6h30","5-6h","6h_6h30","5-6h sm"
       .replace(/^\s*\d{1,3}\s*p(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")  // "30p"
       .replace(/^\s*\d+\s*(ghép|ghế|ghê|ghé|gh|khách|khach|kh|k|g)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "") // "1 ghế","1ghép","1k","1g"
