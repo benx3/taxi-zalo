@@ -79,9 +79,10 @@ async function persistCookies(userId, api) {
 function attach(userId, api, onEvent) {
   const ctx = api.getContext();
   const selfId = ctx.uid || ctx.userId || null;
+  const selfName = ctx.name || ctx.displayName || ctx.dName || null;
 
   const sess = {
-    userId, api, selfId,
+    userId, api, selfId, selfName,
     groups: [],                 // [{id,name,link}]
     selected: new Set(),        // nhóm theo dõi (rỗng = tất cả)
     groupNameById: new Map(),
@@ -644,6 +645,10 @@ async function importGroupMembers(sess, groupId) {
       if (count % 10 === 0) await yieldLoop();
     }
     if (count) console.log(`[${sess.userId}] Đã lưu ${count} thành viên nhóm ${groupId}`);
+    // Tự upsert chính mình — Zalo không echo tin nhắn của bot về chính nó
+    if (sess.selfId) {
+      await dbm.upsertMember(groupId, String(sess.selfId), { display_name: sess.selfName || null });
+    }
   } catch (e) {
     console.error(`[${sess.userId}] importGroupMembers ${groupId}:`, e?.message || e);
   }
@@ -791,6 +796,12 @@ async function fullSyncGroupMembers(sess, groupId) {
     });
     activeUids.push(uid);
     if (++i % 10 === 0) await yieldLoop(); // nhường event loop mỗi 10 member
+  }
+  // Tự upsert chính mình — Zalo không echo tin nhắn của bot về chính nó
+  if (sess.selfId && !activeUids.includes(String(sess.selfId))) {
+    await dbm.upsertMember(groupId, String(sess.selfId), { display_name: sess.selfName || null });
+    activeUids.push(String(sess.selfId));
+    added++;
   }
   const removed = await dbm.deleteRemovedMembers(groupId, activeUids);
   return { added, removed, total: activeUids.length };
