@@ -234,6 +234,16 @@ app.post("/api/accountant/sync-members", async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message || String(e) }); }
 });
 
+app.get("/api/accountant/lookup-user", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  const { phone } = req.query;
+  if (!phone) return res.status(400).json({ error: "Thiếu số điện thoại" });
+  try {
+    const user = await sm.lookupUserByPhone(a.userId, phone);
+    res.json(user);
+  } catch (e) { res.status(400).json({ error: e.message || String(e) }); }
+});
+
 app.post("/api/accountant/groups/:groupId/enrich-members", async (req, res) => {
   const a = await requireAccountant(req, res); if (!a) return;
   if (!await checkGroupAccess(req, res, req.params.groupId)) return;

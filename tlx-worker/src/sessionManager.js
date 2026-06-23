@@ -829,6 +829,19 @@ export async function syncGroupMembers(userId) {
   return { groups: groups.length, added: totalAdded, removed: totalRemoved, total: totalMembers };
 }
 
+/** Tìm tài khoản Zalo theo số điện thoại */
+export async function lookupUserByPhone(userId, phone) {
+  const sess = sessions.get(userId);
+  if (!sess) throw new Error("Chưa kết nối Zalo");
+  const result = await sess.api.findUser(phone);
+  if (!result?.uid) throw new Error("Không tìm thấy tài khoản Zalo với số điện thoại này");
+  return {
+    uid: String(result.uid),
+    display_name: result.display_name || result.zalo_name || null,
+    avatar: result.avatar || null,
+  };
+}
+
 /** Lấy tên + avatar cho các thành viên chưa có tên, dùng getGroupMembersInfo batch 50 UID/request */
 export async function enrichGroupMemberNames(userId, groupId) {
   const sess = sessions.get(userId);

@@ -503,42 +503,125 @@ function AdjustPointsModal({ groupId, member, onClose, onDone }) {
 
 // ===== Modal thêm thành viên =====
 function AddMemberModal({ groupId, onClose, onDone }) {
+  const [tab, setTab] = useState("phone"); // "phone" | "uid"
+  const [phone, setPhone] = useState("");
+  const [looking, setLooking] = useState(false);
+  const [found, setFound] = useState(null); // { uid, display_name, avatar }
   const [zaloUid, setZaloUid] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
-  const submit = async () => {
-    if (!zaloUid.trim()) { setErr("Nhập Zalo UID"); return; }
+  const lookup = async () => {
+    if (!phone.trim()) { setErr("Nhập số điện thoại"); return; }
+    setLooking(true); setErr(""); setFound(null);
+    try {
+      const u = await api.lookupUser(phone.trim());
+      setFound(u);
+    } catch (e) { setErr(e.message || "Không tìm thấy"); }
+    finally { setLooking(false); }
+  };
+
+  const handlePhoneKey = (e) => { if (e.key === "Enter") lookup(); };
+
+  const confirmFound = async () => {
     setSaving(true); setErr("");
     try {
-      await api.upsertMember({ groupId, zaloUid: zaloUid.trim(), display_name: displayName.trim() || null, phone: phone.trim() || null });
+      await api.upsertMember({ groupId, zaloUid: found.uid, display_name: found.display_name || null, phone: phone.trim() || null });
       onDone();
     } catch (e) { setErr(e.message); setSaving(false); }
   };
 
+  const submitManual = async () => {
+    if (!zaloUid.trim()) { setErr("Nhập Zalo UID"); return; }
+    setSaving(true); setErr("");
+    try {
+      await api.upsertMember({ groupId, zaloUid: zaloUid.trim(), display_name: displayName.trim() || null });
+      onDone();
+    } catch (e) { setErr(e.message); setSaving(false); }
+  };
+
+  const inputStyle = { width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", fontSize: 13, outline: "none" };
+
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200, display: "grid", placeItems: "center", background: "rgba(0,0,0,.6)", padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 360, background: "var(--card)", borderRadius: 18, padding: 20, border: "1px solid var(--line)" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 380, background: "var(--card)", borderRadius: 18, padding: 20, border: "1px solid var(--line)" }}>
+
+        {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
           <Plus size={17} color="var(--accent)" />
           <span style={{ fontWeight: 700, fontSize: 15 }}>Thêm thành viên</span>
           <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)" }}><X size={18} /></button>
         </div>
-        {[["Zalo UID *", zaloUid, setZaloUid, "ID Zalo (định danh chính)"],
-          ["Tên hiển thị", displayName, setDisplayName, "Tên trong nhóm"],
-          ["Số điện thoại", phone, setPhone, "SĐT (tuỳ chọn)"]].map(([lbl, val, set, ph]) => (
-          <div key={lbl} style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", fontSize: 12, color: "var(--ink-dim)", marginBottom: 4 }}>{lbl}</label>
-            <input value={val} onChange={e => set(e.target.value)} placeholder={ph}
-              style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", fontSize: 13, outline: "none" }} />
+
+        {/* Tab chọn cách thêm */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 16, background: "rgba(0,0,0,.2)", borderRadius: 10, padding: 4 }}>
+          {[["phone", "Tìm theo SĐT"], ["uid", "Nhập UID thủ công"]].map(([t, lbl]) => (
+            <button key={t} onClick={() => { setTab(t); setErr(""); setFound(null); }}
+              style={{ flex: 1, padding: "7px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 12,
+                background: tab === t ? "var(--accent)" : "transparent",
+                color: tab === t ? "#04140a" : "var(--ink-dim)" }}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+
+        {tab === "phone" && (<>
+          <label style={{ display: "block", fontSize: 12, color: "var(--ink-dim)", marginBottom: 4 }}>Số điện thoại Zalo</label>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <input value={phone} onChange={e => { setPhone(e.target.value); setFound(null); setErr(""); }}
+              onKeyDown={handlePhoneKey} placeholder="0912345678"
+              style={{ ...inputStyle, flex: 1 }} />
+            <button onClick={lookup} disabled={looking}
+              style={{ padding: "9px 16px", borderRadius: 10, border: "none", cursor: looking ? "default" : "pointer", fontWeight: 700, fontSize: 13, background: "rgba(96,165,250,.2)", color: "#60a5fa", whiteSpace: "nowrap" }}>
+              {looking ? "…" : "Tìm"}
+            </button>
           </div>
-        ))}
-        {err && <div style={{ color: "#f87171", fontSize: 12, marginTop: 4 }}>{err}</div>}
-        <button onClick={submit} disabled={saving} style={{ width: "100%", marginTop: 14, padding: "12px", borderRadius: 12, border: "none", cursor: saving ? "default" : "pointer", fontWeight: 800, fontSize: 14, background: "linear-gradient(135deg,#22c55e,#16a34a)", color: "#04140a" }}>
-          {saving ? "Đang lưu…" : "Thêm"}
-        </button>
+
+          {found && (
+            <div style={{ background: "rgba(52,211,153,.08)", border: "1px solid rgba(52,211,153,.3)", borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: "#34d399", fontWeight: 700, marginBottom: 8 }}>Tìm thấy</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {found.avatar
+                  ? <img src={found.avatar} style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                  : <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#1e3a5f", display: "grid", placeItems: "center", fontSize: 18, fontWeight: 700, color: "#e2e8f0", flexShrink: 0 }}>{(found.display_name || "?")[0]}</div>
+                }
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{found.display_name || "Không có tên"}</div>
+                  <div style={{ fontSize: 11, color: "var(--ink-dim)", marginTop: 2 }}>UID: {found.uid}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {err && <div style={{ color: "#f87171", fontSize: 12, marginBottom: 10 }}>{err}</div>}
+          <button onClick={confirmFound} disabled={!found || saving}
+            style={{ width: "100%", padding: "12px", borderRadius: 12, border: "none", cursor: (!found || saving) ? "default" : "pointer", fontWeight: 800, fontSize: 14,
+              background: found ? "linear-gradient(135deg,#22c55e,#16a34a)" : "rgba(255,255,255,.07)", color: found ? "#04140a" : "var(--ink-dim)", opacity: (!found || saving) ? 0.6 : 1 }}>
+            {saving ? "Đang thêm…" : "Thêm vào nhóm"}
+          </button>
+        </>)}
+
+        {tab === "uid" && (<>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: "block", fontSize: 12, color: "var(--ink-dim)", marginBottom: 4 }}>Zalo UID *</label>
+            <input value={zaloUid} onChange={e => setZaloUid(e.target.value)} placeholder="VD: 1234567890"
+              style={inputStyle} />
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: "block", fontSize: 12, color: "var(--ink-dim)", marginBottom: 4 }}>Tên hiển thị</label>
+            <input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Tên trong nhóm (tuỳ chọn)"
+              style={inputStyle} />
+          </div>
+          <div style={{ fontSize: 11, color: "var(--ink-dim)", marginBottom: 12, lineHeight: 1.5, background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.2)", borderRadius: 8, padding: "8px 10px" }}>
+            Lấy UID từ link profile Zalo: <b style={{ color: "var(--ink)" }}>zalo.me/[UID]</b>, hoặc xem trong lịch sử giao dịch nhóm.
+          </div>
+          {err && <div style={{ color: "#f87171", fontSize: 12, marginBottom: 8 }}>{err}</div>}
+          <button onClick={submitManual} disabled={saving}
+            style={{ width: "100%", padding: "12px", borderRadius: 12, border: "none", cursor: saving ? "default" : "pointer", fontWeight: 800, fontSize: 14, background: "linear-gradient(135deg,#22c55e,#16a34a)", color: "#04140a" }}>
+            {saving ? "Đang lưu…" : "Thêm"}
+          </button>
+        </>)}
       </div>
     </div>
   );
