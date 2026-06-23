@@ -37,6 +37,7 @@ export default function MembersTab({ groupId }) {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState({ ok: null, text: "" });
+  const [enriching, setEnriching] = useState(false);
   const [selected, setSelected] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [page, setPage] = useState(1);
@@ -65,6 +66,23 @@ export default function MembersTab({ groupId }) {
       setSyncMsg({ ok: false, text: e.message });
       setTimeout(() => setSyncMsg({ ok: null, text: "" }), 5000);
     } finally { setSyncing(false); }
+  };
+
+  const enrichNames = async () => {
+    if (!groupId) return;
+    setEnriching(true); setSyncMsg({ ok: null, text: "" });
+    try {
+      const r = await api.enrichMemberNames(groupId);
+      await api.listMembers(groupId).then(setMembers);
+      const unnamed = r.total - r.unchanged - r.enriched;
+      const parts = [`Lấy tên: ${r.enriched} thành công`];
+      if (unnamed > 0) parts.push(`${unnamed} chưa lấy được`);
+      setSyncMsg({ ok: true, text: parts.join(" · ") });
+      setTimeout(() => setSyncMsg({ ok: null, text: "" }), 6000);
+    } catch (e) {
+      setSyncMsg({ ok: false, text: e.message });
+      setTimeout(() => setSyncMsg({ ok: null, text: "" }), 5000);
+    } finally { setEnriching(false); }
   };
 
   const filtered = useMemo(() => {
@@ -133,9 +151,13 @@ export default function MembersTab({ groupId }) {
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm tên / SĐT / Zalo ID…"
             style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px 9px 34px", borderRadius: 10, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", fontSize: 13, outline: "none" }} />
         </div>
-        <button onClick={syncFromZalo} disabled={syncing} title="Cập nhật thành viên từ Zalo: thêm mới + xóa người đã rời nhóm" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid var(--line)", background: "transparent", color: syncing ? "var(--ink-dim)" : "#60a5fa", fontWeight: 700, fontSize: 13, cursor: syncing ? "default" : "pointer", whiteSpace: "nowrap" }}>
+        <button onClick={syncFromZalo} disabled={syncing || enriching} title="Cập nhật thành viên từ Zalo: thêm mới + xóa người đã rời nhóm" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid var(--line)", background: "transparent", color: syncing ? "var(--ink-dim)" : "#60a5fa", fontWeight: 700, fontSize: 13, cursor: (syncing || enriching) ? "default" : "pointer", whiteSpace: "nowrap" }}>
           <RefreshCw size={14} style={{ animation: syncing ? "spin 1s linear infinite" : "none" }} />
-          {syncing ? "Đang cập nhật…" : "Cập nhật thành viên"}
+          {syncing ? "Đang cập nhật…" : "Cập nhật"}
+        </button>
+        <button onClick={enrichNames} disabled={syncing || enriching} title="Lấy tên Zalo cho các thành viên chưa có tên (batch 50/lần, ~30s cho 1000 người)" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid rgba(167,139,250,.4)", background: "rgba(167,139,250,.1)", color: enriching ? "var(--ink-dim)" : "#a78bfa", fontWeight: 700, fontSize: 13, cursor: (syncing || enriching) ? "default" : "pointer", whiteSpace: "nowrap" }}>
+          <RefreshCw size={14} style={{ animation: enriching ? "spin 1s linear infinite" : "none" }} />
+          {enriching ? "Đang lấy tên…" : "Lấy tên"}
         </button>
         <button onClick={exportExcel} disabled={sorted.length === 0} title="Xuất danh sách ra file Excel"
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid rgba(96,165,250,.4)", background: "rgba(96,165,250,.1)", color: "#60a5fa", fontWeight: 700, fontSize: 13, cursor: sorted.length === 0 ? "default" : "pointer", whiteSpace: "nowrap", opacity: sorted.length === 0 ? 0.5 : 1 }}>

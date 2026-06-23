@@ -299,6 +299,7 @@ function onMessage(sess, msg) {
       if (sanResults.length > 0) {
         for (const sr of sanResults) {
           if (!sr.toUid) continue;
+          if (sr.toName) Promise.resolve(dbm.upsertMember(groupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
           Promise.resolve(dbm.createPendingTransfer(
             groupId, senderId, sr.toUid, sr.amount, text
           )).then(txId => {
@@ -323,6 +324,7 @@ function onMessage(sess, msg) {
         if (sanResults.length > 0) {
           for (const sr of sanResults) {
             if (!sr.toUid) continue;
+            if (sr.toName) Promise.resolve(dbm.upsertMember(groupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
             Promise.resolve(dbm.createPendingTransfer(
               groupId, senderId, sr.toUid, sr.amount, text
             )).then(txId => {
@@ -358,6 +360,7 @@ function onMessage(sess, msg) {
             const sanResults = detectSanDiem(text, mentions, null);
             for (const sr of sanResults) {
               if (!sr.toUid) continue;
+              if (sr.toName) Promise.resolve(dbm.upsertMember(groupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
               const txId = await dbm.createPendingTransfer(groupId, senderId, sr.toUid, sr.amount, text);
               console.log(`[${sess.userId}] 📋 KT san: ${senderId} → ${sr.toUid} ${sr.amount}đ nhóm=${groupId}`);
               sess.onEvent(sess.userId, {
@@ -380,6 +383,8 @@ function onMessage(sess, msg) {
             }
             if (!amounts.length) return;
             const toM = mentions[0];
+            const toMName = toM.display_name || toM.dName || "";
+            if (toMName) Promise.resolve(dbm.upsertMember(groupId, String(toM.uid), { display_name: toMName })).catch(() => {});
             const txId = await dbm.createPendingTransfer(groupId, senderId, String(toM.uid), amounts[0], text);
             console.log(`[${sess.userId}] 💰 Driver→KT san: ${senderId} → ${toM.uid} ${amounts[0]}đ nhóm=${groupId}`);
             sess.onEvent(sess.userId, {
@@ -397,6 +402,7 @@ function onMessage(sess, msg) {
             const sanResults = detectSanDiem(text, mentions, ktUid);
             for (const sr of sanResults) {
               if (!sr.toUid) continue;
+              if (sr.toName) Promise.resolve(dbm.upsertMember(groupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
               const txId = await dbm.createPendingTransfer(groupId, senderId, sr.toUid, sr.amount, text);
               console.log(`[${sess.userId}] 📋 Pending san: ${senderId} → ${sr.toUid} ${sr.amount}đ nhóm=${groupId}`);
               sess.onEvent(sess.userId, {
@@ -821,6 +827,46 @@ export async function syncGroupMembers(userId) {
     await yieldLoop(); // nhường event loop giữa các nhóm
   }
   return { groups: groups.length, added: totalAdded, removed: totalRemoved, total: totalMembers };
+}
+
+/** Lấy tên + avatar cho các thành viên chưa có tên, dùng getGroupMembersInfo batch 50 UID/request */
+export async function enrichGroupMemberNames(userId, groupId) {
+  const sess = sessions.get(userId);
+  if (!sess) throw new Error("Chưa kết nối Zalo");
+
+  const allMembers = await dbm.listMembers(groupId);
+  const unnamed = allMembers.filter(m => !m.display_name);
+  if (!unnamed.length) return { enriched: 0, unchanged: allMembers.length - unnamed.length, total: allMembers.length };
+
+  const BATCH = 50;
+  const DELAY = 1500;
+  let enriched = 0;
+
+  for (let i = 0; i < unnamed.length; i += BATCH) {
+    const batch = unnamed.slice(i, i + BATCH);
+    const uids = batch.map(m => m.zalo_uid);
+    try {
+      const result = await sess.api.getGroupMembersInfo(uids);
+      const profiles = result?.data?.profiles || result?.profiles || {};
+      for (const uid of uids) {
+        // Zalo trả key dạng "uid_0"
+        const info = profiles[uid] || profiles[`${uid}_0`];
+        if (!info) continue;
+        const name = info.displayName || info.zaloName || null;
+        const avatar = info.avatar || null;
+        if (name || avatar) {
+          await dbm.upsertMember(groupId, uid, { display_name: name, avatar });
+          enriched++;
+        }
+      }
+    } catch (e) {
+      console.error(`[${userId}] enrichGroupMemberNames batch ${i}–${i + BATCH}:`, e?.message || e);
+    }
+    if (i + BATCH < unnamed.length) await sleep(DELAY);
+  }
+
+  console.log(`[${userId}] enrichGroupMemberNames ${groupId}: ${enriched}/${unnamed.length} đã lấy tên`);
+  return { enriched, unchanged: allMembers.length - unnamed.length, total: allMembers.length };
 }
 
 export function stopSession(userId) {

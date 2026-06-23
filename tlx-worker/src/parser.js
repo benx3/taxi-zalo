@@ -72,7 +72,7 @@ export function parsePrice(t) {
 export function parseTime(t) {
   if (/sáng mai|ngày mai|\bmai\b/i.test(t)) return { label: "Ngày mai", bucket: "tomorrow" };
   // csct = càng sớm càng tốt, cnct = càng nhanh càng tốt → đi ngay
-  if (/\bcsct\b|cs ct|\bcnct\b|cn ct|\bsnct\b|sn ct|đi ngay|đi luôn|gấp\b|gap\b/i.test(t)) {
+  if (/\bcsct\w*|cs ct|\bcnct\w*|cn ct|\bsnct\w*|sn ct|đi ngay|đi luôn|gấp\b|gap\b/i.test(t)) {
     // nếu có kèm giờ cụ thể thì ưu tiên giờ (xử lý bên dưới), nếu không → "Đi ngay"
     if (!/\d{1,2}\s*h/i.test(t)) return { label: "Đi ngay", bucket: "soon" };
   }
@@ -162,7 +162,7 @@ function cleanPlace(s) {
     prev = s;
     s = s
       // các từ khoá ở ĐẦU. KHÔNG dùng \b (sai với chữ Việt có dấu); dùng (?=[\s.:,_-]|$)
-      .replace(/^\s*(csct|cs ct|cnct|cn ct|snct|sn ct|free+|fr+ee|fer+|vtri|vt|vị trí|yc|ycvt|dự|sm|sd|sáng mai|ngày mai|mai|gấp|gap)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")
+      .replace(/^\s*(csct\w*|cs ct|cnct\w*|cn ct|snct\w*|sn ct|free+\w*|fr+ee\w*|fer+\w*|vtri|vt|vị trí|yc|ycvt|dự|sm|sd|sáng mai|ngày mai|mai|gấp|gap)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")
       .replace(/^\s*\d{1,2}\s*(?:[-–]\s*\d{1,2})?\s*[h:]\s*\d{0,2}\s*(?:[-–_]\s*\d{1,2}\s*[h:]?\s*\d{0,2})?\s*(sm|sáng mai)?[\s.:,_-]*/i, "") // "22h","6h30","5-6h","6h_6h30","5-6h sm"
       .replace(/^\s*\d{1,3}\s*p(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")  // "30p"
       .replace(/^\s*\d+\s*(ghép|ghế|ghê|ghé|gh|khách|khach|kh|k|g)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "") // "1 ghế","1ghép","1k","1g"

@@ -448,8 +448,8 @@ export async function createPendingTransfer(groupId, fromUid, toUid, points, raw
 export async function listPendingTransfers(groupId) {
   const r = await q(`
     SELECT pt.*,
-      fm.display_name as from_member_name, fm.points as from_points,
-      tm.display_name as to_member_name,   tm.points as to_points
+      COALESCE(fm.alias, fm.display_name) as from_member_name, fm.points as from_points,
+      COALESCE(tm.alias, tm.display_name) as to_member_name,   tm.points as to_points
     FROM point_transactions pt
     LEFT JOIN members fm ON fm.group_id=pt.group_id AND fm.zalo_uid=pt.from_member
     LEFT JOIN members tm ON tm.group_id=pt.group_id AND tm.zalo_uid=pt.to_member
