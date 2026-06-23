@@ -587,8 +587,8 @@ function extractMemberList(info, groupId) {
     // currentMems có đủ thông tin: id + dName (display name)
     if (g.currentMems?.length) {
       const result = [...g.currentMems];
-      // Nếu hasMoreMember=1: memberIds có thể có thêm UID chưa có trong currentMems
-      if (g.hasMoreMember && g.memberIds?.length) {
+      // Luôn merge memberIds để không bỏ sót — kể cả khi hasMoreMember=0
+      if (g.memberIds?.length) {
         const seenIds = new Set(result.map(m => String(m.id)));
         for (const uid of g.memberIds) {
           if (!seenIds.has(String(uid))) result.push({ id: String(uid) });
