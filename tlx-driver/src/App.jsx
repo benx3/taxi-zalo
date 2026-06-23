@@ -102,8 +102,8 @@ function DriverFlow({ me, setMe, searchQ, setSearchQ }) {
 
   if (!me) {
     if (screen === "home") return <HomePage goLogin={() => setScreen("login")} goRegister={() => setScreen("register")} />;
-    if (screen === "register") return <RegisterScreen goLogin={() => setScreen("login")} goHome={() => setScreen("home")} />;
-    return <LoginScreen onLogin={setMe} goRegister={() => setScreen("register")} goHome={() => setScreen("home")} />;
+    if (screen === "register") return <><SiteNavBar /><RegisterScreen goLogin={() => setScreen("login")} goHome={() => setScreen("home")} /></>;
+    return <><SiteNavBar /><LoginScreen onLogin={setMe} goRegister={() => setScreen("register")} goHome={() => setScreen("home")} /></>;
   }
   if (me.status==="pending") return <GateScreen kind="pending" me={me} onLogout={()=>{api.logout();setMe(null);}}/>;
   if (me.status==="expired") return <GateScreen kind="expired" me={me} onLogout={()=>{api.logout();setMe(null);}}/>;
@@ -581,8 +581,36 @@ function WonModal({trip,groupLink,onClose}){
   );
 }
 
+function SiteNavBar() {
+  return (
+    <nav style={{position:"sticky",top:0,zIndex:50,background:"rgba(7,11,22,.9)",backdropFilter:"blur(14px)",borderBottom:"1px solid var(--line)"}}>
+      <div style={{maxWidth:1100,margin:"0 auto",display:"flex",alignItems:"center",gap:12,padding:"13px 20px"}}>
+        <a href="/" style={{display:"flex",alignItems:"center",gap:9,textDecoration:"none",color:"var(--ink)"}}>
+          <BrandMark size={32} iconSize={17} />
+          <BrandName size={16} />
+        </a>
+      </div>
+    </nav>
+  );
+}
+
 /* ===== Shared UI ===== */
-function AuthShell({title,icon:Icon,children,accent="#34d399",wide}){return(<div style={{display:"grid",placeItems:"center",padding:"40px 16px",minHeight:"100vh"}}><div style={{width:"100%",maxWidth:wide?420:400}}><div style={{background:"var(--card)",border:"1px solid var(--line)",borderRadius:20,padding:"26px 24px",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}><div style={{width:38,height:38,borderRadius:11,background:accent+"1f",display:"grid",placeItems:"center"}}><Icon size={20} color={accent}/></div><div style={{fontFamily:"var(--display)",fontWeight:800,fontSize:21,letterSpacing:"-.02em"}}>{title}</div></div>{children}</div></div></div>);}
+function AuthShell({title,icon:Icon,children,accent="#34d399",wide}){return(<div style={{display:"grid",placeItems:"center",padding:"40px 16px",minHeight:"calc(100vh - 58px)"}}><div style={{width:"100%",maxWidth:wide?420:400}}><div style={{display:"grid",placeItems:"center",marginBottom:14}}><BrandMark size={50} iconSize={26} /><div style={{marginTop:10}}><BrandName size={18} /></div></div><div style={{background:"var(--card)",border:"1px solid var(--line)",borderRadius:20,padding:"26px 24px",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}><div style={{width:38,height:38,borderRadius:11,background:accent+"1f",display:"grid",placeItems:"center"}}><Icon size={20} color={accent}/></div><div style={{fontFamily:"var(--display)",fontWeight:800,fontSize:21,letterSpacing:"-.02em"}}>{title}</div></div>{children}</div></div></div>);}
+function BrandMark({ size = 34, iconSize = 18 }) {
+  return (
+    <div style={{width:size,height:size,borderRadius:size * 0.3,background:"linear-gradient(135deg,#34d399,#06b6d4)",display:"grid",placeItems:"center",boxShadow:"0 0 16px rgba(52,211,153,.4)",flexShrink:0}}>
+      <span style={{fontSize:iconSize}}>🚖</span>
+    </div>
+  );
+}
+
+function BrandName({ size = 17 }) {
+  return (
+    <span style={{fontFamily:"var(--display)",fontWeight:800,fontSize:size,letterSpacing:"-.02em",lineHeight:1.1,whiteSpace:"nowrap"}}>
+      Trợ Lý Tài Xế <span style={{color:"var(--accent)"}}>AI</span>
+    </span>
+  );
+}
 function Field({label,icon:Icon,children}){return(<div style={{marginBottom:14}}><div style={{fontSize:12.5,color:"var(--ink-dim)",fontWeight:600,marginBottom:6,display:"flex",alignItems:"center",gap:5}}>{Icon&&<Icon size={13}/>} {label}</div>{children}</div>);}
 function ErrBox({children}){return(<div style={{display:"flex",alignItems:"center",gap:7,padding:"9px 12px",borderRadius:10,background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.3)",color:"#f87171",fontSize:13,fontWeight:600,marginBottom:14}}><AlertTriangle size={15}/> {children}</div>);}
 function Chip({children,active,onClick,solid}){return(<button onClick={onClick} style={{padding:"7px 13px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",border:"1px solid "+(active?"transparent":"var(--line)"),background:active?(solid?"var(--accent)":"rgba(52,211,153,.15)"):"var(--card)",color:active?(solid?"#04121a":"var(--accent)"):"var(--ink-dim)"}}>{children}</button>);}
