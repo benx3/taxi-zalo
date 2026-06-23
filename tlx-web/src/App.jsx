@@ -192,6 +192,7 @@ function AdminApp({ me, onLogout }) {
   const [adminTab,setAdminTab]=useState("users");
   const [resetTarget,setResetTarget]=useState(null);
   const [acctTarget,setAcctTarget]=useState(null);
+  const [deleteTarget,setDeleteTarget]=useState(null);
   const fmt=n=>n.toLocaleString("vi-VN")+"đ";
   const reload=()=>api.adminUsers().then(setUsers).catch(()=>{});
   useEffect(()=>{ reload(); const t=setInterval(reload,30000); return ()=>clearInterval(t); },[]);
@@ -307,14 +308,17 @@ function AdminApp({ me, onLogout }) {
                             <button onClick={()=>setAcctTarget(u)} style={miniBtn("#f59e0b")}><Users size={13}/> Nhóm KT</button>
                             <button onClick={()=>setRole(u.id,"driver")} style={miniBtn("#94a3b8")}><Users size={13}/> Gỡ KT</button>
                             <button onClick={()=>ban(u.id)} style={miniBtn(u.status==="banned"?"#3b82f6":"#ef4444")}><Ban size={13}/> {u.status==="banned"?"Mở":"Khoá"}</button>
+                            <button onClick={()=>setDeleteTarget(u)} style={miniBtn("#ef4444")}>✕ Xóa</button>
                           </>) : u.status==="pending" ? (<>
                             <button onClick={()=>approve(u.id,"Tuần")} style={miniBtn("#3b82f6")}>Duyệt · Tuần</button>
                             <button onClick={()=>approve(u.id,"Tháng")} style={miniBtn("#22c55e")}>Duyệt · Tháng</button>
+                            <button onClick={()=>setDeleteTarget(u)} style={miniBtn("#ef4444")}>✕ Xóa</button>
                           </>) : (<>
                             <button onClick={()=>setRole(u.id,"admin")} style={miniBtn("#a78bfa")}><Shield size={13}/> Cấp admin</button>
                             <button onClick={()=>setAcctTarget(u)} style={miniBtn("#f59e0b")}><Users size={13}/> Cấp KT</button>
                             <button onClick={()=>renew(u.id)} style={miniBtn("#22c55e")}><RefreshCw size={13}/> Gia hạn</button>
                             <button onClick={()=>ban(u.id)} style={miniBtn(u.status==="banned"?"#3b82f6":"#ef4444")}><Ban size={13}/> {u.status==="banned"?"Mở":"Khoá"}</button>
+                            <button onClick={()=>setDeleteTarget(u)} style={miniBtn("#ef4444")}>✕ Xóa</button>
                           </>)}
                         </td>
                       </tr>
@@ -333,6 +337,7 @@ function AdminApp({ me, onLogout }) {
       </div>
       {resetTarget&&<ResetPwdModal target={resetTarget} onClose={()=>setResetTarget(null)} onDone={reload}/>}
       {acctTarget&&<SetAccountantModal target={acctTarget} onClose={()=>setAcctTarget(null)} onDone={()=>{setAcctTarget(null);reload();}}/>}
+      {deleteTarget&&<DeleteUserModal target={deleteTarget} onClose={()=>setDeleteTarget(null)} onDone={()=>{setDeleteTarget(null);reload();}}/>}
     </div>
   );
 }
@@ -544,6 +549,50 @@ function AdminStatsTab() {
             </table>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ===== Admin: Xóa tài khoản ===== */
+function DeleteUserModal({target,onClose,onDone}){
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState("");
+  const [done,setDone]=useState(false);
+  const confirm=async()=>{
+    setBusy(true);setErr("");
+    try{await api.deleteUser(target.id);setDone(true);setTimeout(onDone,1000);}
+    catch(e){setErr(e.message);setBusy(false);}
+  };
+  useEffect(()=>{const k=e=>e.key==="Escape"&&onClose();window.addEventListener("keydown",k);return()=>window.removeEventListener("keydown",k);},[onClose]);
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:200,display:"grid",placeItems:"center",background:"rgba(3,6,14,.72)",backdropFilter:"blur(4px)",padding:18}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:380,background:"var(--card)",borderRadius:20,border:"1px solid #ef444466",padding:"22px 20px",boxShadow:"0 24px 70px rgba(0,0,0,.6)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:12}}>
+          <div style={{width:36,height:36,borderRadius:10,background:"rgba(239,68,68,.15)",display:"grid",placeItems:"center",flexShrink:0}}>
+            <Ban size={18} color="#ef4444"/>
+          </div>
+          <div style={{fontWeight:800,fontSize:17,fontFamily:"var(--display)"}}>Xóa tài khoản</div>
+          <button onClick={onClose} style={{marginLeft:"auto",background:"none",border:"none",color:"var(--ink-dim)",cursor:"pointer"}}><X size={18}/></button>
+        </div>
+        {done
+          ? <div style={{textAlign:"center",padding:"20px 0",color:"#34d399"}}><CheckCircle2 size={40}/><div style={{fontWeight:800,marginTop:8}}>Đã xóa tài khoản!</div></div>
+          : <>
+            <div style={{background:"rgba(239,68,68,.07)",border:"1px solid rgba(239,68,68,.2)",borderRadius:10,padding:"12px 14px",marginBottom:16,fontSize:13}}>
+              Bạn sắp xóa vĩnh viễn tài khoản:<br/>
+              <b style={{color:"var(--ink)",fontSize:14}}>{target.name||"—"}</b>
+              <span style={{color:"var(--ink-dim)",marginLeft:6}}>({target.phone})</span>
+              <div style={{marginTop:6,color:"#f87171",fontSize:12}}>Hành động này <b>không thể hoàn tác</b>. Toàn bộ dữ liệu liên quan sẽ bị xóa.</div>
+            </div>
+            {err&&<ErrBox>{err}</ErrBox>}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={onClose} style={{flex:1,padding:"10px",borderRadius:12,border:"1px solid var(--line)",background:"transparent",cursor:"pointer",fontWeight:700,fontSize:14,color:"var(--ink-dim)"}}>Hủy</button>
+              <button onClick={confirm} disabled={busy} style={{flex:1,padding:"10px",borderRadius:12,border:"none",cursor:busy?"default":"pointer",fontWeight:800,fontSize:14,background:"rgba(239,68,68,.2)",color:"#ef4444",opacity:busy?0.6:1}}>
+                {busy?"Đang xóa…":"Xóa tài khoản"}
+              </button>
+            </div>
+          </>
+        }
       </div>
     </div>
   );

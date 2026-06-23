@@ -258,6 +258,22 @@ export function setRole(id, role, groupLimit) {
   return getUserPublic(id);
 }
 
+export function deleteUser(id) {
+  const u = db.prepare("SELECT role FROM users WHERE id=?").get(id);
+  if (!u) throw new Error("Tài khoản không tồn tại");
+  if (u.role === "admin") throw new Error("Không thể xóa tài khoản Admin");
+  db.transaction(() => {
+    db.prepare("DELETE FROM zalo_sessions WHERE user_id=?").run(id);
+    db.prepare("DELETE FROM saved_trips WHERE user_id=?").run(id);
+    db.prepare("DELETE FROM accountant_groups WHERE accountant_id=?").run(id);
+    db.prepare("DELETE FROM transactions WHERE user_id=?").run(id);
+    db.prepare("DELETE FROM users WHERE id=?").run(id);
+  })();
+  // Xóa token in-memory
+  for (const [tok, uid] of sessions) { if (uid === id) sessions.delete(tok); }
+  return { ok: true };
+}
+
 export function lockAccountantGroups(userId) {
   db.prepare("UPDATE users SET groups_locked=1 WHERE id=?").run(userId);
 }

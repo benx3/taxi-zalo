@@ -92,6 +92,12 @@ app.post("/api/admin/set-role", async (req, res) => {
   try { res.json(await dbm.setRole(req.body.id, req.body.role, req.body.groupLimit)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
+app.delete("/api/admin/users/:id", async (req, res) => {
+  const a = await requireAdmin(req, res); if (!a) return;
+  if (req.params.id === a.userId) return res.status(400).json({ error: "Không thể xóa chính mình" });
+  try { res.json(await dbm.deleteUser(req.params.id)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
 app.get("/api/admin/settings", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   const key = config.fptSttApiKey || process.env.FPT_STT_API_KEY || "";

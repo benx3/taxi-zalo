@@ -245,6 +245,18 @@ export async function setRole(id, role, groupLimit) {
   return getUserPublic(id);
 }
 
+export async function deleteUser(id) {
+  const r = await q("SELECT role FROM users WHERE id=$1", [id]);
+  if (!r.rows[0]) throw new Error("Tài khoản không tồn tại");
+  if (r.rows[0].role === "admin") throw new Error("Không thể xóa tài khoản Admin");
+  await q("DELETE FROM zalo_sessions WHERE user_id=$1", [id]);
+  await q("DELETE FROM saved_trips WHERE user_id=$1", [id]);
+  await q("DELETE FROM accountant_groups WHERE accountant_id=$1", [id]);
+  await q("DELETE FROM transactions WHERE user_id=$1", [id]);
+  await q("DELETE FROM users WHERE id=$1", [id]);
+  return { ok: true };
+}
+
 export async function lockAccountantGroups(userId) {
   await q("UPDATE users SET groups_locked=1 WHERE id=$1", [userId]);
 }
