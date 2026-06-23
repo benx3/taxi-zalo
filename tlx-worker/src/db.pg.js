@@ -340,7 +340,7 @@ export async function setSetting(key, value) {
 
 // ---------- Kế toán: nhóm phụ trách ----------
 export async function listPublicGroups() {
-  const r = await q("SELECT DISTINCT group_id, group_name FROM accountant_groups WHERE public_visible=1 ORDER BY group_name ASC");
+  const r = await q("SELECT group_id, MAX(group_name) as group_name FROM accountant_groups WHERE public_visible=1 GROUP BY group_id ORDER BY MAX(group_name) ASC");
   return r.rows;
 }
 export async function getAccountantGroups(accountantId) {

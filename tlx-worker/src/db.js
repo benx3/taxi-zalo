@@ -365,7 +365,7 @@ export function purgeOld() {
 // ---------- Kế toán: nhóm phụ trách ----------
 export function listPublicGroups() {
   return db.prepare(
-    "SELECT DISTINCT group_id, group_name FROM accountant_groups WHERE public_visible=1 ORDER BY group_name COLLATE NOCASE ASC"
+    "SELECT group_id, MAX(group_name) as group_name FROM accountant_groups WHERE public_visible=1 GROUP BY group_id ORDER BY MAX(group_name) COLLATE NOCASE ASC"
   ).all();
 }
 export function getAccountantGroups(accountantId) {
