@@ -194,7 +194,7 @@ function AdminApp({ me, onLogout }) {
   const [acctTarget,setAcctTarget]=useState(null);
   const fmt=n=>n.toLocaleString("vi-VN")+"đ";
   const reload=()=>api.adminUsers().then(setUsers).catch(()=>{});
-  useEffect(()=>{ reload(); const t=setInterval(reload,5000); return ()=>clearInterval(t); },[]);
+  useEffect(()=>{ reload(); const t=setInterval(reload,30000); return ()=>clearInterval(t); },[]);
   const drivers=users.filter(u=>{
     if(!q.trim())return true;
     const s=q.toLowerCase();
