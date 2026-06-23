@@ -75,7 +75,7 @@ export default function AccountantApp({ me: initMe, onLogout, worker }) {
               const isPublic = g.public_visible !== 0;
               return (
                 <div key={g.group_id} style={{ display: "flex", alignItems: "center", gap: 2, marginBottom: 2 }}>
-                  <button onClick={() => setActiveGroup(g)} style={{ flex: 1, minWidth: 0, padding: "8px 10px", borderRadius: 8, border: "none", textAlign: "left", cursor: "pointer", background: activeGroup?.group_id === g.group_id ? "rgba(52,211,153,.15)" : "transparent", color: activeGroup?.group_id === g.group_id ? "var(--accent)" : "var(--ink)", fontWeight: activeGroup?.group_id === g.group_id ? 700 : 400, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                  <button onClick={() => setActiveGroup(g)} title={`ID: ${g.group_id}`} style={{ flex: 1, minWidth: 0, padding: "8px 10px", borderRadius: 8, border: "none", textAlign: "left", cursor: "pointer", background: activeGroup?.group_id === g.group_id ? "rgba(52,211,153,.15)" : "transparent", color: activeGroup?.group_id === g.group_id ? "var(--accent)" : "var(--ink)", fontWeight: activeGroup?.group_id === g.group_id ? 700 : 400, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
                     {activeGroup?.group_id === g.group_id && <Check size={12} color="var(--accent)" />}
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.group_name || g.group_id}</span>
                   </button>
