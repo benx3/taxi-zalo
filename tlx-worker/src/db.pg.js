@@ -521,6 +521,57 @@ export async function saveRules(groupId, rulesJson, rawText) {
     [groupId, rulesJson, rawText || "", now()]);
 }
 
+// ---------- Admin: merge nhóm ----------
+export async function listAllGroups() {
+  const r = await q(`
+    SELECT ag.group_id, MAX(ag.group_name) as group_name,
+           COUNT(DISTINCT ag.accountant_id) as accountant_count,
+           COUNT(DISTINCT m.id) as member_count
+    FROM accountant_groups ag
+    LEFT JOIN members m ON m.group_id = ag.group_id
+    GROUP BY ag.group_id
+    ORDER BY MAX(ag.group_name) ASC
+  `);
+  return r.rows;
+}
+export async function mergeGroups(sourceGroupId, targetGroupId) {
+  if (sourceGroupId === targetGroupId) throw new Error("Không thể merge nhóm với chính nó");
+  const hasSource = await q("SELECT 1 FROM accountant_groups WHERE group_id=$1 LIMIT 1", [sourceGroupId]);
+  if (!hasSource.rows.length) throw new Error("Nhóm nguồn không tồn tại");
+  // Di chuyển members chưa có trong target
+  await q(`
+    INSERT INTO members(id,group_id,zalo_uid,phone,display_name,avatar,alias,points,created_at,updated_at)
+    SELECT gen_random_uuid(), $2, s.zalo_uid, s.phone, s.display_name, s.avatar, s.alias, s.points, s.created_at, s.updated_at
+    FROM members s
+    WHERE s.group_id=$1
+      AND NOT EXISTS (SELECT 1 FROM members t WHERE t.group_id=$2 AND t.zalo_uid=s.zalo_uid)
+  `, [sourceGroupId, targetGroupId]);
+  await q("DELETE FROM members WHERE group_id=$1", [sourceGroupId]);
+  // Di chuyển transactions
+  await q("UPDATE point_transactions SET group_id=$1 WHERE group_id=$2", [targetGroupId, sourceGroupId]);
+  // Barem
+  const tRules = await q("SELECT 1 FROM point_rules WHERE group_id=$1", [targetGroupId]);
+  if (!tRules.rows.length) {
+    await q("UPDATE point_rules SET group_id=$1 WHERE group_id=$2", [targetGroupId, sourceGroupId]);
+  } else {
+    await q("DELETE FROM point_rules WHERE group_id=$1", [sourceGroupId]);
+  }
+  // accountant_groups
+  await q(`
+    INSERT INTO accountant_groups(accountant_id, group_id, group_name, public_visible)
+    SELECT accountant_id, $2, group_name, COALESCE(public_visible, 1)
+    FROM accountant_groups WHERE group_id=$1
+    ON CONFLICT(accountant_id, group_id) DO NOTHING
+  `, [sourceGroupId, targetGroupId]);
+  await q("DELETE FROM accountant_groups WHERE group_id=$1", [sourceGroupId]);
+  // KT UID setting
+  const tKt = await getSetting(`kt_uid_${targetGroupId}`, null);
+  const sKt = await getSetting(`kt_uid_${sourceGroupId}`, null);
+  if (!tKt && sKt) await setSetting(`kt_uid_${targetGroupId}`, sKt);
+  await setSetting(`kt_uid_${sourceGroupId}`, "");
+  return { ok: true };
+}
+
 export async function purgeOld() {
   const cutoff = now() - 60 * 86400000;
   const r = await q("DELETE FROM saved_trips WHERE taken_at < $1", [cutoff]);

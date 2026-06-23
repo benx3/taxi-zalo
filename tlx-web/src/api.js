@@ -32,6 +32,8 @@ export const api = {
   setAccountant: (id, groupLimit) => req("/api/admin/set-role", { id, role: "accountant", groupLimit: Number(groupLimit) || 3 }),
   resetPassword: (id, newPass) => req("/api/admin/reset-password", { id, newPass }),
   deleteUser: (id) => req(`/api/admin/users/${id}`, null, "DELETE"),
+  listAllGroups: () => req("/api/admin/groups", null, "GET"),
+  mergeGroups: (sourceGroupId, targetGroupId) => req("/api/admin/groups/merge", { sourceGroupId, targetGroupId }),
   revenueStats: (from, to) => req(`/api/admin/stats/revenue?from=${from}&to=${to}`, null, "GET"),
   userStats: (from, to, status) => req(`/api/admin/stats/users?from=${from}&to=${to}&status=${status||"all"}`, null, "GET"),
   getSettings: () => req("/api/admin/settings", null, "GET"),

@@ -371,6 +371,61 @@ export function setSetting(key, value) {
     .run(key, String(value));
 }
 
+// ---------- Admin: merge nhóm ----------
+export function listAllGroups() {
+  return db.prepare(`
+    SELECT ag.group_id, MAX(ag.group_name) as group_name,
+           COUNT(DISTINCT ag.accountant_id) as accountant_count,
+           COUNT(DISTINCT m.id) as member_count
+    FROM accountant_groups ag
+    LEFT JOIN members m ON m.group_id = ag.group_id
+    GROUP BY ag.group_id
+    ORDER BY MAX(ag.group_name) COLLATE NOCASE ASC
+  `).all();
+}
+export function mergeGroups(sourceGroupId, targetGroupId) {
+  if (sourceGroupId === targetGroupId) throw new Error("Không thể merge nhóm với chính nó");
+  const hasSource = db.prepare("SELECT 1 FROM accountant_groups WHERE group_id=?").get(sourceGroupId);
+  if (!hasSource) throw new Error("Nhóm nguồn không tồn tại");
+  db.transaction(() => {
+    // Di chuyển members chưa có trong target
+    const sourceMembers = db.prepare("SELECT * FROM members WHERE group_id=?").all(sourceGroupId);
+    for (const m of sourceMembers) {
+      const exists = db.prepare("SELECT 1 FROM members WHERE group_id=? AND zalo_uid=?").get(targetGroupId, m.zalo_uid);
+      if (!exists) {
+        db.prepare("INSERT INTO members(id,group_id,zalo_uid,phone,display_name,avatar,alias,points,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
+          .run(uid(), targetGroupId, m.zalo_uid, m.phone, m.display_name, m.avatar, m.alias, m.points, m.created_at, m.updated_at);
+      }
+    }
+    db.prepare("DELETE FROM members WHERE group_id=?").run(sourceGroupId);
+    // Di chuyển transactions và pending transfers
+    db.prepare("UPDATE point_transactions SET group_id=? WHERE group_id=?").run(targetGroupId, sourceGroupId);
+    // Barem: giữ target nếu có, nếu không thì lấy source
+    const targetRules = db.prepare("SELECT 1 FROM point_rules WHERE group_id=?").get(targetGroupId);
+    if (!targetRules) {
+      db.prepare("UPDATE point_rules SET group_id=? WHERE group_id=?").run(targetGroupId, sourceGroupId);
+    } else {
+      db.prepare("DELETE FROM point_rules WHERE group_id=?").run(sourceGroupId);
+    }
+    // Cập nhật accountant_groups
+    const sourceAcct = db.prepare("SELECT * FROM accountant_groups WHERE group_id=?").all(sourceGroupId);
+    for (const ag of sourceAcct) {
+      const exists = db.prepare("SELECT 1 FROM accountant_groups WHERE accountant_id=? AND group_id=?").get(ag.accountant_id, targetGroupId);
+      if (!exists) {
+        db.prepare("INSERT INTO accountant_groups(accountant_id,group_id,group_name,public_visible) VALUES(?,?,?,?)")
+          .run(ag.accountant_id, targetGroupId, ag.group_name, ag.public_visible ?? 1);
+      }
+    }
+    db.prepare("DELETE FROM accountant_groups WHERE group_id=?").run(sourceGroupId);
+    // KT UID setting
+    const tKt = getSetting(`kt_uid_${targetGroupId}`, null);
+    const sKt = getSetting(`kt_uid_${sourceGroupId}`, null);
+    if (!tKt && sKt) setSetting(`kt_uid_${targetGroupId}`, sKt);
+    setSetting(`kt_uid_${sourceGroupId}`, "");
+  })();
+  return { ok: true };
+}
+
 // ---------- Dọn dữ liệu cũ > 2 tháng ----------
 export function purgeOld() {
   const cutoff = now() - 60 * 86400000;

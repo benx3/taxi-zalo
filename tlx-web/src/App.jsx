@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   Shield, CreditCard, Ban, RefreshCw, X, User, TrendingUp,
   Users, CheckCircle2, Lock, AlertTriangle, LogOut, Settings,
-  Search, Phone, Mic, Eye, EyeOff
+  Search, Phone, Mic, Eye, EyeOff, GitMerge
 } from "lucide-react";
 import { api, getToken, setToken } from "./api.js";
 
@@ -219,6 +219,7 @@ function AdminApp({ me, onLogout }) {
   };
   const TABS=[
     {key:"users",icon:Users,label:"Tài khoản"},
+    {key:"groups",icon:GitMerge,label:"Merge nhóm"},
     {key:"stats",icon:TrendingUp,label:"Thống kê"},
     {key:"settings",icon:Settings,label:"Cài đặt"},
   ];
@@ -267,6 +268,7 @@ function AdminApp({ me, onLogout }) {
           <button onClick={reload} title="Tải lại" style={{background:"none",border:"none",cursor:"pointer",color:"var(--ink-dim)",padding:6,borderRadius:8,display:"flex"}}><RefreshCw size={15}/></button>
         </header>
         <div style={{flex:1,overflowY:"auto"}}>
+          {adminTab==="groups"&&<div style={{padding:"20px 24px"}}><AdminGroupsTab/></div>}
           {adminTab==="stats"&&<div style={{padding:"20px 24px"}}><AdminStatsTab/></div>}
           {adminTab==="settings"&&<div style={{padding:"20px 24px",maxWidth:560}}><AdminSettingsTab/></div>}
           {adminTab==="users"&&(
@@ -423,6 +425,125 @@ function SetAccountantModal({target,onClose,onDone}){
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ===== Admin: Merge nhóm ===== */
+function AdminGroupsTab() {
+  const [groups, setGroups] = useState(null);
+  const [source, setSource] = useState(null);
+  const [target, setTarget] = useState(null);
+  const [merging, setMerging] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const load = () => api.listAllGroups().then(setGroups).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  const flash = (ok, text) => { setMsg({ ok, text }); setTimeout(() => setMsg(null), 4000); };
+
+  const doMerge = async () => {
+    if (!source || !target) return;
+    if (!confirm(`Merge "${source.group_name}" → "${target.group_name}"?\n\nDữ liệu từ nhóm nguồn sẽ được chuyển sang nhóm đích. Hành động KHÔNG THỂ HOÀN TÁC.`)) return;
+    setMerging(true);
+    try {
+      await api.mergeGroups(source.group_id, target.group_id);
+      flash(true, "Merge thành công!");
+      setSource(null); setTarget(null);
+      load();
+    } catch (e) { flash(false, e.message); }
+    finally { setMerging(false); }
+  };
+
+  const cardStyle = { background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden", marginBottom: 20 };
+
+  return (
+    <div style={{ maxWidth: 800 }}>
+      {/* Hướng dẫn */}
+      <div style={{ background: "rgba(96,165,250,.08)", border: "1px solid rgba(96,165,250,.2)", borderRadius: 12, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "var(--ink-dim)", lineHeight: 1.6 }}>
+        <b style={{ color: "#60a5fa" }}>Merge nhóm:</b> Khi 2 kế toán dùng 2 tài khoản Zalo khác nhau add cùng 1 nhóm vật lý, Zalo có thể trả về 2 group ID khác nhau. Chọn <b>Nhóm nguồn</b> (sẽ bị xóa) và <b>Nhóm đích</b> (giữ lại), rồi nhấn Merge. Toàn bộ thành viên, giao dịch, barem sẽ được chuyển sang nhóm đích.
+      </div>
+
+      {/* Danh sách nhóm */}
+      <div style={cardStyle}>
+        <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+          <GitMerge size={16} color="var(--accent)" />
+          <span style={{ fontWeight: 700, fontSize: 15 }}>Tất cả nhóm trong hệ thống</span>
+          <button onClick={load} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)" }}><RefreshCw size={14} /></button>
+        </div>
+        {!groups
+          ? <div style={{ padding: 24, textAlign: "center", color: "var(--ink-dim)" }}>Đang tải…</div>
+          : <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead><tr style={{ color: "var(--ink-dim)", fontSize: 11.5, textTransform: "uppercase", letterSpacing: ".05em", textAlign: "left" }}>
+                  <th style={th}>#</th>
+                  <th style={th}>Group ID</th>
+                  <th style={th}>Tên nhóm</th>
+                  <th style={th}>KT</th>
+                  <th style={th}>TV</th>
+                  <th style={{ ...th, textAlign: "right" }}>Chọn</th>
+                </tr></thead>
+                <tbody>{groups.map((g, i) => {
+                  const isSrc = source?.group_id === g.group_id;
+                  const isTgt = target?.group_id === g.group_id;
+                  return (
+                    <tr key={g.group_id} style={{ borderTop: "1px solid var(--line)", background: isSrc ? "rgba(239,68,68,.06)" : isTgt ? "rgba(52,211,153,.06)" : "transparent" }}>
+                      <td style={{ ...td, color: "var(--ink-dim)", fontSize: 12 }}>{i + 1}</td>
+                      <td style={{ ...td, fontFamily: "monospace", fontSize: 11, color: "var(--ink-dim)" }}>{g.group_id}</td>
+                      <td style={{ ...td, fontWeight: 600 }}>{g.group_name || g.group_id}</td>
+                      <td style={{ ...td, color: "var(--ink-dim)" }}>{g.accountant_count}</td>
+                      <td style={{ ...td, color: "var(--ink-dim)" }}>{g.member_count}</td>
+                      <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
+                        <button
+                          onClick={() => setSource(isSrc ? null : g)}
+                          style={{ ...miniBtn(isSrc ? "#ef4444" : "#94a3b8"), marginRight: 4 }}>
+                          {isSrc ? "✓ Nguồn" : "Nguồn"}
+                        </button>
+                        <button
+                          onClick={() => setTarget(isTgt ? null : g)}
+                          style={miniBtn(isTgt ? "#34d399" : "#94a3b8")}>
+                          {isTgt ? "✓ Đích" : "Đích"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}</tbody>
+              </table>
+            </div>
+        }
+      </div>
+
+      {/* Panel merge */}
+      {(source || target) && (
+        <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: "16px 20px" }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Xác nhận Merge</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+            <div style={{ flex: 1, minWidth: 200, padding: "10px 14px", borderRadius: 10, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)" }}>
+              <div style={{ fontSize: 11, color: "#f87171", fontWeight: 700, marginBottom: 4 }}>NGUỒN (sẽ bị xóa)</div>
+              {source
+                ? <><div style={{ fontWeight: 700 }}>{source.group_name}</div><div style={{ fontSize: 11, color: "var(--ink-dim)", fontFamily: "monospace" }}>{source.group_id}</div></>
+                : <div style={{ color: "var(--ink-dim)", fontSize: 13 }}>Chưa chọn</div>}
+            </div>
+            <GitMerge size={20} color="var(--ink-dim)" />
+            <div style={{ flex: 1, minWidth: 200, padding: "10px 14px", borderRadius: 10, background: "rgba(52,211,153,.08)", border: "1px solid rgba(52,211,153,.2)" }}>
+              <div style={{ fontSize: 11, color: "#34d399", fontWeight: 700, marginBottom: 4 }}>ĐÍCH (giữ lại)</div>
+              {target
+                ? <><div style={{ fontWeight: 700 }}>{target.group_name}</div><div style={{ fontSize: 11, color: "var(--ink-dim)", fontFamily: "monospace" }}>{target.group_id}</div></>
+                : <div style={{ color: "var(--ink-dim)", fontSize: 13 }}>Chưa chọn</div>}
+            </div>
+          </div>
+          {msg && <div style={{ padding: "8px 12px", borderRadius: 8, marginBottom: 10, fontSize: 13, fontWeight: 600, background: msg.ok ? "rgba(52,211,153,.12)" : "rgba(239,68,68,.12)", color: msg.ok ? "#34d399" : "#f87171" }}>{msg.text}</div>}
+          <button
+            onClick={doMerge}
+            disabled={!source || !target || merging}
+            style={{ padding: "10px 24px", borderRadius: 10, border: "none", cursor: (source && target && !merging) ? "pointer" : "default", fontWeight: 800, fontSize: 14, background: (source && target) ? "rgba(239,68,68,.2)" : "rgba(255,255,255,.05)", color: (source && target) ? "#ef4444" : "var(--ink-dim)", opacity: merging ? 0.6 : 1 }}>
+            {merging ? "Đang merge…" : "Merge ngay"}
+          </button>
+        </div>
+      )}
+      {msg && !source && !target && (
+        <div style={{ padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: msg.ok ? "rgba(52,211,153,.12)" : "rgba(239,68,68,.12)", color: msg.ok ? "#34d399" : "#f87171" }}>{msg.text}</div>
+      )}
     </div>
   );
 }

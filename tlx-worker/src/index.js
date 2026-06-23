@@ -92,6 +92,17 @@ app.post("/api/admin/set-role", async (req, res) => {
   try { res.json(await dbm.setRole(req.body.id, req.body.role, req.body.groupLimit)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
+app.get("/api/admin/groups", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  res.json(await dbm.listAllGroups());
+});
+app.post("/api/admin/groups/merge", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { sourceGroupId, targetGroupId } = req.body;
+  if (!sourceGroupId || !targetGroupId) return res.status(400).json({ error: "Thiếu sourceGroupId hoặc targetGroupId" });
+  try { res.json(await dbm.mergeGroups(sourceGroupId, targetGroupId)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
 app.delete("/api/admin/users/:id", async (req, res) => {
   const a = await requireAdmin(req, res); if (!a) return;
   if (req.params.id === a.userId) return res.status(400).json({ error: "Không thể xóa chính mình" });
