@@ -84,6 +84,8 @@ export async function initDb() {
       zalo_uid     TEXT NOT NULL,
       phone        TEXT,
       display_name TEXT,
+      avatar       TEXT,
+      alias        TEXT,
       points       DOUBLE PRECISION DEFAULT 0,
       created_at   BIGINT NOT NULL,
       updated_at   BIGINT NOT NULL,
@@ -120,6 +122,8 @@ export async function initDb() {
   await q("ALTER TABLE point_transactions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'approved'");
   await q("ALTER TABLE point_transactions ADD COLUMN IF NOT EXISTS requester_uid TEXT");
   await q("ALTER TABLE point_transactions ADD COLUMN IF NOT EXISTS raw_text TEXT");
+  await q("ALTER TABLE members ADD COLUMN IF NOT EXISTS avatar TEXT");
+  await q("ALTER TABLE members ADD COLUMN IF NOT EXISTS alias TEXT");
 }
 
 const sessions = new Map(); // token -> userId (RAM; production lớn nên thay bằng Redis)
@@ -358,17 +362,22 @@ export async function getMemberByZaloUid(groupId, zaloUid) {
   const r = await q("SELECT * FROM members WHERE group_id=$1 AND zalo_uid=$2", [groupId, zaloUid]);
   return r.rows[0] || null;
 }
-export async function upsertMember(groupId, zaloUid, { phone, display_name } = {}) {
+export async function upsertMember(groupId, zaloUid, { phone, display_name, avatar } = {}) {
   const r = await q(`
-    INSERT INTO members(id,group_id,zalo_uid,phone,display_name,points,created_at,updated_at)
-    VALUES($1,$2,$3,$4,$5,0,$6,$6)
+    INSERT INTO members(id,group_id,zalo_uid,phone,display_name,avatar,points,created_at,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,0,$7,$7)
     ON CONFLICT(group_id,zalo_uid) DO UPDATE
       SET phone=COALESCE($4,members.phone),
           display_name=COALESCE($5,members.display_name),
-          updated_at=$6
+          avatar=COALESCE($6,members.avatar),
+          updated_at=$7
     RETURNING id`,
-    [uid(), groupId, zaloUid, phone || null, display_name || null, now()]);
+    [uid(), groupId, zaloUid, phone || null, display_name || null, avatar || null, now()]);
   return r.rows[0].id;
+}
+export async function setMemberAlias(groupId, zaloUid, alias) {
+  await q("UPDATE members SET alias=$1, updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
+    [alias || null, now(), groupId, zaloUid]);
 }
 export async function deleteRemovedMembers(groupId, activeUids) {
   if (!activeUids.length) return 0;

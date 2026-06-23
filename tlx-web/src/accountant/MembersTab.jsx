@@ -71,6 +71,7 @@ export default function MembersTab({ groupId }) {
     if (!q.trim()) return members;
     const s = noMark(q);
     return members.filter(m =>
+      noMark(m.alias).includes(s) ||
       noMark(m.display_name).includes(s) ||
       (m.phone || "").includes(q.trim()) ||
       (m.zalo_uid || "").includes(q.trim())
@@ -170,8 +171,8 @@ export default function MembersTab({ groupId }) {
         {sorted.length > 0 && (
         <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
           {/* Header bảng */}
-          <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 72px 38px", padding: "6px 4px 6px 12px", borderBottom: "1px solid var(--line)", fontSize: 11, fontWeight: 700, color: "var(--ink-dim)", textTransform: "uppercase", letterSpacing: ".06em" }}>
-            <span>#</span>
+          <div style={{ display: "grid", gridTemplateColumns: "36px 40px 1fr 72px 38px", padding: "6px 4px 6px 12px", borderBottom: "1px solid var(--line)", fontSize: 11, fontWeight: 700, color: "var(--ink-dim)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+            <span>#</span><span />
             <button onClick={() => setSortBy(s => s === "name_asc" ? "name_desc" : "name_asc")}
               style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: sortBy.startsWith("name") ? "var(--accent)" : "var(--ink-dim)", display: "flex", alignItems: "center", gap: 3 }}>
               Tên {sortBy === "name_asc" ? "↑" : sortBy === "name_desc" ? "↓" : ""}
@@ -188,10 +189,17 @@ export default function MembersTab({ groupId }) {
           const isEditing = inlineEdit?.id === m.id;
           return (
             <React.Fragment key={m.id}>
-              <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 72px 38px", alignItems: "center", borderBottom: "1px solid var(--line)", background: isEditing ? "rgba(52,211,153,.05)" : "transparent" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "36px 40px 1fr 72px 38px", alignItems: "center", borderBottom: "1px solid var(--line)", background: isEditing ? "rgba(52,211,153,.05)" : "transparent" }}>
                 <span style={{ padding: "0 0 0 12px", fontSize: 12, color: "var(--ink-dim)", fontWeight: 600 }}>{rank}</span>
-                <button onClick={() => setSelected(m)} style={{ padding: "11px 6px", background: "none", border: "none", cursor: "pointer", textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ink)", fontSize: 14, fontWeight: 600 }}>
-                  {m.display_name || m.zalo_uid}
+                <div style={{ display: "flex", alignItems: "center", padding: "8px 0 8px 0" }}>
+                  <ZaloAvatar uid={m.zalo_uid} name={m.display_name} src={m.avatar} size={32} />
+                </div>
+                <button onClick={() => setSelected(m)} style={{ padding: "10px 6px", background: "none", border: "none", cursor: "pointer", textAlign: "left", overflow: "hidden", color: "var(--ink)" }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {m.alias || m.display_name || m.zalo_uid}
+                    {m.alias && <span style={{ fontSize: 11, color: "var(--ink-dim)", fontWeight: 400, marginLeft: 5 }}>({m.display_name})</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--ink-dim)", marginTop: 1 }}>#{(m.zalo_uid || "").slice(-6)}</div>
                 </button>
                 <div style={{ fontWeight: 800, fontSize: 15, color: pointColor(m.points), textAlign: "right", paddingRight: 8 }}>
                   {fmtPts(m.points)}
@@ -275,6 +283,22 @@ function pointColor(p) {
   return n > 0 ? "#34d399" : n < 0 ? "#f87171" : "#94a3b8";
 }
 
+const AVT_COLORS = ["#1e3a5f","#1a2e1a","#2a1a2a","#2a2a1a","#1a2a2a"];
+function ZaloAvatar({ uid, name, src, size = 36 }) {
+  const [imgErr, setImgErr] = useState(false);
+  const bg = AVT_COLORS[(uid || "").charCodeAt(0) % AVT_COLORS.length];
+  const initial = (name || "?")[0].toUpperCase();
+  if (src && !imgErr) {
+    return <img src={src} alt={name || uid} onError={() => setImgErr(true)}
+      style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0, background: bg }} />;
+  }
+  return (
+    <div style={{ width: size, height: size, borderRadius: "50%", background: bg, display: "grid", placeItems: "center", fontSize: size >= 44 ? 20 : 14, fontWeight: 700, flexShrink: 0, color: "#e2e8f0" }}>
+      {initial}
+    </div>
+  );
+}
+
 // ===== Chi tiết thành viên =====
 function ConvoThread({ raw }) {
   let c = null;
@@ -311,34 +335,69 @@ function MemberDetail({ member, groupId, onBack }) {
   const [txs, setTxs] = useState([]);
   const [loadingTx, setLoadingTx] = useState(true);
   const [showAdjust, setShowAdjust] = useState(false);
+  const [editAlias, setEditAlias] = useState(false);
+  const [aliasVal, setAliasVal] = useState(member.alias || "");
+  const [aliasSaving, setAliasSaving] = useState(false);
+  const [aliasErr, setAliasErr] = useState("");
 
   const reload = () => {
     setLoadingTx(true);
     Promise.all([
-      api.listMembers(groupId).then(list => { const found = list.find(x => x.zalo_uid === member.zalo_uid); if (found) setM(found); }),
+      api.listMembers(groupId).then(list => { const found = list.find(x => x.zalo_uid === member.zalo_uid); if (found) { setM(found); setAliasVal(found.alias || ""); } }),
       api.listTransactions(groupId, member.zalo_uid, 50).then(setTxs),
     ]).catch(() => {}).finally(() => setLoadingTx(false));
   };
   useEffect(() => { reload(); }, []);
+
+  const saveAlias = async () => {
+    setAliasSaving(true); setAliasErr("");
+    try {
+      await api.setAlias({ groupId, zaloUid: m.zalo_uid, alias: aliasVal.trim() || null });
+      setEditAlias(false); reload();
+    } catch (e) { setAliasErr(e.message); }
+    finally { setAliasSaving(false); }
+  };
 
   return (
     <div style={{ padding: "0 0 80px" }}>
       {/* Back + header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px 10px", borderBottom: "1px solid var(--line)" }}>
         <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)", padding: 4 }}>← Quay lại</button>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>{m.display_name || m.zalo_uid}</div>
-          <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>{m.phone || ""} {m.zalo_uid}</div>
+        <ZaloAvatar uid={m.zalo_uid} name={m.display_name} src={m.avatar} size={44} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {m.alias || m.display_name || m.zalo_uid}
+            {m.alias && <span style={{ fontSize: 12, color: "var(--ink-dim)", fontWeight: 400, marginLeft: 6 }}>({m.display_name})</span>}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>#{m.zalo_uid}</div>
         </div>
-        <div style={{ fontWeight: 800, fontSize: 22, color: pointColor(m.points) }}>{fmtPts(m.points)}</div>
+        <div style={{ fontWeight: 800, fontSize: 22, color: pointColor(m.points), flexShrink: 0 }}>{fmtPts(m.points)}</div>
       </div>
 
-      {/* Nút chỉnh điểm */}
-      <div style={{ padding: "12px 16px" }}>
+      {/* Biệt danh + Chỉnh điểm */}
+      <div style={{ padding: "12px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button onClick={() => setShowAdjust(true)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "10px 18px", borderRadius: 10, border: "1px solid var(--accent-dim)", background: "rgba(52,211,153,.1)", color: "var(--accent)", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-          <Edit2 size={14} /> Chỉnh điểm thủ công
+          <Edit2 size={14} /> Chỉnh điểm
+        </button>
+        <button onClick={() => setEditAlias(v => !v)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "10px 18px", borderRadius: 10, border: "1px solid var(--line)", background: editAlias ? "rgba(96,165,250,.1)" : "transparent", color: "#60a5fa", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+          <Edit2 size={14} /> {m.alias ? "Sửa biệt danh" : "Đặt biệt danh"}
         </button>
       </div>
+      {editAlias && (
+        <div style={{ margin: "0 16px 12px", padding: "12px 14px", borderRadius: 10, background: "rgba(96,165,250,.07)", border: "1px solid rgba(96,165,250,.25)" }}>
+          <div style={{ fontSize: 12, color: "var(--ink-dim)", marginBottom: 6 }}>Biệt danh để phân biệt tên trùng (ví dụ: "Anh Đức HN"). Để trống để xóa biệt danh.</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={aliasVal} onChange={e => setAliasVal(e.target.value)} onKeyDown={e => e.key === "Enter" && saveAlias()}
+              placeholder={m.display_name || "Nhập biệt danh…"}
+              style={{ flex: 1, padding: "8px 12px", borderRadius: 9, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", fontSize: 14, outline: "none" }} />
+            <button onClick={saveAlias} disabled={aliasSaving} style={{ padding: "8px 16px", borderRadius: 9, border: "none", background: "rgba(52,211,153,.2)", color: "#34d399", fontWeight: 700, fontSize: 13, cursor: aliasSaving ? "default" : "pointer" }}>
+              {aliasSaving ? "…" : <><Check size={13} style={{ verticalAlign: -2, marginRight: 4 }} />Lưu</>}
+            </button>
+            <button onClick={() => { setEditAlias(false); setAliasVal(m.alias || ""); }} style={{ padding: "8px 10px", borderRadius: 9, border: "none", background: "rgba(248,113,113,.1)", color: "#f87171", cursor: "pointer" }}><X size={14} /></button>
+          </div>
+          {aliasErr && <div style={{ color: "#f87171", fontSize: 12, marginTop: 6 }}>{aliasErr}</div>}
+        </div>
+      )}
 
       {/* Lịch sử giao dịch */}
       <div style={{ padding: "0 16px" }}>

@@ -34,6 +34,7 @@ export const api = {
   // Thành viên
   listMembers: (groupId) => req(`/api/accountant/members?groupId=${encodeURIComponent(groupId)}`, null, "GET"),
   upsertMember: (b) => req("/api/accountant/members", b),
+  setAlias: (b) => req("/api/accountant/members/alias", b, "PATCH"),
   syncMembers: () => req("/api/accountant/sync-members", {}),
 
   // Giao dịch điểm

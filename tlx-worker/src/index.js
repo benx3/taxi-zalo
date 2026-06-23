@@ -185,6 +185,13 @@ app.post("/api/accountant/members", async (req, res) => {
   try { res.json({ id: await dbm.upsertMember(groupId, zaloUid, { phone, display_name }) }); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
+app.patch("/api/accountant/members/alias", async (req, res) => {
+  const { groupId, zaloUid, alias } = req.body;
+  if (!groupId || !zaloUid) return res.status(400).json({ error: "Thiếu groupId hoặc zaloUid" });
+  if (!await checkGroupAccess(req, res, groupId)) return;
+  try { await dbm.setMemberAlias(groupId, zaloUid, alias || null); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
 
 // Giao dịch điểm
 app.get("/api/accountant/transactions", async (req, res) => {

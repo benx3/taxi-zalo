@@ -635,6 +635,7 @@ async function importGroupMembers(sess, groupId) {
       if (!uid) continue;
       await dbm.upsertMember(groupId, String(uid), {
         display_name: m.dName || m.displayName || m.name || null,
+        avatar: m.avt || m.avatar || m.avatarUrl || null,
       });
       count++;
       if (count % 10 === 0) await yieldLoop();
@@ -783,6 +784,7 @@ async function fullSyncGroupMembers(sess, groupId) {
     if (!existing) added++;
     await dbm.upsertMember(groupId, uid, {
       display_name: m.dName || m.displayName || m.name || null,
+      avatar: m.avt || m.avatar || m.avatarUrl || null,
     });
     activeUids.push(uid);
     if (++i % 10 === 0) await yieldLoop(); // nhường event loop mỗi 10 member

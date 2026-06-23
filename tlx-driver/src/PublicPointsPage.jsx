@@ -41,6 +41,34 @@ const c = {
   ink: "#e2e8f0", dim: "#8794ad", accent: "#34d399", blue: "#58a6ff",
 };
 
+const noMark = (s) => (s || "").toLowerCase()
+  .replace(/đ/gi, "d")
+  .normalize("NFD")
+  .replace(/\p{Mn}/gu, "");
+
+const AVT_COLORS = ["#1e3a5f","#1a2e1a","#2a1a2a","#2a2a1a","#1a2a2a"];
+function ZaloAvatar({ uid, name, src, size = 40 }) {
+  const [imgErr, setImgErr] = useState(false);
+  const bg = AVT_COLORS[(uid || "").charCodeAt(0) % AVT_COLORS.length];
+  const initial = (name || "?")[0].toUpperCase();
+  const fontSize = size >= 50 ? 22 : 16;
+  if (src && !imgErr) {
+    return (
+      <img
+        src={src}
+        alt={name || uid}
+        onError={() => setImgErr(true)}
+        style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0, background: bg }}
+      />
+    );
+  }
+  return (
+    <div style={{ width: size, height: size, borderRadius: "50%", background: bg, display: "grid", placeItems: "center", fontSize, fontWeight: 700, flexShrink: 0, color: "#e2e8f0" }}>
+      {initial}
+    </div>
+  );
+}
+
 /* ── Nav & Footer (same as HomePage) ──────────── */
 function SiteNav() {
   return (
@@ -221,8 +249,12 @@ function MembersView({ group, onBack, onSelect }) {
   }, [group.group_id]);
 
   const sorted = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    let list = q ? members.filter(m => (m.display_name || "").toLowerCase().includes(q)) : [...members];
+    const q = noMark(search.trim());
+    let list = q ? members.filter(m =>
+      noMark(m.alias).includes(q) ||
+      noMark(m.display_name).includes(q) ||
+      (m.zalo_uid || "").includes(search.trim())
+    ) : [...members];
     list.sort((a, b) => {
       if (sortBy === "points") {
         const d = (Number(b.points) || 0) - (Number(a.points) || 0);
@@ -238,8 +270,6 @@ function MembersView({ group, onBack, onSelect }) {
     if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortBy(col); setSortDir(col === "points" ? "desc" : "asc"); }
   };
-
-  const avatarBg = (uid) => ["#1e3a5f","#1a2e1a","#2a1a2a","#2a2a1a","#1a2a2a"][(uid || "").charCodeAt(0) % 5];
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 16px 0" }}>
@@ -289,12 +319,13 @@ function MembersView({ group, onBack, onSelect }) {
               onMouseEnter={e => e.currentTarget.style.background = "#1c2128"}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}
               onClick={() => onSelect(m)}>
-              <div style={{ width: 40, height: 40, borderRadius: "50%", background: avatarBg(m.zalo_uid), display: "grid", placeItems: "center", fontSize: 16, fontWeight: 700 }}>
-                {(m.display_name || "?")[0].toUpperCase()}
-              </div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 15, color: c.ink }}>{m.display_name || m.zalo_uid}</div>
-                <div style={{ fontSize: 12, color: c.dim, marginTop: 2 }}>#{i + 1}</div>
+              <ZaloAvatar uid={m.zalo_uid} name={m.display_name} src={m.avatar} size={40} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 15, color: c.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {m.alias || m.display_name || m.zalo_uid}
+                </div>
+                {m.alias && <div style={{ fontSize: 11, color: c.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.display_name}</div>}
+                <div style={{ fontSize: 11, color: c.dim, marginTop: 1 }}>#{i + 1} · ID …{(m.zalo_uid || "").slice(-6)}</div>
               </div>
               <div style={{ textAlign: "right", fontWeight: 800, fontSize: 16, color: pts >= 0 ? "#34d399" : "#f87171" }}>
                 {pts >= 0 ? "+" : ""}{pts % 1 === 0 ? pts.toFixed(0) : pts.toFixed(2)}đ
@@ -327,7 +358,6 @@ function TransactionsView({ group, member, onBack }) {
   }, [group.group_id, member.zalo_uid]);
 
   const pts = Number(member.points) || 0;
-  const avatarBg = (uid) => ["#1e3a5f","#1a2e1a","#2a1a2a","#2a2a1a","#1a2a2a"][(uid || "").charCodeAt(0) % 5];
 
   // Phân trang
   const totalPages = Math.ceil(Math.max(txs.length, 1) / PAGE_SIZE);
@@ -356,12 +386,13 @@ function TransactionsView({ group, member, onBack }) {
 
       {/* Member summary */}
       <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, padding: "20px 24px", marginBottom: 28, display: "flex", alignItems: "center", gap: 18 }}>
-        <div style={{ width: 54, height: 54, borderRadius: "50%", background: avatarBg(member.zalo_uid), display: "grid", placeItems: "center", fontSize: 22, fontWeight: 700, flexShrink: 0 }}>
-          {(member.display_name || "?")[0].toUpperCase()}
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800, fontSize: 18, color: c.ink }}>{member.display_name || member.zalo_uid}</div>
-          <div style={{ fontSize: 13, color: c.dim, marginTop: 3 }}>{group.group_name}</div>
+        <ZaloAvatar uid={member.zalo_uid} name={member.display_name} src={member.avatar} size={54} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 18, color: c.ink }}>
+            {member.alias || member.display_name || member.zalo_uid}
+          </div>
+          {member.alias && <div style={{ fontSize: 13, color: c.dim, marginTop: 1 }}>{member.display_name}</div>}
+          <div style={{ fontSize: 12, color: c.dim, marginTop: 3 }}>{group.group_name} · ID …{(member.zalo_uid || "").slice(-6)}</div>
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 26, fontWeight: 800, color: pts >= 0 ? "#34d399" : "#f87171" }}>
