@@ -219,7 +219,7 @@ function AdminApp({ me, onLogout }) {
   };
   const TABS=[
     {key:"users",icon:Users,label:"Tài khoản"},
-    {key:"groups",icon:GitMerge,label:"Merge nhóm"},
+    {key:"groups",icon:GitMerge,label:"Cài đặt nhóm"},
     {key:"stats",icon:TrendingUp,label:"Thống kê"},
     {key:"settings",icon:Settings,label:"Cài đặt"},
   ];
@@ -429,18 +429,32 @@ function SetAccountantModal({target,onClose,onDone}){
   );
 }
 
-/* ===== Admin: Merge nhóm ===== */
+/* ===== Admin: Cài đặt nhóm ===== */
 function AdminGroupsTab() {
   const [groups, setGroups] = useState(null);
   const [source, setSource] = useState(null);
   const [target, setTarget] = useState(null);
   const [merging, setMerging] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [resetTarget, setResetTarget] = useState(null);
+  const [resetting, setResetting] = useState(false);
 
   const load = () => api.listAllGroups().then(setGroups).catch(() => {});
   useEffect(() => { load(); }, []);
 
   const flash = (ok, text) => { setMsg({ ok, text }); setTimeout(() => setMsg(null), 4000); };
+
+  const doReset = async () => {
+    if (!resetTarget) return;
+    setResetting(true);
+    try {
+      await api.resetGroupData(resetTarget.group_id);
+      flash(true, `Đã reset data nhóm "${resetTarget.group_name}" về 0đ.`);
+      setResetTarget(null);
+      load();
+    } catch (e) { flash(false, e.message); }
+    finally { setResetting(false); }
+  };
 
   const doMerge = async () => {
     if (!source || !target) return;
@@ -458,7 +472,27 @@ function AdminGroupsTab() {
   const cardStyle = { background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden", marginBottom: 20 };
 
   return (
-    <div style={{ maxWidth: 800 }}>
+    <div style={{ maxWidth: 860 }}>
+      {/* Modal xác nhận reset */}
+      {resetTarget && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "28px 32px", maxWidth: 420, width: "90%" }}>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 10, color: "#f87171" }}>⚠️ Reset data nhóm?</div>
+            <div style={{ fontSize: 14, color: "var(--ink-dim)", lineHeight: 1.6, marginBottom: 20 }}>
+              Nhóm: <b style={{ color: "var(--ink)" }}>{resetTarget.group_name}</b><br />
+              Hành động này sẽ <b>xóa toàn bộ lịch sử giao dịch</b> và <b>đặt điểm tất cả thành viên về 0</b>.<br />
+              <span style={{ color: "#f87171", fontWeight: 700 }}>KHÔNG THỂ HOÀN TÁC.</span>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setResetTarget(null)} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "1px solid var(--line)", background: "none", color: "var(--ink-dim)", cursor: "pointer", fontWeight: 600 }}>Hủy</button>
+              <button onClick={doReset} disabled={resetting} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "none", background: "rgba(239,68,68,.2)", color: "#f87171", cursor: resetting ? "default" : "pointer", fontWeight: 800, opacity: resetting ? 0.6 : 1 }}>
+                {resetting ? "Đang reset…" : "Xác nhận Reset"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hướng dẫn */}
       <div style={{ background: "rgba(96,165,250,.08)", border: "1px solid rgba(96,165,250,.2)", borderRadius: 12, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "var(--ink-dim)", lineHeight: 1.6 }}>
         <b style={{ color: "#60a5fa" }}>Merge nhóm:</b> Khi 2 kế toán dùng 2 tài khoản Zalo khác nhau add cùng 1 nhóm vật lý, Zalo có thể trả về 2 group ID khác nhau. Chọn <b>Nhóm nguồn</b> (sẽ bị xóa) và <b>Nhóm đích</b> (giữ lại), rồi nhấn Merge. Toàn bộ thành viên, giao dịch, barem sẽ được chuyển sang nhóm đích.
@@ -481,7 +515,8 @@ function AdminGroupsTab() {
                   <th style={th}>Tên nhóm</th>
                   <th style={th}>KT</th>
                   <th style={th}>TV</th>
-                  <th style={{ ...th, textAlign: "right" }}>Chọn</th>
+                  <th style={{ ...th, textAlign: "right" }}>Merge</th>
+                  <th style={{ ...th, textAlign: "right" }}>Reset</th>
                 </tr></thead>
                 <tbody>{groups.map((g, i) => {
                   const isSrc = source?.group_id === g.group_id;
@@ -503,6 +538,13 @@ function AdminGroupsTab() {
                           onClick={() => setTarget(isTgt ? null : g)}
                           style={miniBtn(isTgt ? "#34d399" : "#94a3b8")}>
                           {isTgt ? "✓ Đích" : "Đích"}
+                        </button>
+                      </td>
+                      <td style={{ ...td, textAlign: "right" }}>
+                        <button
+                          onClick={() => setResetTarget(g)}
+                          style={{ ...miniBtn("#f87171"), fontSize: 11 }}>
+                          Reset data
                         </button>
                       </td>
                     </tr>

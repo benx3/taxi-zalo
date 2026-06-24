@@ -103,6 +103,11 @@ app.post("/api/admin/groups/merge", async (req, res) => {
   try { res.json(await dbm.mergeGroups(sourceGroupId, targetGroupId)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
+app.post("/api/admin/groups/:id/reset", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try { res.json(await dbm.resetGroupData(req.params.id)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
 app.delete("/api/admin/users/:id", async (req, res) => {
   const a = await requireAdmin(req, res); if (!a) return;
   if (req.params.id === a.userId) return res.status(400).json({ error: "Không thể xóa chính mình" });

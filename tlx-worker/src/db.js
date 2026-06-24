@@ -426,6 +426,14 @@ export function mergeGroups(sourceGroupId, targetGroupId) {
   return { ok: true };
 }
 
+export function resetGroupData(groupId) {
+  db.transaction(() => {
+    db.prepare("UPDATE members SET points=0 WHERE group_id=?").run(groupId);
+    db.prepare("DELETE FROM point_transactions WHERE group_id=?").run(groupId);
+  })();
+  return { ok: true };
+}
+
 // ---------- Dọn dữ liệu cũ > 2 tháng ----------
 export function purgeOld() {
   const cutoff = now() - 60 * 86400000;

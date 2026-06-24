@@ -582,6 +582,12 @@ export async function mergeGroups(sourceGroupId, targetGroupId) {
   return { ok: true };
 }
 
+export async function resetGroupData(groupId) {
+  await q("UPDATE members SET points=0 WHERE group_id=$1", [groupId]);
+  await q("DELETE FROM point_transactions WHERE group_id=$1", [groupId]);
+  return { ok: true };
+}
+
 export async function purgeOld() {
   const cutoff = now() - 60 * 86400000;
   const r = await q("DELETE FROM saved_trips WHERE taken_at < $1", [cutoff]);
