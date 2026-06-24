@@ -33,25 +33,36 @@ export default function App() {
 
   useEffect(() => {
     if (!getToken()) { setLoading(false); return; }
+    let willRedirect = false;
     api.me().then(u => {
-      if (u.role === "admin") { window.location.replace(ADMIN_URL + "/admin"); return; }
-      if (u.role === "accountant") {
-        const tok = localStorage.getItem("tlx_token");
-        window.location.replace(ADMIN_URL + `/accountant${tok ? "#token=" + tok : ""}`);
+      if (u.role === "admin" || u.role === "accountant") {
+        // Phòng loop: nếu ADMIN_URL cùng origin với trang hiện tại thì không redirect
+        let sameOrigin = false;
+        try { sameOrigin = new URL(ADMIN_URL).origin === window.location.origin; } catch {}
+        if (sameOrigin) { setToken(null); setLoading(false); return; }
+        willRedirect = true;
+        const tok = localStorage.getItem("tlx_token") || "";
+        const path = u.role === "admin" ? "/admin" : "/accountant";
+        window.location.replace(ADMIN_URL + path + (tok ? "#token=" + tok : ""));
         return;
       }
       setMe(u);
-    }).catch(() => setToken(null)).finally(() => setLoading(false));
+    }).catch(() => setToken(null)).finally(() => {
+      if (!willRedirect) setLoading(false);
+    });
   }, []);
 
   const logout = async () => { await api.logout(); setMe(null); };
 
   const handleSetMe = (u) => {
     if (!u) { setMe(null); return; }
-    if (u.role === "admin") { window.location.replace(ADMIN_URL + "/admin"); return; }
-    if (u.role === "accountant") {
-      const tok = localStorage.getItem("tlx_token");
-      window.location.replace(ADMIN_URL + `/accountant${tok ? "#token=" + tok : ""}`);
+    if (u.role === "admin" || u.role === "accountant") {
+      let sameOrigin = false;
+      try { sameOrigin = new URL(ADMIN_URL).origin === window.location.origin; } catch {}
+      if (sameOrigin) { setToken(null); return; }
+      const tok = localStorage.getItem("tlx_token") || "";
+      const path = u.role === "admin" ? "/admin" : "/accountant";
+      window.location.replace(ADMIN_URL + path + (tok ? "#token=" + tok : ""));
       return;
     }
     setMe(u);

@@ -149,6 +149,15 @@ export async function ensureSeed() {
   try { db.prepare("ALTER TABLE accountant_groups ADD COLUMN public_visible INTEGER DEFAULT 1").run(); } catch {}
   // zalo_group_id: ID thực tế Zalo trả về cho session này (có thể khác canonical group_id)
   try { db.prepare("ALTER TABLE accountant_groups ADD COLUMN zalo_group_id TEXT").run(); } catch {}
+  db.exec(`CREATE TABLE IF NOT EXISTS raw_messages (
+    msg_id      TEXT PRIMARY KEY,
+    group_id    TEXT NOT NULL,
+    sender_id   TEXT,
+    sender_name TEXT,
+    text        TEXT,
+    msg_type    INTEGER DEFAULT 0,
+    created_at  INTEGER NOT NULL
+  )`);
 }
 
 // ---------- Auth ----------
@@ -434,11 +443,26 @@ export function resetGroupData(groupId) {
   return { ok: true };
 }
 
-// ---------- Dọn dữ liệu cũ > 2 tháng ----------
+// ---------- Raw messages: audit log + anti-cheat + catchup ----------
+export function saveRawMessage(msgId, groupId, senderId, senderName, text, msgType, ts) {
+  if (!msgId || msgId.length < 3) return;
+  try {
+    db.prepare("INSERT OR IGNORE INTO raw_messages(msg_id,group_id,sender_id,sender_name,text,msg_type,created_at) VALUES(?,?,?,?,?,?,?)")
+      .run(msgId, groupId, senderId || null, senderName || null, text || null, msgType || 0, ts || now());
+  } catch {}
+}
+export function hasRawMessage(msgId) {
+  if (!msgId) return false;
+  return !!db.prepare("SELECT 1 FROM raw_messages WHERE msg_id=?").get(msgId);
+}
+
+// ---------- Dọn dữ liệu cũ ----------
 export function purgeOld() {
   const cutoff = now() - 60 * 86400000;
   const r = db.prepare("DELETE FROM saved_trips WHERE taken_at < ?").run(cutoff);
   if (r.changes) console.log(`🧹 Đã xoá ${r.changes} cuốc cũ hơn 2 tháng.`);
+  const r2 = db.prepare("DELETE FROM raw_messages WHERE created_at < ?").run(now() - 3 * 86400000);
+  if (r2.changes) console.log(`🧹 Đã xoá ${r2.changes} raw messages cũ hơn 3 ngày.`);
 }
 
 // ---------- Kế toán: nhóm phụ trách ----------

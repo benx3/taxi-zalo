@@ -171,6 +171,31 @@ function resolveGroupId(sess, zaloGroupId) {
   return sess.groupIdMap.get(zaloGroupId) || zaloGroupId;
 }
 
+// Bắt kịp tin nhắn bị bỏ sót trong thời gian service down
+// Lấy 100 tin gần nhất từ Zalo, so sánh với raw_messages, xử lý những tin chưa có
+async function catchUpMissedMessages(sess, zaloGroupId) {
+  try {
+    const result = await sess.api.getGroupChatHistory(zaloGroupId, 100);
+    const msgs = (result?.groupMsgs || []);
+    // Sort cũ → mới để xử lý đúng thứ tự
+    msgs.sort((a, b) => Number(a.data?.ts || a.data?.createTime || 0) - Number(b.data?.ts || b.data?.createTime || 0));
+    let count = 0;
+    for (const msg of msgs) {
+      const rawMsgId = msg.data?.msgId || msg.data?.cliMsgId;
+      if (!rawMsgId) continue;
+      const already = await Promise.resolve(dbm.hasRawMessage(String(rawMsgId)));
+      if (already) continue;
+      // Chưa xử lý → đưa vào onMessage (sẽ lưu raw + process + dedup)
+      onMessage(sess, msg);
+      await sleep(30); // nhường event loop giữa các tin
+      count++;
+    }
+    if (count > 0) console.log(`[${sess.userId}] ↩️  Catchup ${zaloGroupId}: xử lý ${count} tin bị bỏ sót`);
+  } catch (e) {
+    console.warn(`[${sess.userId}] catchup ${zaloGroupId}:`, e?.message || e);
+  }
+}
+
 async function loadGroups(sess) {
   const { api } = sess;
   const res = await api.getAllGroups();
@@ -224,6 +249,15 @@ async function loadGroups(sess) {
       }
       // Cập nhật sess.selected từ DB (dùng zalo_group_id để Zalo nhận đúng message)
       sess.selected = new Set(acctGroups.map(ag => ag.zalo_group_id || ag.group_id));
+
+      // Bắt kịp tin nhắn bị bỏ sót (sau downtime/restart)
+      // Delay nhỏ để listener ổn định trước khi gọi API lịch sử
+      await sleep(3000);
+      for (const ag of acctGroups) {
+        const zaloId = ag.zalo_group_id || ag.group_id;
+        catchUpMissedMessages(sess, zaloId).catch(() => {});
+        await sleep(500); // stagger để không spam Zalo API
+      }
     }
   } catch {}
 }
@@ -303,6 +337,15 @@ function onMessage(sess, msg) {
     }
 
     const text = typeof msg.data?.content === "string" ? msg.data.content : (msg.data?.content?.title || "");
+    const msgTs = Number(msg.data?.ts || msg.data?.createTime || msg.data?.serverTime || Date.now());
+    const msgType = Number(msg.data?.msgType || 0);
+
+    // Lưu raw message (audit log + anti-cheat + catchup sau downtime)
+    // msg.data?.msgId thường là globalMsgId; cliMsgId là ID client — cả hai đã có trong msgId ở trên
+    const rawMsgId = msg.data?.msgId || msg.data?.cliMsgId;
+    if (rawMsgId) {
+      Promise.resolve(dbm.saveRawMessage(String(rawMsgId), groupId, senderId, senderName, text, msgType, msgTs)).catch(() => {});
+    }
 
     // Thu thập thành viên thụ động: mỗi tin nhắn trong nhóm được theo dõi → lưu sender
     if (senderId && sess.isAccountant) {

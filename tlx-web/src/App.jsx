@@ -11,6 +11,12 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Driver app redirect admin/accountant sang đây kèm #token= trong hash
+    const hashToken = window.location.hash.match(/#token=([^&]+)/)?.[1];
+    if (hashToken) {
+      setToken(hashToken);
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
     if (!getToken()) { setLoading(false); return; }
     api.me().then(u => {
       if (u.role === "accountant") { window.location.replace("/accountant"); return; }

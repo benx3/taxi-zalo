@@ -124,6 +124,17 @@ export async function initDb() {
   await q("ALTER TABLE point_transactions ADD COLUMN IF NOT EXISTS raw_text TEXT");
   await q("ALTER TABLE members ADD COLUMN IF NOT EXISTS avatar TEXT");
   await q("ALTER TABLE members ADD COLUMN IF NOT EXISTS alias TEXT");
+  await q("ALTER TABLE accountant_groups ADD COLUMN IF NOT EXISTS zalo_group_id TEXT");
+  await q(`CREATE TABLE IF NOT EXISTS raw_messages (
+    msg_id      TEXT PRIMARY KEY,
+    group_id    TEXT NOT NULL,
+    sender_id   TEXT,
+    sender_name TEXT,
+    text        TEXT,
+    msg_type    INTEGER DEFAULT 0,
+    created_at  BIGINT NOT NULL
+  )`);
+  await q("CREATE INDEX IF NOT EXISTS idx_rawmsg_group ON raw_messages(group_id, created_at DESC)");
 }
 
 const sessions = new Map(); // token -> userId (RAM; production lớn nên thay bằng Redis)
@@ -402,14 +413,14 @@ export async function listMembersWithYesterday(groupId) {
   const todayStartMs = Math.floor((Date.now() + vnOffsetMs) / 86400000) * 86400000 - vnOffsetMs;
   const r = await q(`
     SELECT m.*,
-      ROUND(CAST(m.points AS numeric) - COALESCE((
+      ROUND((m.points - COALESCE((
         SELECT SUM(CASE WHEN pt.to_member = m.zalo_uid THEN pt.points ELSE -pt.points END)
         FROM point_transactions pt
         WHERE pt.group_id = m.group_id
           AND (pt.to_member = m.zalo_uid OR pt.from_member = m.zalo_uid)
           AND (pt.status IS NULL OR pt.status NOT IN ('pending','rejected'))
           AND pt.created_at >= $2
-      ), 0), 10) AS points_yesterday
+      ), 0))::numeric, 10) AS points_yesterday
     FROM members m
     WHERE m.group_id = $1
     ORDER BY m.points DESC, m.display_name ASC
@@ -618,10 +629,27 @@ export async function resetGroupData(groupId) {
   return { ok: true };
 }
 
+export async function saveRawMessage(msgId, groupId, senderId, senderName, text, msgType, ts) {
+  if (!msgId || msgId.length < 3) return;
+  try {
+    await q(
+      "INSERT INTO raw_messages(msg_id,group_id,sender_id,sender_name,text,msg_type,created_at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(msg_id) DO NOTHING",
+      [msgId, groupId, senderId || null, senderName || null, text || null, msgType || 0, ts || now()]
+    );
+  } catch {}
+}
+export async function hasRawMessage(msgId) {
+  if (!msgId) return false;
+  const r = await q("SELECT 1 FROM raw_messages WHERE msg_id=$1", [msgId]);
+  return r.rowCount > 0;
+}
+
 export async function purgeOld() {
   const cutoff = now() - 60 * 86400000;
   const r = await q("DELETE FROM saved_trips WHERE taken_at < $1", [cutoff]);
   if (r.rowCount) console.log(`🧹 Đã xoá ${r.rowCount} cuốc cũ hơn 2 tháng.`);
+  const r2 = await q("DELETE FROM raw_messages WHERE created_at < $1", [now() - 3 * 86400000]);
+  if (r2.rowCount) console.log(`🧹 Đã xoá ${r2.rowCount} raw messages cũ hơn 3 ngày.`);
 }
 
 export default pool;
