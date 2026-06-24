@@ -138,6 +138,7 @@ export async function ensureSeed() {
   }
   // Migration: thêm cột public_visible nếu chưa có
   await q("ALTER TABLE accountant_groups ADD COLUMN IF NOT EXISTS public_visible INTEGER NOT NULL DEFAULT 1").catch(() => {});
+  await q("ALTER TABLE accountant_groups ADD COLUMN IF NOT EXISTS zalo_group_id TEXT").catch(() => {});
 }
 
 // ---------- Auth ----------
@@ -363,9 +364,14 @@ export async function setGroupPublicVisible(accountantId, groupId, visible) {
   await q("UPDATE accountant_groups SET public_visible=$1 WHERE accountant_id=$2 AND group_id=$3",
     [visible ? 1 : 0, accountantId, groupId]);
 }
-export async function addAccountantGroup(accountantId, groupId, groupName) {
-  await q("INSERT INTO accountant_groups(accountant_id,group_id,group_name) VALUES($1,$2,$3) ON CONFLICT(accountant_id,group_id) DO UPDATE SET group_name=$3",
-    [accountantId, groupId, groupName || groupId]);
+export async function findGroupByName(name) {
+  if (!name) return null;
+  const r = await q("SELECT group_id FROM accountant_groups WHERE LOWER(TRIM(group_name))=LOWER(TRIM($1)) LIMIT 1", [name]);
+  return r.rows[0] || null;
+}
+export async function addAccountantGroup(accountantId, groupId, groupName, zaloGroupId = null) {
+  await q("INSERT INTO accountant_groups(accountant_id,group_id,group_name,zalo_group_id) VALUES($1,$2,$3,$4) ON CONFLICT(accountant_id,group_id) DO UPDATE SET group_name=$3, zalo_group_id=$4",
+    [accountantId, groupId, groupName || groupId, zaloGroupId || null]);
 }
 export async function removeAccountantGroup(accountantId, groupId) {
   await q("DELETE FROM accountant_groups WHERE accountant_id=$1 AND group_id=$2", [accountantId, groupId]);

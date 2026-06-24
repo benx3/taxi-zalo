@@ -85,6 +85,7 @@ function attach(userId, api, onEvent) {
     userId, api, selfId, selfName,
     groups: [],                 // [{id,name,link}]
     selected: new Set(),        // nhóm theo dõi (rỗng = tất cả)
+    groupIdMap: new Map(),      // zalo_group_id → canonical group_id (khi 2 account có ID khác nhau)
     groupNameById: new Map(),
     claims: new Map(),          // `${groupId}:${ownerId}` -> {savedId, msgId, text}
     rawMsgById: new Map(),      // msgId -> object message gốc (để reply đúng tin)
@@ -165,6 +166,11 @@ setInterval(async () => {
   }
 }, 15 * 60 * 1000); // kiểm tra mỗi 15 phút
 
+// Lấy canonical group_id cho DB (map zalo_group_id → canonical nếu có)
+function resolveGroupId(sess, zaloGroupId) {
+  return sess.groupIdMap.get(zaloGroupId) || zaloGroupId;
+}
+
 async function loadGroups(sess) {
   const { api } = sess;
   const res = await api.getAllGroups();
@@ -201,16 +207,23 @@ async function loadGroups(sess) {
   // Sau khi gọi nhiều Zalo API (getAllGroups + getGroupInfo), cookies đã được refresh → lưu lại
   persistCookies(sess.userId, sess.api).catch(() => {});
 
-  // Auto-import thành viên sau khi load groups (dành cho kế toán)
-  // Chỉ import nếu nhóm chưa có thành viên trong DB — tránh sync lại không cần thiết
+  // Khôi phục groupIdMap và auto-import thành viên (dành cho kế toán)
   try {
     const u = await dbm.getUserPublic(sess.userId);
     if (u?.role === "accountant") {
       const acctGroups = await dbm.getAccountantGroups(sess.userId);
       for (const ag of acctGroups) {
+        // Khôi phục mapping zalo_group_id → canonical group_id
+        if (ag.zalo_group_id && ag.zalo_group_id !== ag.group_id) {
+          sess.groupIdMap.set(ag.zalo_group_id, ag.group_id);
+        }
+        // Auto-import chỉ khi chưa có thành viên
+        const zaloId = ag.zalo_group_id || ag.group_id;
         const cnt = await dbm.countMembers(ag.group_id);
-        if (cnt === 0) importGroupMembers(sess, ag.group_id).catch(() => {});
+        if (cnt === 0) importGroupMembers(sess, zaloId, ag.group_id).catch(() => {});
       }
+      // Cập nhật sess.selected từ DB (dùng zalo_group_id để Zalo nhận đúng message)
+      sess.selected = new Set(acctGroups.map(ag => ag.zalo_group_id || ag.group_id));
     }
   } catch {}
 }
@@ -263,6 +276,8 @@ function onMessage(sess, msg) {
     if (!isGroup) return;
     const groupId = String(msg.threadId);
     if (sess.selected.size > 0 && !sess.selected.has(groupId)) return;
+    // dbGroupId: canonical ID để dùng trong DB (có thể khác groupId nếu 2 Zalo account có ID khác nhau)
+    const dbGroupId = resolveGroupId(sess, groupId);
 
     const senderId = String(msg.data?.uidFrom || msg.data?.senderId || "");
     const senderName = msg.data?.dName || "Không rõ";
@@ -291,7 +306,7 @@ function onMessage(sess, msg) {
 
     // Thu thập thành viên thụ động: mỗi tin nhắn trong nhóm được theo dõi → lưu sender
     if (senderId && sess.isAccountant) {
-      Promise.resolve(dbm.upsertMember(groupId, senderId, { display_name: senderName !== "Không rõ" ? senderName : null }))
+      Promise.resolve(dbm.upsertMember(dbGroupId, senderId, { display_name: senderName !== "Không rõ" ? senderName : null }))
         .catch(() => {});
     }
 
@@ -301,13 +316,13 @@ function onMessage(sess, msg) {
       if (sanResults.length > 0) {
         for (const sr of sanResults) {
           if (!sr.toUid) continue;
-          if (sr.toName) Promise.resolve(dbm.upsertMember(groupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
+          if (sr.toName) Promise.resolve(dbm.upsertMember(dbGroupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
           Promise.resolve(dbm.createPendingTransfer(
-            groupId, senderId, sr.toUid, sr.amount, text, msgId
+            dbGroupId, senderId, sr.toUid, sr.amount, text, msgId
           )).then(txId => {
             sess.onEvent(sess.userId, {
               type: "pending_transfer", txId,
-              groupId, groupName,
+              groupId: dbGroupId, groupName,
               fromUid: senderId, fromName: senderName,
               toUid: sr.toUid, toName: sr.toName,
               points: sr.amount, rawText: text,
@@ -326,13 +341,13 @@ function onMessage(sess, msg) {
         if (sanResults.length > 0) {
           for (const sr of sanResults) {
             if (!sr.toUid) continue;
-            if (sr.toName) Promise.resolve(dbm.upsertMember(groupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
+            if (sr.toName) Promise.resolve(dbm.upsertMember(dbGroupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
             Promise.resolve(dbm.createPendingTransfer(
-              groupId, senderId, sr.toUid, sr.amount, text, msgId
+              dbGroupId, senderId, sr.toUid, sr.amount, text, msgId
             )).then(txId => {
               sess.onEvent(sess.userId, {
                 type: "pending_transfer", txId,
-                groupId, groupName,
+                groupId: dbGroupId, groupName,
                 fromUid: senderId, fromName: senderName,
                 toUid: sr.toUid, toName: sr.toName,
                 points: sr.amount, rawText: text,
@@ -352,7 +367,7 @@ function onMessage(sess, msg) {
       const mentions = msg.data?.mentions || [];
       if (mentions.length > 0) {
         Promise.resolve((async () => {
-          const ktUid = await dbm.getGroupKtUid(groupId);
+          const ktUid = await dbm.getGroupKtUid(dbGroupId);
           // Tập hợp tất cả UID được coi là "kế toán" (bot session + KT thật của nhóm)
           const ktUids = new Set([String(sess.selfId)]);
           if (ktUid) ktUids.add(String(ktUid));
@@ -362,11 +377,11 @@ function onMessage(sess, msg) {
             const sanResults = detectSanDiem(text, mentions, null);
             for (const sr of sanResults) {
               if (!sr.toUid) continue;
-              if (sr.toName) Promise.resolve(dbm.upsertMember(groupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
-              const txId = await dbm.createPendingTransfer(groupId, senderId, sr.toUid, sr.amount, text, msgId);
-              console.log(`[${sess.userId}] 📋 KT san: ${senderId} → ${sr.toUid} ${sr.amount}đ nhóm=${groupId}`);
+              if (sr.toName) Promise.resolve(dbm.upsertMember(dbGroupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
+              const txId = await dbm.createPendingTransfer(dbGroupId, senderId, sr.toUid, sr.amount, text, msgId);
+              console.log(`[${sess.userId}] 📋 KT san: ${senderId} → ${sr.toUid} ${sr.amount}đ nhóm=${dbGroupId}`);
               sess.onEvent(sess.userId, {
-                type: "pending_transfer", txId, groupId, groupName,
+                type: "pending_transfer", txId, groupId: dbGroupId, groupName,
                 fromUid: senderId, fromName: senderName,
                 toUid: sr.toUid, toName: sr.toName || "", points: sr.amount, rawText: text,
               });
@@ -386,11 +401,11 @@ function onMessage(sess, msg) {
             if (!amounts.length) return;
             const toM = mentions[0];
             const toMName = toM.display_name || toM.dName || "";
-            if (toMName) Promise.resolve(dbm.upsertMember(groupId, String(toM.uid), { display_name: toMName })).catch(() => {});
-            const txId = await dbm.createPendingTransfer(groupId, senderId, String(toM.uid), amounts[0], text, msgId);
-            console.log(`[${sess.userId}] 💰 Driver→KT san: ${senderId} → ${toM.uid} ${amounts[0]}đ nhóm=${groupId}`);
+            if (toMName) Promise.resolve(dbm.upsertMember(dbGroupId, String(toM.uid), { display_name: toMName })).catch(() => {});
+            const txId = await dbm.createPendingTransfer(dbGroupId, senderId, String(toM.uid), amounts[0], text, msgId);
+            console.log(`[${sess.userId}] 💰 Driver→KT san: ${senderId} → ${toM.uid} ${amounts[0]}đ nhóm=${dbGroupId}`);
             sess.onEvent(sess.userId, {
-              type: "pending_transfer", txId, groupId, groupName,
+              type: "pending_transfer", txId, groupId: dbGroupId, groupName,
               fromUid: senderId, fromName: senderName,
               toUid: String(toM.uid), toName: toM.display_name || toM.dName || "",
               points: amounts[0], rawText: text,
@@ -404,11 +419,11 @@ function onMessage(sess, msg) {
             const sanResults = detectSanDiem(text, mentions, ktUid);
             for (const sr of sanResults) {
               if (!sr.toUid) continue;
-              if (sr.toName) Promise.resolve(dbm.upsertMember(groupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
-              const txId = await dbm.createPendingTransfer(groupId, senderId, sr.toUid, sr.amount, text, msgId);
-              console.log(`[${sess.userId}] 📋 Pending san: ${senderId} → ${sr.toUid} ${sr.amount}đ nhóm=${groupId}`);
+              if (sr.toName) Promise.resolve(dbm.upsertMember(dbGroupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
+              const txId = await dbm.createPendingTransfer(dbGroupId, senderId, sr.toUid, sr.amount, text, msgId);
+              console.log(`[${sess.userId}] 📋 Pending san: ${senderId} → ${sr.toUid} ${sr.amount}đ nhóm=${dbGroupId}`);
               sess.onEvent(sess.userId, {
-                type: "pending_transfer", txId, groupId, groupName,
+                type: "pending_transfer", txId, groupId: dbGroupId, groupName,
                 fromUid: senderId, fromName: senderName,
                 toUid: sr.toUid, toName: sr.toName || "", points: sr.amount, rawText: text,
               });
@@ -469,7 +484,7 @@ function onMessage(sess, msg) {
           sess.claimCache.delete(qCliId2);
           if (qGlobId2) sess.claimCache.delete(qGlobId2);
           Promise.resolve((async () => {
-            const rulesRow = await dbm.getRules(groupId);
+            const rulesRow = await dbm.getRules(dbGroupId);
             const baremPts = calcBaremPoints(rulesRow, cachedClaim.tripType, cachedClaim.tripPrice);
             const pts = cachedClaim.explicitPoints > 0 ? cachedClaim.explicitPoints : baremPts;
             console.log(`[${sess.userId}] 📊 Barem confirm: type=${cachedClaim.tripType} price=${cachedClaim.tripPrice}k pts=${pts} ${cachedClaim.explicitPoints > 0 ? `(explicit từ tin đăng)` : `rules=${rulesRow ? "ok" : "null"}`}`);
@@ -479,8 +494,8 @@ function onMessage(sess, msg) {
                 claimTime: cachedClaim.claimTime, claimer: cachedClaim.takerName, claimText: cachedClaim.claimText,
                 confirmTime: time, confirmPoster: senderName, confirmText: text,
               });
-              await dbm.adjustPoints(groupId, cachedClaim.tripPosterId,  pts, "Đăng cuốc thành công", "barem", msgId, null, cachedClaim.tripPosterId, convo);
-              await dbm.adjustPoints(groupId, cachedClaim.takerId,      -pts, "Nhận cuốc xe",         "barem", msgId, cachedClaim.takerId, null, convo);
+              await dbm.adjustPoints(dbGroupId, cachedClaim.tripPosterId,  pts, "Đăng cuốc thành công", "barem", msgId, null, cachedClaim.tripPosterId, convo);
+              await dbm.adjustPoints(dbGroupId, cachedClaim.takerId,      -pts, "Nhận cuốc xe",         "barem", msgId, cachedClaim.takerId, null, convo);
               console.log(`[${sess.userId}] ✅ Barem applied: +${pts}đ → ${cachedClaim.tripPosterId}, -${pts}đ → ${cachedClaim.takerId}`);
             } else {
               console.warn(`[${sess.userId}] ⚠️  Barem pts=0 — chưa có rule cho ${cachedClaim.tripType} ${cachedClaim.tripPrice}k`);
@@ -618,12 +633,14 @@ function extractMemberList(info, groupId) {
 }
 
 // Import thành viên từ nhóm Zalo khi kế toán chọn nhóm
-async function importGroupMembers(sess, groupId) {
+// zaloGroupId: ID Zalo dùng để gọi API; canonicalGroupId: ID dùng để lưu DB (có thể khác)
+async function importGroupMembers(sess, zaloGroupId, canonicalGroupId = null) {
+  const dbGroupId = canonicalGroupId || zaloGroupId;
   try {
     let memberList = [];
-    const info = await sess.api.getGroupInfo(groupId);
+    const info = await sess.api.getGroupInfo(zaloGroupId);
 
-    memberList = extractMemberList(info, groupId);
+    memberList = extractMemberList(info, zaloGroupId);
 
     // Fallback: thử các tên hàm khác nhau tuỳ phiên bản zca-js
     if (!memberList.length) {
@@ -631,34 +648,33 @@ async function importGroupMembers(sess, groupId) {
       for (const fn of tryMethods) {
         if (typeof sess.api[fn] !== "function") continue;
         try {
-          const res = await sess.api[fn](groupId);
-          memberList = Array.isArray(res) ? res : extractMemberList(res, groupId);
+          const res = await sess.api[fn](zaloGroupId);
+          memberList = Array.isArray(res) ? res : extractMemberList(res, zaloGroupId);
           if (memberList.length) { console.log(`[${sess.userId}] Dùng ${fn}() → ${memberList.length} member`); break; }
         } catch {}
       }
     }
 
-    const g = info?.gridInfoMap?.[groupId] || Object.values(info?.gridInfoMap || {})[0];
-    console.log(`[${sess.userId}] importGroupMembers ${groupId}: ${memberList.length} thành viên (currentMems=${g?.currentMems?.length ?? "n/a"} memberIds=${g?.memberIds?.length ?? "n/a"} hasMore=${g?.hasMoreMember ?? "n/a"})`);
+    const g = info?.gridInfoMap?.[zaloGroupId] || Object.values(info?.gridInfoMap || {})[0];
+    console.log(`[${sess.userId}] importGroupMembers ${zaloGroupId}→${dbGroupId}: ${memberList.length} thành viên`);
 
     let count = 0;
     for (const m of memberList) {
       const uid = m?.uid || m?.userId || m?.id;
       if (!uid) continue;
-      await dbm.upsertMember(groupId, String(uid), {
+      await dbm.upsertMember(dbGroupId, String(uid), {
         display_name: m.dName || m.displayName || m.name || null,
         avatar: m.avt || m.avatar || m.avatarUrl || null,
       });
       count++;
       if (count % 10 === 0) await yieldLoop();
     }
-    if (count) console.log(`[${sess.userId}] Đã lưu ${count} thành viên nhóm ${groupId}`);
-    // Tự upsert chính mình — Zalo không echo tin nhắn của bot về chính nó
+    if (count) console.log(`[${sess.userId}] Đã lưu ${count} thành viên nhóm ${dbGroupId}`);
     if (sess.selfId) {
-      await dbm.upsertMember(groupId, String(sess.selfId), { display_name: sess.selfName || null });
+      await dbm.upsertMember(dbGroupId, String(sess.selfId), { display_name: sess.selfName || null });
     }
   } catch (e) {
-    console.error(`[${sess.userId}] importGroupMembers ${groupId}:`, e?.message || e);
+    console.error(`[${sess.userId}] importGroupMembers ${zaloGroupId}→${dbGroupId}:`, e?.message || e);
   }
 }
 
@@ -677,22 +693,51 @@ export async function setWatchedGroups(userId, groupIds) {
       if (ids.length > limit) ids = ids.slice(0, limit);
       // Đồng bộ accountant_groups với lựa chọn hiện tại
       const current = await dbm.getAccountantGroups(userId);
-      const currentSet = new Set(current.map(g => g.group_id));
-      const newGroups = ids.filter(gId => !currentSet.has(gId));
+      // currentZaloSet: IDs mà Zalo session này đang dùng (zalo_group_id hoặc group_id)
+      const currentZaloSet = new Set(current.map(g => g.zalo_group_id || g.group_id));
+      const currentCanonicalSet = new Set(current.map(g => g.group_id));
+
+      const newZaloIds = ids.filter(gId => !currentZaloSet.has(gId) && !currentCanonicalSet.has(gId));
+
       for (const gId of ids) {
-        if (!currentSet.has(gId)) {
+        const alreadyTracked = currentZaloSet.has(gId) || currentCanonicalSet.has(gId);
+        if (!alreadyTracked) {
           const g = sess.groups.find(gr => gr.id === gId);
-          await dbm.addAccountantGroup(userId, gId, g?.name || gId);
+          const groupName = g?.name || gId;
+
+          // Tìm nhóm cùng tên trong DB (kế toán khác đã thêm với ID Zalo khác)
+          const existing = await dbm.findGroupByName(groupName);
+          const canonicalId = (existing && existing.group_id !== gId) ? existing.group_id : gId;
+
+          if (canonicalId !== gId) {
+            sess.groupIdMap.set(gId, canonicalId);
+            console.log(`[${userId}] 🔗 Group alias: ${gId} → ${canonicalId} (tên: "${groupName}")`);
+          }
+          await dbm.addAccountantGroup(userId, canonicalId, groupName, canonicalId !== gId ? gId : null);
         }
       }
-      const idsSet = new Set(ids);
-      for (const gId of currentSet) {
-        if (!idsSet.has(gId)) await dbm.removeAccountantGroup(userId, gId);
+
+      // Khôi phục mapping cho các nhóm đã lưu từ trước
+      for (const g of current) {
+        if (g.zalo_group_id && g.zalo_group_id !== g.group_id) {
+          sess.groupIdMap.set(g.zalo_group_id, g.group_id);
+        }
       }
+
+      // Xóa nhóm không còn được chọn (so sánh theo zalo_group_id)
+      const idsSet = new Set(ids);
+      for (const g of current) {
+        const watchId = g.zalo_group_id || g.group_id;
+        if (!idsSet.has(watchId) && !idsSet.has(g.group_id)) {
+          await dbm.removeAccountantGroup(userId, g.group_id);
+        }
+      }
+
       // Auto-import thành viên từ nhóm mới thêm — chỉ khi chưa có dữ liệu
-      for (const gId of newGroups) {
-        const cnt = await dbm.countMembers(gId);
-        if (cnt === 0) importGroupMembers(sess, gId).catch(() => {});
+      for (const zaloGId of newZaloIds) {
+        const canonicalId = sess.groupIdMap.get(zaloGId) || zaloGId;
+        const cnt = await dbm.countMembers(canonicalId);
+        if (cnt === 0) importGroupMembers(sess, zaloGId, canonicalId).catch(() => {});
       }
     }
   } catch (e) {

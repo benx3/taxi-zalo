@@ -146,9 +146,9 @@ export async function ensureSeed() {
       .run(uid(), "admin", hash, "Quản trị viên", "admin", "active", now());
     console.log("👤 Đã tạo tài khoản admin. Đăng nhập lần đầu và đổi mật khẩu ngay.");
   }
-  // Migration: thêm cột public_visible nếu chưa có
-  try { db.prepare("ALTER TABLE accountant_groups ADD COLUMN public_visible INTEGER DEFAULT 1").run(); }
-  catch {}
+  try { db.prepare("ALTER TABLE accountant_groups ADD COLUMN public_visible INTEGER DEFAULT 1").run(); } catch {}
+  // zalo_group_id: ID thực tế Zalo trả về cho session này (có thể khác canonical group_id)
+  try { db.prepare("ALTER TABLE accountant_groups ADD COLUMN zalo_group_id TEXT").run(); } catch {}
 }
 
 // ---------- Auth ----------
@@ -446,8 +446,13 @@ export function setGroupPublicVisible(accountantId, groupId, visible) {
   db.prepare("UPDATE accountant_groups SET public_visible=? WHERE accountant_id=? AND group_id=?")
     .run(visible ? 1 : 0, accountantId, groupId);
 }
-export function addAccountantGroup(accountantId, groupId, groupName) {
-  db.prepare("INSERT OR REPLACE INTO accountant_groups(accountant_id,group_id,group_name) VALUES(?,?,?)").run(accountantId, groupId, groupName || groupId);
+export function findGroupByName(name) {
+  if (!name) return null;
+  return db.prepare("SELECT group_id FROM accountant_groups WHERE LOWER(TRIM(group_name))=LOWER(TRIM(?)) LIMIT 1").get(name) || null;
+}
+export function addAccountantGroup(accountantId, groupId, groupName, zaloGroupId = null) {
+  db.prepare("INSERT OR REPLACE INTO accountant_groups(accountant_id,group_id,group_name,zalo_group_id) VALUES(?,?,?,?)")
+    .run(accountantId, groupId, groupName || groupId, zaloGroupId || null);
 }
 export function removeAccountantGroup(accountantId, groupId) {
   db.prepare("DELETE FROM accountant_groups WHERE accountant_id=? AND group_id=?").run(accountantId, groupId);
