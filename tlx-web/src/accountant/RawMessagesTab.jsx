@@ -26,17 +26,29 @@ function Highlight({ text, q }) {
 function classifyMsg(text) {
   if (!text) return "normal";
   const t = text.toLowerCase();
+
+  // San điểm
   if (/\bsan\b/.test(t)) return "san";
-  if (/(\d+\s*(đ|d|dong|điểm)|\bđ\b)/.test(t)) return "money";
-  if (/>>|=>>/.test(t) || /\b(hà nội|hcm|sân bay|sbđ|sbt|sân bay đón|sân bay tiễn)\b/i.test(t)) return "trip";
+
+  // Xác nhận cuốc: "ok ib" / "ok ip"
+  if (/ok\s*i[bp]/i.test(text)) return "confirm";
+
+  // Nhận cuốc: "@Tên ok" hoặc "ok" ngắn (không có giá)
+  const isShortOk = /\b(ok|oke|oki|okie)\b/i.test(t) && text.trim().length < 35;
+  if (isShortOk && !/\d{2,4}\s*k|\d\s*tr/.test(t)) return "claim";
+
+  // Đăng cuốc: có giá tiền (100k, 1tr, 200.000đ...)
+  if (/\d{2,4}\s*k\b|\d\s*(?:tr|triệu)\b|\d[\d.,]{2,}\s*đ/i.test(text)) return "trip";
+
   return "normal";
 }
 
 const MSG_COLORS = {
-  san:    { bg: "rgba(96,165,250,.08)",  border: "rgba(96,165,250,.25)",  dot: "#60a5fa"  },
-  money:  { bg: "rgba(52,211,153,.07)",  border: "rgba(52,211,153,.22)",  dot: "#34d399"  },
-  trip:   { bg: "rgba(251,191,36,.07)",  border: "rgba(251,191,36,.22)",  dot: "#fbbf24"  },
-  normal: { bg: "transparent",           border: "transparent",           dot: "#4a5568"  },
+  san:     { bg: "rgba(96,165,250,.08)",  border: "rgba(96,165,250,.25)",  dot: "#60a5fa"  },
+  confirm: { bg: "rgba(52,211,153,.10)",  border: "rgba(52,211,153,.30)",  dot: "#34d399"  },
+  claim:   { bg: "rgba(52,211,153,.04)",  border: "rgba(52,211,153,.15)",  dot: "#6ee7b7"  },
+  trip:    { bg: "rgba(251,191,36,.08)",  border: "rgba(251,191,36,.28)",  dot: "#fbbf24"  },
+  normal:  { bg: "transparent",           border: "transparent",           dot: "#4a5568"  },
 };
 
 export default function RawMessagesTab({ groupId }) {
@@ -115,7 +127,7 @@ export default function RawMessagesTab({ groupId }) {
 
       {/* Legend */}
       <div style={{ display: "flex", gap: 12, marginBottom: 12, fontSize: 11, color: "var(--ink-dim)", flexWrap: "wrap" }}>
-        {[["trip","Cuốc xe"],["san","San điểm"],["money","Có số tiền/điểm"],["normal","Thường"]].map(([type, label]) => (
+        {[["trip","Đăng cuốc"],["confirm","Xác nhận (ok ib)"],["claim","Nhận cuốc (ok)"],["san","San điểm"],["normal","Thường"]].map(([type, label]) => (
           <span key={type} style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: MSG_COLORS[type].dot, display: "inline-block" }} />
             {label}
