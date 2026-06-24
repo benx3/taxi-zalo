@@ -114,22 +114,43 @@ const STATUS_CFG = {
 };
 
 function ConvoThread({ raw }) {
+  const [showLog, setShowLog] = useState(false);
   let c = null;
   try { c = typeof raw === "string" ? JSON.parse(raw) : null; } catch {}
+
+  const fmtTs = (ts) => ts ? new Date(Number(ts)).toLocaleTimeString("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit",
+  }) : "";
+
   if (c?.tripText) {
     const row = (time, name, msg, color) => (
-      <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 3 }}>
         <span style={{ fontSize: 10, color: "var(--ink-dim)", whiteSpace: "nowrap", paddingTop: 1 }}>{time}</span>
         <span style={{ fontSize: 11, color: color || "var(--ink-dim)" }}>
           <b style={{ color: "var(--ink)", marginRight: 4 }}>{name}:</b>{msg}
         </span>
       </div>
     );
+    const logItems = Array.isArray(c.rawLog) ? c.rawLog : [];
     return (
       <div style={{ background: "rgba(0,0,0,.25)", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", marginBottom: 6, lineHeight: 1.4 }}>
         {row(c.tripTime, c.tripPoster, c.tripText, null)}
-        {c.claimText && row(c.claimTime, c.claimer, c.claimText, "#60a5fa")}
-        {c.confirmText && row(c.confirmTime, c.confirmPoster, c.confirmText, "#34d399")}
+        {c.claimText   && row(c.claimTime,   c.claimer,       c.claimText,   "#60a5fa")}
+        {c.confirmText && row(c.confirmTime,  c.confirmPoster, c.confirmText, "#34d399")}
+        {c.cancelText  && row(c.cancelTime,   c.canceller,     c.cancelText,  "#f87171")}
+        {logItems.length > 0 && (
+          <div style={{ marginTop: 6, borderTop: "1px solid var(--line)", paddingTop: 5 }}>
+            <button onClick={() => setShowLog(v => !v)}
+              style={{ fontSize: 10, color: "var(--ink-dim)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+              {showLog ? "▲ Ẩn chat log" : `▼ Chat log (${logItems.length} tin)`}
+            </button>
+            {showLog && (
+              <div style={{ marginTop: 4, maxHeight: 220, overflowY: "auto", paddingRight: 4 }}>
+                {logItems.map((m, i) => row(fmtTs(m.ts), m.name, m.text, null))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }

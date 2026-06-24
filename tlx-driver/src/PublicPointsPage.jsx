@@ -123,8 +123,12 @@ function SiteFooter() {
 
 /* ── ConvoThread (parse raw_text JSON như kế toán) ─ */
 function ConvoThread({ raw }) {
+  const [showLog, setShowLog] = useState(false);
   let c2 = null;
   try { c2 = typeof raw === "string" ? JSON.parse(raw) : null; } catch {}
+  const fmtTs = (ts) => ts ? new Date(Number(ts)).toLocaleTimeString("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit",
+  }) : "";
   const row = (time, name, msg, color) => (
     <div style={{ display: "flex", gap: 6, marginBottom: 3 }}>
       <span style={{ fontSize: 11, color: c.dim, whiteSpace: "nowrap", paddingTop: 1 }}>{time}</span>
@@ -132,11 +136,26 @@ function ConvoThread({ raw }) {
     </div>
   );
   if (c2?.tripText) {
+    const logItems = Array.isArray(c2.rawLog) ? c2.rawLog : [];
     return (
       <div style={{ background: "rgba(0,0,0,.3)", border: `1px solid ${c.border}`, borderRadius: 8, padding: "8px 10px", marginBottom: 6, lineHeight: 1.5 }}>
         {row(c2.tripTime, c2.tripPoster, c2.tripText, null)}
-        {c2.claimText && row(c2.claimTime, c2.claimer, c2.claimText, "#60a5fa")}
-        {c2.confirmText && row(c2.confirmTime, c2.confirmPoster, c2.confirmText, "#34d399")}
+        {c2.claimText   && row(c2.claimTime,   c2.claimer,       c2.claimText,   "#60a5fa")}
+        {c2.confirmText && row(c2.confirmTime,  c2.confirmPoster, c2.confirmText, "#34d399")}
+        {c2.cancelText  && row(c2.cancelTime,   c2.canceller,     c2.cancelText,  "#f87171")}
+        {logItems.length > 0 && (
+          <div style={{ marginTop: 6, borderTop: `1px solid ${c.border}`, paddingTop: 5 }}>
+            <button onClick={() => setShowLog(v => !v)}
+              style={{ fontSize: 11, color: c.dim, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+              {showLog ? "▲ Ẩn chat log" : `▼ Chat log (${logItems.length} tin)`}
+            </button>
+            {showLog && (
+              <div style={{ marginTop: 4, maxHeight: 220, overflowY: "auto" }}>
+                {logItems.map((m, i) => row(fmtTs(m.ts), m.name, m.text, null))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }

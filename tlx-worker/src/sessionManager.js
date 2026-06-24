@@ -597,13 +597,13 @@ function onMessage(sess, msg) {
               );
               rawLog = rawMsgs
                 .filter(m => m.text)
-                .map(m => {
-                  const t = new Date(Number(m.created_at)).toLocaleTimeString("vi-VN", {
-                    timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit",
-                  });
-                  return `[${t}] ${m.sender_name || m.sender_id}: ${m.text}`;
-                })
-                .join("\n");
+                .map(m => ({
+                  msgId: m.msg_id,
+                  uid:   m.sender_id,
+                  name:  m.sender_name || "",
+                  ts:    m.created_at,
+                  text:  m.text,
+                }));
             } catch {}
 
             const reversalConvo = JSON.stringify({
