@@ -244,6 +244,8 @@ function GroupsView({ onSelect }) {
   );
 }
 
+const MEMBER_PAGE_SIZES = [50, 100, 150];
+
 /* ── MembersView ────────────────────────────────── */
 function MembersView({ group, onBack, onSelect }) {
   const [members, setMembers] = useState([]);
@@ -252,6 +254,8 @@ function MembersView({ group, onBack, onSelect }) {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("points");
   const [sortDir, setSortDir] = useState("desc");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
 
   useEffect(() => {
     get(`/api/public/members/${group.group_id}`).then(setMembers).catch(e => setErr(e.message)).finally(() => setLoading(false));
@@ -275,10 +279,19 @@ function MembersView({ group, onBack, onSelect }) {
     return list;
   }, [members, search, sortBy, sortDir]);
 
+  // Reset trang khi search/sort thay đổi
+  useEffect(() => { setPage(1); }, [search, sortBy, sortDir, pageSize]);
+
+  const totalPages = Math.ceil(Math.max(sorted.length, 1) / pageSize);
+  const paged = sorted.slice((page - 1) * pageSize, page * pageSize);
+
   const toggleSort = (col) => {
     if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortBy(col); setSortDir(col === "points" ? "desc" : "asc"); }
   };
+
+  // Offset thứ tự (#) theo trang
+  const rankOffset = (page - 1) * pageSize;
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 16px 0" }}>
@@ -291,7 +304,7 @@ function MembersView({ group, onBack, onSelect }) {
         <p style={{ color: c.dim, fontSize: 14, marginTop: 4 }}>{members.length} thành viên</p>
       </div>
 
-      {/* Search + Sort */}
+      {/* Search + Sort + Page size */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
         <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
           <Search size={15} color={c.dim} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
@@ -309,6 +322,15 @@ function MembersView({ group, onBack, onSelect }) {
             </button>
           ))}
         </div>
+        {/* Page size selector */}
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {MEMBER_PAGE_SIZES.map(n => (
+            <button key={n} onClick={() => setPageSize(n)}
+              style={{ padding: "8px 12px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700, background: pageSize === n ? "rgba(52,211,153,.2)" : "#21262d", color: pageSize === n ? c.accent : c.dim }}>
+              {n}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading && <div style={{ textAlign: "center", padding: 40, color: c.dim }}>Đang tải…</div>}
@@ -323,13 +345,14 @@ function MembersView({ group, onBack, onSelect }) {
           <div />
         </div>
 
-        {sorted.map((m, i) => {
+        {paged.map((m, i) => {
           const pts = Number(m.points) || 0;
           const ptsYest = Number(m.points_yesterday) ?? pts;
           const fmtPts = (v) => `${v >= 0 ? "+" : ""}${v % 1 === 0 ? v.toFixed(0) : v.toFixed(2)}đ`;
+          const rank = rankOffset + i + 1;
           return (
             <div key={m.zalo_uid}
-              style={{ display: "grid", gridTemplateColumns: "48px 1fr 96px 96px 20px", gap: 8, padding: "13px 16px", borderBottom: i < sorted.length - 1 ? `1px solid ${c.border}` : "none", cursor: "pointer", alignItems: "center", transition: "background .1s" }}
+              style={{ display: "grid", gridTemplateColumns: "48px 1fr 96px 96px 20px", gap: 8, padding: "13px 16px", borderBottom: i < paged.length - 1 ? `1px solid ${c.border}` : "none", cursor: "pointer", alignItems: "center", transition: "background .1s" }}
               onMouseEnter={e => e.currentTarget.style.background = "#1c2128"}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}
               onClick={() => onSelect(m)}>
@@ -339,7 +362,7 @@ function MembersView({ group, onBack, onSelect }) {
                   {m.alias || m.display_name || m.zalo_uid}
                 </div>
                 {m.alias && <div style={{ fontSize: 11, color: c.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.display_name}</div>}
-                <div style={{ fontSize: 11, color: c.dim, marginTop: 1 }}>#{i + 1} · ID …{(m.zalo_uid || "").slice(-6)}</div>
+                <div style={{ fontSize: 11, color: c.dim, marginTop: 1 }}>#{rank} · ID …{(m.zalo_uid || "").slice(-6)}</div>
               </div>
               <div style={{ textAlign: "right", fontWeight: 700, fontSize: 14, color: ptsYest >= 0 ? "#94a3b8" : "#f87171" }}>
                 {fmtPts(ptsYest)}
@@ -356,6 +379,27 @@ function MembersView({ group, onBack, onSelect }) {
           <div style={{ textAlign: "center", padding: "40px 0", color: c.dim }}>Không tìm thấy.</div>
         )}
       </div>
+
+      {/* Phân trang thành viên */}
+      {totalPages > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, padding: "16px 0 0", flexWrap: "wrap" }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+            style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${c.border}`, background: "transparent", color: page === 1 ? c.dim : c.ink, cursor: page === 1 ? "default" : "pointer", fontSize: 14 }}>‹</button>
+          {buildPageList(page, totalPages).map((p, idx) =>
+            p === "…"
+              ? <span key={`e${idx}`} style={{ width: 28, textAlign: "center", color: c.dim }}>…</span>
+              : <button key={p} onClick={() => setPage(p)}
+                  style={{ width: 36, height: 36, borderRadius: 8, border: "1px solid", borderColor: p === page ? c.accent : c.border, background: p === page ? "rgba(52,211,153,.15)" : "transparent", color: p === page ? c.accent : c.ink, fontWeight: p === page ? 800 : 400, fontSize: 14, cursor: "pointer" }}>
+                  {p}
+                </button>
+          )}
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+            style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${c.border}`, background: "transparent", color: page === totalPages ? c.dim : c.ink, cursor: page === totalPages ? "default" : "pointer", fontSize: 14 }}>›</button>
+          <span style={{ fontSize: 12, color: c.dim, marginLeft: 6 }}>
+            {sorted.length} thành viên · trang {page}/{totalPages}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
