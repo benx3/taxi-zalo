@@ -453,11 +453,11 @@ export function getAccountantGroups(accountantId) {
 export function getGroupAccountants(groupId) {
   return db.prepare(`
     SELECT ag.accountant_id, ag.zalo_group_id,
-           u.username, u.full_name
+           u.phone, u.name
     FROM accountant_groups ag
     JOIN users u ON u.id = ag.accountant_id
     WHERE ag.group_id = ?
-    ORDER BY u.username COLLATE NOCASE ASC
+    ORDER BY u.phone COLLATE NOCASE ASC
   `).all(groupId);
 }
 export function setGroupPublicVisible(accountantId, groupId, visible) {

@@ -363,11 +363,11 @@ export async function getAccountantGroups(accountantId) {
 export async function getGroupAccountants(groupId) {
   const r = await q(`
     SELECT ag.accountant_id, ag.zalo_group_id,
-           u.username, u.full_name
+           u.phone, u.name
     FROM accountant_groups ag
     JOIN users u ON u.id = ag.accountant_id
     WHERE ag.group_id = $1
-    ORDER BY u.username ASC
+    ORDER BY u.phone ASC
   `, [groupId]);
   return r.rows;
 }

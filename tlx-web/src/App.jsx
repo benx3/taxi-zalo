@@ -454,7 +454,7 @@ function GroupAccessModal({ group, onClose }) {
     try {
       await api.setAccountantGroup(user.id, group.group_id, group.group_name, action);
       setCurrent(prev => action === "add" ? [...prev, user.id] : prev.filter(id => id !== user.id));
-      setMsg({ ok: true, text: action === "add" ? `Đã cấp quyền cho ${user.username}` : `Đã thu hồi quyền ${user.username}` });
+      setMsg({ ok: true, text: action === "add" ? `Đã cấp quyền cho ${user.phone}` : `Đã thu hồi quyền ${user.phone}` });
       setTimeout(() => setMsg(null), 2500);
     } catch (e) { setMsg({ ok: false, text: e.message }); }
     finally { setSaving(null); }
@@ -481,8 +481,8 @@ function GroupAccessModal({ group, onClose }) {
             return (
               <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 4px", borderBottom: "1px solid var(--line)" }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{u.username}</div>
-                  {u.full_name && <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>{u.full_name}</div>}
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{u.phone}</div>
+                  {u.name && <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>{u.name}</div>}
                 </div>
                 {active && <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "rgba(52,211,153,.12)", color: "#34d399", fontWeight: 700 }}>Có quyền</span>}
                 <button
