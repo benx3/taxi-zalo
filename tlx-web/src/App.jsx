@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   Shield, CreditCard, Ban, RefreshCw, X, User, TrendingUp,
   Users, CheckCircle2, Lock, AlertTriangle, LogOut, Settings,
-  Search, Phone, Mic, Eye, EyeOff, GitMerge, UserPlus
+  Search, Phone, Mic, Eye, EyeOff, GitMerge, UserPlus, Activity
 } from "lucide-react";
 import { api, getToken, setToken } from "./api.js";
 
@@ -226,6 +226,7 @@ function AdminApp({ me, onLogout }) {
   const TABS=[
     {key:"users",icon:Users,label:"Tài khoản"},
     {key:"groups",icon:GitMerge,label:"Cài đặt nhóm"},
+    {key:"health",icon:Activity,label:"Sức khỏe"},
     {key:"stats",icon:TrendingUp,label:"Thống kê"},
     {key:"settings",icon:Settings,label:"Cài đặt"},
   ];
@@ -275,6 +276,7 @@ function AdminApp({ me, onLogout }) {
         </header>
         <div style={{flex:1,overflowY:"auto"}}>
           {adminTab==="groups"&&<div style={{padding:"20px 24px"}}><AdminGroupsTab/></div>}
+          {adminTab==="health"&&<div style={{padding:"20px 24px"}}><SessionHealthTab/></div>}
           {adminTab==="stats"&&<div style={{padding:"20px 24px"}}><AdminStatsTab/></div>}
           {adminTab==="settings"&&<div style={{padding:"20px 24px",maxWidth:560}}><AdminSettingsTab/></div>}
           {adminTab==="users"&&(
@@ -683,6 +685,89 @@ function AdminGroupsTab() {
 /* ===== Admin: Thống kê doanh thu & user ===== */
 const STATUS_LABELS={active:"Hoạt động",pending:"Chờ duyệt",expired:"Hết hạn",banned:"Đã khoá"};
 const STATUS_COLORS={active:"#34d399",pending:"#f59e0b",expired:"#94a3b8",banned:"#f87171"};
+
+/* ===== Tab: Sức khỏe session Zalo ===== */
+function SessionHealthTab() {
+  const [data, setData] = useState(null);
+  const [err, setErr]   = useState("");
+  const [ts, setTs]     = useState(Date.now());
+
+  const load = () => {
+    setErr("");
+    api.sessionHealth().then(d => { setData(d); setTs(Date.now()); }).catch(e => setErr(e.message));
+  };
+  useEffect(() => { load(); const t = setInterval(load, 30000); return () => clearInterval(t); }, []);
+
+  const fmtAgo = (ms) => {
+    if (!ms) return "—";
+    const s = Math.floor((Date.now() - ms) / 1000);
+    if (s < 60)   return `${s}s trước`;
+    if (s < 3600) return `${Math.floor(s/60)}p trước`;
+    return `${Math.floor(s/3600)}h trước`;
+  };
+  const statusOf = (lastMsgAt) => {
+    const s = (Date.now() - lastMsgAt) / 1000;
+    if (s < 300)   return { dot: "#34d399", label: "Tốt" };
+    if (s < 1800)  return { dot: "#f59e0b", label: "Chậm" };
+    return           { dot: "#f87171",  label: "Mất kết nối?" };
+  };
+
+  return (
+    <div style={{ maxWidth: 760 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+        <Activity size={18} color="var(--accent)" />
+        <span style={{ fontWeight: 700, fontSize: 16 }}>Session Zalo đang chạy</span>
+        <button onClick={load} style={{ marginLeft: "auto", padding: "6px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "none", color: "var(--ink-dim)", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12 }}>
+          <RefreshCw size={12} /> Làm mới
+        </button>
+        <span style={{ fontSize: 11, color: "var(--ink-dim)" }}>Tự cập nhật 30s</span>
+      </div>
+
+      {err && <div style={{ color: "#f87171", fontSize: 13, marginBottom: 10 }}>Lỗi: {err}</div>}
+      {!data && !err && <div style={{ color: "var(--ink-dim)", fontSize: 13 }}>Đang tải…</div>}
+      {data && data.length === 0 && (
+        <div style={{ color: "var(--ink-dim)", fontSize: 14, padding: "30px 0" }}>
+          Chưa có phiên Zalo nào đang chạy.
+        </div>
+      )}
+
+      {data && data.map(s => {
+        const st = statusOf(s.lastMsgAt);
+        return (
+          <div key={s.userId} style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: "16px 20px", marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <span style={{ width: 10, height: 10, borderRadius: "50%", background: st.dot, flexShrink: 0 }} />
+              <span style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>{s.selfName || s.userId}</span>
+              <span style={{ fontSize: 12, padding: "2px 10px", borderRadius: 99, background: st.dot + "22", color: st.dot, fontWeight: 700 }}>{st.label}</span>
+              {s.isAccountant && <span style={{ fontSize: 11, color: "#a78bfa", background: "rgba(167,139,250,.12)", padding: "2px 8px", borderRadius: 99 }}>Kế toán</span>}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13, color: "var(--ink-dim)" }}>
+              <div><b style={{ color: "var(--ink)" }}>Tin cuối:</b> {fmtAgo(s.lastMsgAt)}</div>
+              <div><b style={{ color: "var(--ink)" }}>Zalo UID:</b> {s.selfId || "—"}</div>
+              <div><b style={{ color: "var(--ink)" }}>Nhóm theo dõi:</b> {s.selected.length} nhóm</div>
+              <div><b style={{ color: "var(--ink)" }}>Tổng nhóm Zalo:</b> {s.groupCount}</div>
+            </div>
+            {s.selected.length > 0 && (
+              <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {s.selected.map(gId => (
+                  <span key={gId} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: "rgba(52,211,153,.08)", border: "1px solid rgba(52,211,153,.2)", color: "var(--accent)" }}>
+                    {gId.slice(-8)}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 10, background: "rgba(245,158,11,.06)", border: "1px solid rgba(245,158,11,.2)", fontSize: 12, color: "var(--ink-dim)", lineHeight: 1.6 }}>
+        <b style={{ color: "#f59e0b" }}>Chú thích:</b> Tốt = tin cuối &lt; 5p · Chậm = 5–30p · Mất kết nối? = &gt; 30p im lặng.<br/>
+        Nếu trạng thái "Mất kết nối?" nhưng nhóm vẫn đang chat → WS bị drop âm thầm, cần restart service.
+        Hệ thống tự catchup tin bị sót mỗi 10 phút (nếu im lặng &gt; 5p).
+      </div>
+    </div>
+  );
+}
 
 function AdminStatsTab() {
   const todayStr=()=>new Date().toISOString().slice(0,10);

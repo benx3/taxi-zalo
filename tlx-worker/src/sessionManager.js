@@ -25,6 +25,22 @@ export function getSession(userId) { return sessions.get(userId); }
 export function hasSession(userId) { return sessions.has(userId); }
 export function sessionCount() { return sessions.size; }
 
+export function getSessionsHealth() {
+  const out = [];
+  for (const [userId, sess] of sessions.entries()) {
+    out.push({
+      userId,
+      selfId:       sess.selfId,
+      selfName:     sess.selfName,
+      isAccountant: sess.isAccountant,
+      lastMsgAt:    sess.lastMsgAt,
+      selected:     [...sess.selected],
+      groupCount:   sess.groups.length,
+    });
+  }
+  return out;
+}
+
 /**
  * Tạo phiên Zalo cho 1 user.
  * onEvent(userId, event) — callback đẩy dữ liệu về đúng client của user đó:
@@ -1107,3 +1123,27 @@ setInterval(() => {
   for (const sess of sessions.values())
     for (const [k, v] of sess.claims) if ((v.takenAt || 0) < cut) sess.claims.delete(k);
 }, 30 * 1000);
+
+// Periodic catchup mỗi 10 phút: bù tin nhắn bị bỏ sót khi WS drop âm thầm
+// Chỉ chạy cho kế toán (họ mới cần barem tracking chính xác)
+// Nếu session mới nhận tin < 5 phút → không cần catchup (WS vẫn sống)
+const CATCHUP_INTERVAL = 10 * 60 * 1000;
+const CATCHUP_SKIP_IF_RECENT = 5 * 60 * 1000;
+setInterval(async () => {
+  for (const [userId, sess] of sessions.entries()) {
+    if (!sess.isAccountant) continue;
+    const silent = Date.now() - sess.lastMsgAt;
+    if (silent < CATCHUP_SKIP_IF_RECENT) continue; // WS vẫn đang nhận tin → bỏ qua
+    try {
+      const acctGroups = await dbm.getAccountantGroups(userId);
+      for (const ag of acctGroups) {
+        const zaloId = ag.zalo_group_id || ag.group_id;
+        catchUpMissedMessages(sess, zaloId).catch(() => {});
+        await sleep(600);
+      }
+    } catch (e) {
+      console.warn(`[${userId}] periodic catchup:`, e?.message || e);
+    }
+    await sleep(3000); // stagger giữa các session
+  }
+}, CATCHUP_INTERVAL);

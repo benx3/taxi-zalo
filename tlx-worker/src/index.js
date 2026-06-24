@@ -92,6 +92,10 @@ app.post("/api/admin/set-role", async (req, res) => {
   try { res.json(await dbm.setRole(req.body.id, req.body.role, req.body.groupLimit)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
+app.get("/api/admin/session-health", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  res.json(sm.getSessionsHealth());
+});
 app.get("/api/admin/groups", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   res.json(await dbm.listAllGroups());
