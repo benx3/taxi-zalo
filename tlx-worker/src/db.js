@@ -576,6 +576,11 @@ export function adjustPoints(groupId, zaloUid, delta, reason, type = "manual", t
     .run(txId, groupId, tripMsgId, fromMember, toMember, Math.abs(delta), reason || null, type, rawText || null, now());
   return txId;
 }
+export function getTransactionsByTripMsgId(groupId, tripMsgId) {
+  return db.prepare(
+    "SELECT * FROM point_transactions WHERE group_id=? AND trip_msg_id=? AND type='barem' ORDER BY created_at DESC LIMIT 10"
+  ).all(groupId, tripMsgId);
+}
 export function listTransactions(groupId, { zaloUid, limit = 100 } = {}) {
   const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name
     FROM point_transactions pt

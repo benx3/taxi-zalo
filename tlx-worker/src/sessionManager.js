@@ -548,6 +548,67 @@ function onMessage(sess, msg) {
       }
     }
 
+    // (E) Kế toán: @kế toán + từ khóa trong reply → điều chỉnh / hủy giao dịch barem
+    // TH1: "lịch -+N @kế toán" → thỏa thuận điểm mới
+    // TH2: "lịch hủy @kế toán"  → đảo ngược hoàn toàn
+    // TH3: "lịch free @kế toán" → không tính điểm, đảo ngược
+    if (sess.isAccountant && senderId !== String(sess.selfId)) {
+      const qd = msg.data?.quote;
+      const mentions = msg.data?.mentions || [];
+      if (qd && mentions.some(m => String(m.uid) === String(sess.selfId))) {
+        const action = detectBaremAction(text);
+        if (action) {
+          const qGlobId = qd.globalMsgId != null ? String(qd.globalMsgId) : "";
+          const qCliId  = qd.cliMsgId   != null ? String(qd.cliMsgId)   : "";
+          Promise.resolve((async () => {
+            let txs = [];
+            if (qGlobId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qGlobId));
+            if (!txs.length && qCliId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qCliId));
+            if (!txs.length) {
+              console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy tx cho quoted glob=${qGlobId} cli=${qCliId}`);
+              return;
+            }
+            // Phân biệt poster (to_member không null) và taker (from_member không null)
+            const posterTx = txs.find(t => t.to_member && !t.from_member);
+            const takerTx  = txs.find(t => t.from_member && !t.to_member);
+            if (!posterTx || !takerTx) {
+              console.warn(`[${sess.userId}] (E) barem ${action.type}: không phân biệt poster/taker từ ${txs.length} tx`);
+              return;
+            }
+            const posterUid   = posterTx.to_member;
+            const takerUid    = takerTx.from_member;
+            const originalPts = Number(posterTx.points);
+
+            // Giữ nội dung convo gốc + thêm tin hành động
+            let baseConvo = null;
+            try { baseConvo = posterTx.raw_text ? JSON.parse(posterTx.raw_text) : null; } catch {}
+            const reversalConvo = JSON.stringify({
+              ...(baseConvo || {}),
+              cancelTime: time, canceller: senderName, cancelText: text,
+            });
+
+            if (action.type === 'cancel') {
+              await dbm.adjustPoints(dbGroupId, posterUid, -originalPts, 'Hủy lịch', 'barem_cancel', msgId, null, null, reversalConvo);
+              await dbm.adjustPoints(dbGroupId, takerUid,  +originalPts, 'Hủy lịch', 'barem_cancel', msgId, null, null, reversalConvo);
+              console.log(`[${sess.userId}] ❌ Barem cancel: ±${originalPts}đ | poster=${posterUid} taker=${takerUid}`);
+            } else if (action.type === 'free') {
+              await dbm.adjustPoints(dbGroupId, posterUid, -originalPts, 'Lịch free', 'barem_cancel', msgId, null, null, reversalConvo);
+              await dbm.adjustPoints(dbGroupId, takerUid,  +originalPts, 'Lịch free', 'barem_cancel', msgId, null, null, reversalConvo);
+              console.log(`[${sess.userId}] 🆓 Barem free: ±${originalPts}đ | poster=${posterUid} taker=${takerUid}`);
+            } else if (action.type === 'adjust') {
+              const diff = action.points - originalPts;
+              if (diff === 0) return;
+              const reason = `Thỏa thuận: ${originalPts}đ → ${action.points}đ`;
+              await dbm.adjustPoints(dbGroupId, posterUid,  diff, reason, 'barem_adjust', msgId, null, null, reversalConvo);
+              await dbm.adjustPoints(dbGroupId, takerUid,  -diff, reason, 'barem_adjust', msgId, null, null, reversalConvo);
+              console.log(`[${sess.userId}] 📝 Barem adjust: ${originalPts}→${action.points}đ diff=${diff} | poster=${posterUid} taker=${takerUid}`);
+            }
+          })()).catch(e => console.error(`[${sess.userId}] barem action (E):`, e?.message || e));
+          return;
+        }
+      }
+    }
+
     // (B) cuốc mới — 1 tin có thể chứa nhiều cuốc
     const trips = parseMultipleTrips({ groupId, groupName, senderId, senderName, msgId, text, time });
     if (trips.length > 0) {
@@ -604,6 +665,33 @@ async function handleVoiceTrip(sess, base, rawMsg, voiceUrl) {
     }
     sess.onEvent(sess.userId, { type: "trip", trip: tripOut });
   }
+}
+
+// Chuẩn hoá tiếng Việt về ASCII lowercase (dùng để match pattern không dấu)
+function noMarkLower(s) {
+  return (s || '')
+    .toLowerCase()
+    .replace(/đ/g, 'd')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+}
+
+// Phát hiện hành động điều chỉnh barem từ tin "@kế toán" reply
+// Trả về {type: 'cancel'|'free'|'adjust', points?: number} hoặc null
+function detectBaremAction(text) {
+  if (!text) return null;
+  const t = noMarkLower(text);
+  // "lịch hủy" / "hủy lịch" / "lich huy" / "huy lich"
+  if (/lich\s*hu[y]?|hu[y]?\s*lich/.test(t)) return { type: 'cancel' };
+  // "lịch free" / "lich free"
+  if (/lich\s*free/.test(t)) return { type: 'free' };
+  // "lịch N" / "lịch +N" / "lịch -+N" — N là số điểm thỏa thuận mới
+  const adj = t.match(/lich[\s:]*[-+]*\s*(\d+(?:[.,]\d+)?)\s*(?:d(?:iem)?)?(?=[\s,.]|$)/);
+  if (adj) {
+    const pts = parseFloat(adj[1].replace(',', '.'));
+    if (pts > 0 && pts <= 20) return { type: 'adjust', points: pts };
+  }
+  return null;
 }
 
 // Phát hiện "san điểm" — trả về Array<{amount, toUid, toName}>

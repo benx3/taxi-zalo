@@ -471,6 +471,13 @@ export async function adjustPoints(groupId, zaloUid, delta, reason, type = "manu
     [txId, groupId, tripMsgId, fromMember, toMember, Math.abs(delta), reason || null, type, rawText || null, now()]);
   return txId;
 }
+export async function getTransactionsByTripMsgId(groupId, tripMsgId) {
+  const r = await q(
+    "SELECT * FROM point_transactions WHERE group_id=$1 AND trip_msg_id=$2 AND type='barem' ORDER BY created_at DESC LIMIT 10",
+    [groupId, tripMsgId]
+  );
+  return r.rows;
+}
 export async function listTransactions(groupId, { zaloUid, limit = 100 } = {}) {
   const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name
     FROM point_transactions pt
