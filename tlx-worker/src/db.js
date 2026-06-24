@@ -450,6 +450,16 @@ export function listPublicGroups() {
 export function getAccountantGroups(accountantId) {
   return db.prepare("SELECT * FROM accountant_groups WHERE accountant_id=?").all(accountantId);
 }
+export function getGroupAccountants(groupId) {
+  return db.prepare(`
+    SELECT ag.accountant_id, ag.zalo_group_id,
+           u.username, u.full_name
+    FROM accountant_groups ag
+    JOIN users u ON u.id = ag.accountant_id
+    WHERE ag.group_id = ?
+    ORDER BY u.username COLLATE NOCASE ASC
+  `).all(groupId);
+}
 export function setGroupPublicVisible(accountantId, groupId, visible) {
   db.prepare("UPDATE accountant_groups SET public_visible=? WHERE accountant_id=? AND group_id=?")
     .run(visible ? 1 : 0, accountantId, groupId);

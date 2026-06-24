@@ -360,6 +360,17 @@ export async function getAccountantGroups(accountantId) {
   const r = await q("SELECT * FROM accountant_groups WHERE accountant_id=$1", [accountantId]);
   return r.rows;
 }
+export async function getGroupAccountants(groupId) {
+  const r = await q(`
+    SELECT ag.accountant_id, ag.zalo_group_id,
+           u.username, u.full_name
+    FROM accountant_groups ag
+    JOIN users u ON u.id = ag.accountant_id
+    WHERE ag.group_id = $1
+    ORDER BY u.username ASC
+  `, [groupId]);
+  return r.rows;
+}
 export async function setGroupPublicVisible(accountantId, groupId, visible) {
   await q("UPDATE accountant_groups SET public_visible=$1 WHERE accountant_id=$2 AND group_id=$3",
     [visible ? 1 : 0, accountantId, groupId]);

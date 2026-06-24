@@ -145,12 +145,16 @@ app.get("/api/admin/accountant-groups/:userId", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   res.json(await dbm.getAccountantGroups(req.params.userId));
 });
+app.get("/api/admin/groups/:groupId/accountants", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  res.json(await dbm.getGroupAccountants(req.params.groupId));
+});
 app.post("/api/admin/accountant-groups", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   const { accountantId, groupId, groupName, action } = req.body;
   if (!accountantId || !groupId) return res.status(400).json({ error: "Thiếu accountantId hoặc groupId" });
   if (action === "remove") await dbm.removeAccountantGroup(accountantId, groupId);
-  else await dbm.addAccountantGroup(accountantId, groupId, groupName || groupId);
+  else await dbm.addAccountantGroup(accountantId, groupId, groupName || groupId, null);
   res.json({ ok: true });
 });
 

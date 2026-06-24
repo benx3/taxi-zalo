@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   Shield, CreditCard, Ban, RefreshCw, X, User, TrendingUp,
   Users, CheckCircle2, Lock, AlertTriangle, LogOut, Settings,
-  Search, Phone, Mic, Eye, EyeOff, GitMerge
+  Search, Phone, Mic, Eye, EyeOff, GitMerge, UserPlus
 } from "lucide-react";
 import { api, getToken, setToken } from "./api.js";
 
@@ -429,6 +429,78 @@ function SetAccountantModal({target,onClose,onDone}){
   );
 }
 
+/* ===== Modal: Phân quyền kế toán cho nhóm ===== */
+function GroupAccessModal({ group, onClose }) {
+  const [allUsers, setAllUsers] = useState([]);
+  const [current, setCurrent] = useState([]);
+  const [saving, setSaving] = useState(null);
+  const [msg, setMsg] = useState(null);
+
+  useEffect(() => {
+    Promise.all([
+      api.adminUsers(),
+      api.groupAccountants(group.group_id),
+    ]).then(([users, accts]) => {
+      setAllUsers(users.filter(u => u.role === "accountant" || u.role === "admin"));
+      setCurrent(accts.map(a => a.accountant_id));
+    }).catch(() => {});
+  }, [group.group_id]);
+
+  const hasAccess = (uid) => current.includes(uid);
+
+  const toggle = async (user) => {
+    const action = hasAccess(user.id) ? "remove" : "add";
+    setSaving(user.id);
+    try {
+      await api.setAccountantGroup(user.id, group.group_id, group.group_name, action);
+      setCurrent(prev => action === "add" ? [...prev, user.id] : prev.filter(id => id !== user.id));
+      setMsg({ ok: true, text: action === "add" ? `Đã cấp quyền cho ${user.username}` : `Đã thu hồi quyền ${user.username}` });
+      setTimeout(() => setMsg(null), 2500);
+    } catch (e) { setMsg({ ok: false, text: e.message }); }
+    finally { setSaving(null); }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "24px 28px", width: 440, maxWidth: "95vw", maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <UserPlus size={18} color="var(--accent)" />
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Phân quyền kế toán</div>
+          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)", padding: 4 }}><X size={18} /></button>
+        </div>
+        <div style={{ fontSize: 13, color: "var(--ink-dim)", marginBottom: 16 }}>
+          Nhóm: <b style={{ color: "var(--ink)" }}>{group.group_name || group.group_id}</b>
+          <br />Chọn kế toán có quyền xem và quản lý nhóm này (không cần Zalo).
+        </div>
+        {msg && <div style={{ padding: "7px 12px", borderRadius: 8, marginBottom: 10, fontSize: 13, fontWeight: 600, background: msg.ok ? "rgba(52,211,153,.12)" : "rgba(239,68,68,.12)", color: msg.ok ? "#34d399" : "#f87171" }}>{msg.text}</div>}
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {allUsers.length === 0 && <div style={{ textAlign: "center", padding: 24, color: "var(--ink-dim)", fontSize: 13 }}>Chưa có kế toán nào trong hệ thống.</div>}
+          {allUsers.map(u => {
+            const active = hasAccess(u.id);
+            const isSaving = saving === u.id;
+            return (
+              <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 4px", borderBottom: "1px solid var(--line)" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{u.username}</div>
+                  {u.full_name && <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>{u.full_name}</div>}
+                </div>
+                {active && <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "rgba(52,211,153,.12)", color: "#34d399", fontWeight: 700 }}>Có quyền</span>}
+                <button
+                  onClick={() => toggle(u)}
+                  disabled={!!isSaving}
+                  style={{ padding: "7px 14px", borderRadius: 9, border: "none", cursor: isSaving ? "default" : "pointer", fontWeight: 700, fontSize: 12, opacity: isSaving ? 0.5 : 1, background: active ? "rgba(239,68,68,.15)" : "rgba(52,211,153,.15)", color: active ? "#f87171" : "#34d399" }}>
+                  {isSaving ? "…" : active ? "Thu hồi" : "Cấp quyền"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <button onClick={onClose} style={{ marginTop: 16, padding: "9px 0", borderRadius: 10, border: "1px solid var(--line)", background: "none", color: "var(--ink-dim)", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Đóng</button>
+      </div>
+    </div>
+  );
+}
+
 /* ===== Admin: Cài đặt nhóm ===== */
 function AdminGroupsTab() {
   const [groups, setGroups] = useState(null);
@@ -438,6 +510,7 @@ function AdminGroupsTab() {
   const [msg, setMsg] = useState(null);
   const [resetTarget, setResetTarget] = useState(null);
   const [resetting, setResetting] = useState(false);
+  const [accessGroup, setAccessGroup] = useState(null);
 
   const load = () => api.listAllGroups().then(setGroups).catch(() => {});
   useEffect(() => { load(); }, []);
@@ -473,6 +546,9 @@ function AdminGroupsTab() {
 
   return (
     <div style={{ maxWidth: 860 }}>
+      {/* Modal phân quyền */}
+      {accessGroup && <GroupAccessModal group={accessGroup} onClose={() => setAccessGroup(null)} />}
+
       {/* Modal xác nhận reset */}
       {resetTarget && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -515,6 +591,7 @@ function AdminGroupsTab() {
                   <th style={th}>Tên nhóm</th>
                   <th style={th}>KT</th>
                   <th style={th}>TV</th>
+                  <th style={{ ...th, textAlign: "right" }}>Phân quyền</th>
                   <th style={{ ...th, textAlign: "right" }}>Merge</th>
                   <th style={{ ...th, textAlign: "right" }}>Reset</th>
                 </tr></thead>
@@ -528,6 +605,13 @@ function AdminGroupsTab() {
                       <td style={{ ...td, fontWeight: 600 }}>{g.group_name || g.group_id}</td>
                       <td style={{ ...td, color: "var(--ink-dim)" }}>{g.accountant_count}</td>
                       <td style={{ ...td, color: "var(--ink-dim)" }}>{g.member_count}</td>
+                      <td style={{ ...td, textAlign: "right" }}>
+                        <button
+                          onClick={() => setAccessGroup(g)}
+                          style={{ ...miniBtn("#60a5fa"), fontSize: 11, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <UserPlus size={11} /> KT ({g.accountant_count})
+                        </button>
+                      </td>
                       <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
                         <button
                           onClick={() => setSource(isSrc ? null : g)}

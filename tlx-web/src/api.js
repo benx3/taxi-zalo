@@ -40,6 +40,7 @@ export const api = {
   getSettings: () => req("/api/admin/settings", null, "GET"),
   setSetting: (key, value) => req("/api/admin/settings", { key, value }),
   accountantGroups: (userId) => req(`/api/admin/accountant-groups/${userId}`, null, "GET"),
+  groupAccountants: (groupId) => req(`/api/admin/groups/${groupId}/accountants`, null, "GET"),
   setAccountantGroup: (accountantId, groupId, groupName, action) => req("/api/admin/accountant-groups", { accountantId, groupId, groupName, action }),
 };
 
