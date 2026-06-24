@@ -582,9 +582,34 @@ function onMessage(sess, msg) {
             // Giữ nội dung convo gốc + thêm tin hành động
             let baseConvo = null;
             try { baseConvo = posterTx.raw_text ? JSON.parse(posterTx.raw_text) : null; } catch {}
+
+            // Lấy toàn bộ tin nhắn trong nhóm từ trước khi cuốc được đăng đến tin hủy/điều chỉnh
+            // Window 4h trước thời điểm barem được áp dụng → đủ bao gồm tin đăng cuốc
+            const WINDOW_MS = 4 * 60 * 60 * 1000;
+            let rawLog = "";
+            try {
+              const rawMsgs = await Promise.resolve(
+                dbm.listRawMessages(dbGroupId, {
+                  dateFrom: posterTx.created_at - WINDOW_MS,
+                  dateTo: msgTs + 1000,
+                  limit: 200,
+                })
+              );
+              rawLog = rawMsgs
+                .filter(m => m.text)
+                .map(m => {
+                  const t = new Date(Number(m.created_at)).toLocaleTimeString("vi-VN", {
+                    timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit",
+                  });
+                  return `[${t}] ${m.sender_name || m.sender_id}: ${m.text}`;
+                })
+                .join("\n");
+            } catch {}
+
             const reversalConvo = JSON.stringify({
               ...(baseConvo || {}),
               cancelTime: time, canceller: senderName, cancelText: text,
+              rawLog,
             });
 
             if (action.type === 'cancel') {
