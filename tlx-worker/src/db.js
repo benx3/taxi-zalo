@@ -473,6 +473,24 @@ export function countMembers(groupId) {
 export function listMembers(groupId) {
   return db.prepare("SELECT * FROM members WHERE group_id=? ORDER BY points DESC, display_name COLLATE NOCASE ASC").all(groupId);
 }
+export function listMembersWithYesterday(groupId) {
+  const vnOffsetMs = 7 * 60 * 60 * 1000;
+  const todayStartMs = Math.floor((Date.now() + vnOffsetMs) / 86400000) * 86400000 - vnOffsetMs;
+  return db.prepare(`
+    SELECT m.*,
+      ROUND(m.points - COALESCE((
+        SELECT SUM(CASE WHEN pt.to_member = m.zalo_uid THEN pt.points ELSE -pt.points END)
+        FROM point_transactions pt
+        WHERE pt.group_id = m.group_id
+          AND (pt.to_member = m.zalo_uid OR pt.from_member = m.zalo_uid)
+          AND (pt.status IS NULL OR pt.status NOT IN ('pending','rejected'))
+          AND pt.created_at >= ?
+      ), 0), 10) AS points_yesterday
+    FROM members m
+    WHERE m.group_id = ?
+    ORDER BY m.points DESC, m.display_name COLLATE NOCASE ASC
+  `).all(todayStartMs, groupId);
+}
 export function getMemberByZaloUid(groupId, zaloUid) {
   return db.prepare("SELECT * FROM members WHERE group_id=? AND zalo_uid=?").get(groupId, zaloUid);
 }

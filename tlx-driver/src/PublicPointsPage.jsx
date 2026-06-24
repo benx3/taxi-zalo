@@ -27,6 +27,15 @@ const dayKey = (ms) => {
   return d.toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 };
 
+function yesterdayLabel() {
+  const vnOffsetMs = 7 * 60 * 60 * 1000;
+  const d = new Date(Date.now() + vnOffsetMs - 86400000);
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const yyyy = d.getUTCFullYear();
+  return `${dd}/${mm}/${yyyy} 23:59'`;
+}
+
 const PAGE_SIZE = 20;
 function buildPageList(cur, total) {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
@@ -307,15 +316,20 @@ function MembersView({ group, onBack, onSelect }) {
 
       <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, overflow: "hidden" }}>
         {/* Header */}
-        <div style={{ display: "grid", gridTemplateColumns: "48px 1fr 80px 24px", gap: 12, padding: "10px 16px", borderBottom: `1px solid ${c.border}`, fontSize: 12, color: c.dim, fontWeight: 700 }}>
-          <div /><div>Tên Zalo</div><div style={{ textAlign: "right" }}>Điểm</div><div />
+        <div style={{ display: "grid", gridTemplateColumns: "48px 1fr 96px 96px 20px", gap: 8, padding: "10px 16px", borderBottom: `1px solid ${c.border}`, fontSize: 11, color: c.dim, fontWeight: 700 }}>
+          <div /><div>Tên Zalo</div>
+          <div style={{ textAlign: "right", lineHeight: 1.3 }}>{yesterdayLabel()}</div>
+          <div style={{ textAlign: "right" }}>Điểm hiện giờ</div>
+          <div />
         </div>
 
         {sorted.map((m, i) => {
           const pts = Number(m.points) || 0;
+          const ptsYest = Number(m.points_yesterday) ?? pts;
+          const fmtPts = (v) => `${v >= 0 ? "+" : ""}${v % 1 === 0 ? v.toFixed(0) : v.toFixed(2)}đ`;
           return (
             <div key={m.zalo_uid}
-              style={{ display: "grid", gridTemplateColumns: "48px 1fr 80px 24px", gap: 12, padding: "13px 16px", borderBottom: i < sorted.length - 1 ? `1px solid ${c.border}` : "none", cursor: "pointer", alignItems: "center", transition: "background .1s" }}
+              style={{ display: "grid", gridTemplateColumns: "48px 1fr 96px 96px 20px", gap: 8, padding: "13px 16px", borderBottom: i < sorted.length - 1 ? `1px solid ${c.border}` : "none", cursor: "pointer", alignItems: "center", transition: "background .1s" }}
               onMouseEnter={e => e.currentTarget.style.background = "#1c2128"}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}
               onClick={() => onSelect(m)}>
@@ -327,8 +341,11 @@ function MembersView({ group, onBack, onSelect }) {
                 {m.alias && <div style={{ fontSize: 11, color: c.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.display_name}</div>}
                 <div style={{ fontSize: 11, color: c.dim, marginTop: 1 }}>#{i + 1} · ID …{(m.zalo_uid || "").slice(-6)}</div>
               </div>
+              <div style={{ textAlign: "right", fontWeight: 700, fontSize: 14, color: ptsYest >= 0 ? "#94a3b8" : "#f87171" }}>
+                {fmtPts(ptsYest)}
+              </div>
               <div style={{ textAlign: "right", fontWeight: 800, fontSize: 16, color: pts >= 0 ? "#34d399" : "#f87171" }}>
-                {pts >= 0 ? "+" : ""}{pts % 1 === 0 ? pts.toFixed(0) : pts.toFixed(2)}đ
+                {fmtPts(pts)}
               </div>
               <ChevronRight size={15} color={c.dim} />
             </div>

@@ -51,7 +51,7 @@ export const {
   saveTrip, markTripWon, deleteSavedTrip, listSavedTrips, purgeOld,
   getSetting, setSetting,
   getAccountantGroups, findGroupByName, addAccountantGroup, removeAccountantGroup, setGroupPublicVisible,
-  countMembers, listMembers, getMemberByZaloUid, upsertMember, deleteRemovedMembers, setMemberAlias,
+  countMembers, listMembers, listMembersWithYesterday, getMemberByZaloUid, upsertMember, deleteRemovedMembers, setMemberAlias,
   adjustPoints, listTransactions, updateTransaction, deleteTransaction,
   createPendingTransfer, listPendingTransfers, approvePendingTransfer, rejectPendingTransfer,
   lockAccountantGroups, isGroupsLocked,

@@ -117,7 +117,7 @@ app.get("/api/public/groups", async (_req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get("/api/public/members/:groupId", async (req, res) => {
-  try { res.json(await dbm.listMembers(req.params.groupId)); }
+  try { res.json(await dbm.listMembersWithYesterday(req.params.groupId)); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get("/api/public/transactions/:groupId/:zaloUid", async (req, res) => {

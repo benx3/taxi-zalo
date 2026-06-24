@@ -386,6 +386,25 @@ export async function listMembers(groupId) {
   const r = await q("SELECT * FROM members WHERE group_id=$1 ORDER BY points DESC, display_name ASC", [groupId]);
   return r.rows;
 }
+export async function listMembersWithYesterday(groupId) {
+  const vnOffsetMs = 7 * 60 * 60 * 1000;
+  const todayStartMs = Math.floor((Date.now() + vnOffsetMs) / 86400000) * 86400000 - vnOffsetMs;
+  const r = await q(`
+    SELECT m.*,
+      ROUND(CAST(m.points AS numeric) - COALESCE((
+        SELECT SUM(CASE WHEN pt.to_member = m.zalo_uid THEN pt.points ELSE -pt.points END)
+        FROM point_transactions pt
+        WHERE pt.group_id = m.group_id
+          AND (pt.to_member = m.zalo_uid OR pt.from_member = m.zalo_uid)
+          AND (pt.status IS NULL OR pt.status NOT IN ('pending','rejected'))
+          AND pt.created_at >= $2
+      ), 0), 10) AS points_yesterday
+    FROM members m
+    WHERE m.group_id = $1
+    ORDER BY m.points DESC, m.display_name ASC
+  `, [groupId, todayStartMs]);
+  return r.rows;
+}
 export async function getMemberByZaloUid(groupId, zaloUid) {
   const r = await q("SELECT * FROM members WHERE group_id=$1 AND zalo_uid=$2", [groupId, zaloUid]);
   return r.rows[0] || null;
