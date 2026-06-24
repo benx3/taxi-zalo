@@ -56,6 +56,14 @@ export const api = {
   approveTransfer: (id) => req(`/api/accountant/pending-transfers/${id}/approve`, {}),
   rejectTransfer: (id) => req(`/api/accountant/pending-transfers/${id}/reject`, {}),
 
+  // Raw messages
+  rawMessages: (groupId, date, search) => {
+    let url = `/api/accountant/raw-messages?groupId=${encodeURIComponent(groupId)}`;
+    if (date) url += `&date=${encodeURIComponent(date)}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    return req(url, null, "GET");
+  },
+
   // Barem
   getRules: (groupId) => req(`/api/accountant/rules/${encodeURIComponent(groupId)}`, null, "GET"),
   saveRules: (groupId, b) => req(`/api/accountant/rules/${encodeURIComponent(groupId)}`, b),

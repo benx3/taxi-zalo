@@ -629,6 +629,18 @@ export async function resetGroupData(groupId) {
   return { ok: true };
 }
 
+export async function listRawMessages(groupId, { dateFrom, dateTo, search, limit = 500 } = {}) {
+  let sql = "SELECT * FROM raw_messages WHERE group_id=$1";
+  const params = [groupId];
+  let idx = 2;
+  if (dateFrom) { sql += ` AND created_at >= $${idx++}`; params.push(dateFrom); }
+  if (dateTo)   { sql += ` AND created_at <= $${idx++}`; params.push(dateTo); }
+  if (search)   { sql += ` AND LOWER(text) LIKE $${idx++}`; params.push("%" + search.toLowerCase() + "%"); }
+  sql += ` ORDER BY created_at ASC LIMIT $${idx}`;
+  params.push(limit);
+  const r = await q(sql, params);
+  return r.rows;
+}
 export async function saveRawMessage(msgId, groupId, senderId, senderName, text, msgType, ts) {
   if (!msgId || msgId.length < 3) return;
   try {

@@ -307,6 +307,25 @@ app.post("/api/accountant/pending-transfers/:id/reject", async (req, res) => {
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// Raw messages — tra soát lịch sử tin nhắn
+app.get("/api/accountant/raw-messages", async (req, res) => {
+  const { groupId, date, search } = req.query;
+  if (!groupId) return res.status(400).json({ error: "Thiếu groupId" });
+  if (!await checkGroupAccess(req, res, groupId)) return;
+  // date dạng YYYY-MM-DD → chuyển sang ms (timezone VN UTC+7)
+  let dateFrom, dateTo;
+  if (date) {
+    const vnOffset = 7 * 60 * 60 * 1000;
+    const base = new Date(date + "T00:00:00+07:00").getTime();
+    dateFrom = base;
+    dateTo   = base + 86400000 - 1;
+  }
+  try {
+    const msgs = await dbm.listRawMessages(groupId, { dateFrom, dateTo, search: search || null });
+    res.json(msgs);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Barem
 app.get("/api/accountant/rules/:groupId", async (req, res) => {
   if (!await checkGroupAccess(req, res, req.params.groupId)) return;

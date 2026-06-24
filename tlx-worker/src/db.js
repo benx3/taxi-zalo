@@ -444,6 +444,16 @@ export function resetGroupData(groupId) {
 }
 
 // ---------- Raw messages: audit log + anti-cheat + catchup ----------
+export function listRawMessages(groupId, { dateFrom, dateTo, search, limit = 500 } = {}) {
+  let sql = "SELECT * FROM raw_messages WHERE group_id=?";
+  const params = [groupId];
+  if (dateFrom) { sql += " AND created_at >= ?"; params.push(dateFrom); }
+  if (dateTo)   { sql += " AND created_at <= ?"; params.push(dateTo); }
+  if (search)   { sql += " AND LOWER(text) LIKE ?"; params.push("%" + search.toLowerCase() + "%"); }
+  sql += " ORDER BY created_at ASC LIMIT ?";
+  params.push(limit);
+  return db.prepare(sql).all(...params);
+}
 export function saveRawMessage(msgId, groupId, senderId, senderName, text, msgType, ts) {
   if (!msgId || msgId.length < 3) return;
   try {
