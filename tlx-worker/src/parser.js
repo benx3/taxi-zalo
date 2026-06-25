@@ -105,11 +105,17 @@ export function parseCar(t) {
 
 export function parseSeats(t) {
   const l = t.toLowerCase();
+  // N k (standalone "k") — "1k"=1 ghế, "2k"/"3k"=N khách
   const nk = l.match(/\b([1-6])\s*k\b/);
   if (nk) return nk[1] === "1" ? "1 ghế" : nk[1] + " khách";
-  if (/2\s*ghế|2ghế|2\s*khách|2ghép|2ghep/.test(l)) return "2 khách";
+  // 3 khách: 3ghế/3ghép/3kh/3gh/3g và biến thể có khoảng trắng
+  if (/3\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|gh\b|g\b)/.test(l)) return "3 khách";
+  // 2 khách: 2ghế/2ghép/2kh/2gh/2g và biến thể có khoảng trắng
+  if (/2\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|gh\b|g\b)/.test(l)) return "2 khách";
+  // Bao xe (check trước để "1bx" không nhầm thành 1 ghế)
   if (/bao\s*hàng|bao\s*xe|bxe|1bx|\bbx\b|bx\d+/.test(l)) return "Bao xe";
-  if (/1\s*ghế|1ghế|1ghê|1ghép|1ghep/.test(l)) return "1 ghế";
+  // 1 ghế: 1ghế/1ghép/1kh/1gh/1g và biến thể có khoảng trắng
+  if (/1\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|gh\b|g\b)/.test(l)) return "1 ghế";
   return "Không rõ";
 }
 
@@ -126,7 +132,8 @@ export function parseType(t) {
     if (/\bđón\b|\bdon\b|ra\s*đón|ra\s*don/.test(l)) return "Sân bay đón";
     return "Sân bay";
   }
-  if (/2\s*ghế|2ghế|2ghép|2ghep|2\s*khách|2k\b/.test(l)) return "Ghép 2";
+  if (/3\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|gh\b|g\b)|3k\b/.test(l)) return "Ghép 3";
+  if (/2\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|gh\b|g\b)|2k\b/.test(l)) return "Ghép 2";
   return "Ghép 1";
 }
 
