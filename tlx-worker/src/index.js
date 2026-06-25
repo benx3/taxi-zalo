@@ -156,6 +156,12 @@ app.post("/api/admin/settings", async (req, res) => {
     config.fptSttApiKey = trimmed || null;
     return res.json({ ok: true, fpt_api_key_set: !!trimmed, fpt_api_key_hint: trimmed ? "****" + trimmed.slice(-4) : null });
   }
+  if (key === "ai_enabled") {
+    const mode = value ? "both" : "regex";
+    await dbm.setSetting("parse_mode", mode);
+    config.parseMode = mode;
+    return res.json({ ok: true, parse_mode: mode, ai_enabled: !!value });
+  }
   if (key === "parse_mode") {
     const mode = ["regex", "both", "ai"].includes(value) ? value : "regex";
     await dbm.setSetting("parse_mode", mode);
