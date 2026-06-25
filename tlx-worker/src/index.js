@@ -21,6 +21,11 @@ await dbm.purgeOld();
 config.voiceEnabled = (await dbm.getSetting("voice_enabled", "1")) === "1";
 const _storedFptKey = await dbm.getSetting("fpt_stt_api_key", null);
 if (_storedFptKey) config.fptSttApiKey = _storedFptKey;
+config.aiEnabled = (await dbm.getSetting("ai_enabled", "0")) === "1";
+const _groqKey = await dbm.getSetting("groq_api_key", null);
+if (_groqKey) config.groqApiKey = _groqKey;
+const _geminiKey = await dbm.getSetting("gemini_api_key", null);
+if (_geminiKey) config.geminiApiKey = _geminiKey;
 setInterval(() => dbm.purgeOld().catch(()=>{}), 6 * 3600 * 1000);
 
 const app = express();
@@ -130,6 +135,11 @@ app.get("/api/admin/settings", async (req, res) => {
     voice_enabled: config.voiceEnabled,
     fpt_api_key_set: !!key,
     fpt_api_key_hint: key ? "****" + key.slice(-4) : null,
+    ai_enabled: config.aiEnabled,
+    groq_key_set: !!config.groqApiKey,
+    groq_key_hint: config.groqApiKey ? "****" + config.groqApiKey.slice(-4) : null,
+    gemini_key_set: !!config.geminiApiKey,
+    gemini_key_hint: config.geminiApiKey ? "****" + config.geminiApiKey.slice(-4) : null,
   });
 });
 app.post("/api/admin/settings", async (req, res) => {
@@ -145,6 +155,23 @@ app.post("/api/admin/settings", async (req, res) => {
     await dbm.setSetting("fpt_stt_api_key", trimmed);
     config.fptSttApiKey = trimmed || null;
     return res.json({ ok: true, fpt_api_key_set: !!trimmed, fpt_api_key_hint: trimmed ? "****" + trimmed.slice(-4) : null });
+  }
+  if (key === "ai_enabled") {
+    await dbm.setSetting("ai_enabled", value ? "1" : "0");
+    config.aiEnabled = !!value;
+    return res.json({ ok: true, ai_enabled: !!value });
+  }
+  if (key === "groq_api_key") {
+    const trimmed = String(value || "").trim();
+    await dbm.setSetting("groq_api_key", trimmed);
+    config.groqApiKey = trimmed || null;
+    return res.json({ ok: true, groq_key_set: !!trimmed, groq_key_hint: trimmed ? "****" + trimmed.slice(-4) : null });
+  }
+  if (key === "gemini_api_key") {
+    const trimmed = String(value || "").trim();
+    await dbm.setSetting("gemini_api_key", trimmed);
+    config.geminiApiKey = trimmed || null;
+    return res.json({ ok: true, gemini_key_set: !!trimmed, gemini_key_hint: trimmed ? "****" + trimmed.slice(-4) : null });
   }
   res.status(400).json({ error: "Key không hợp lệ" });
 });

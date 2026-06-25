@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   Shield, CreditCard, Ban, RefreshCw, X, User, TrendingUp,
   Users, CheckCircle2, Lock, AlertTriangle, LogOut, Settings,
-  Search, Phone, Mic, Eye, EyeOff, GitMerge, UserPlus, Activity
+  Search, Phone, Mic, Eye, EyeOff, GitMerge, UserPlus, Activity, Bot
 } from "lucide-react";
 import { api, getToken, setToken } from "./api.js";
 
@@ -74,8 +74,12 @@ function AdminSettingsTab() {
   const [msg, setMsg] = useState(null);
   const [fptKey, setFptKey] = useState("");
   const [showKey, setShowKey] = useState(false);
+  const [groqKey, setGroqKey] = useState("");
+  const [geminiKey, setGeminiKey] = useState("");
+  const [showGroq, setShowGroq] = useState(false);
+  const [showGemini, setShowGemini] = useState(false);
 
-  const load = () => api.getSettings().then(s => { setSettings(s); setFptKey(""); }).catch(() => {});
+  const load = () => api.getSettings().then(s => { setSettings(s); setFptKey(""); setGroqKey(""); setGeminiKey(""); }).catch(() => {});
   useEffect(() => { load(); }, []);
 
   const flash = (ok, text) => { setMsg({ ok, text }); setTimeout(() => setMsg(null), 3000); };
@@ -98,6 +102,39 @@ function AdminSettingsTab() {
       setSettings(s => ({ ...s, fpt_api_key_set: r.fpt_api_key_set, fpt_api_key_hint: r.fpt_api_key_hint }));
       setFptKey("");
       flash(true, fptKey.trim() ? "Đã lưu FPT API Key." : "Đã xoá FPT API Key.");
+    } catch (e) { flash(false, e.message || "Lỗi lưu"); }
+    finally { setSaving(null); }
+  };
+
+  const toggleAI = async () => {
+    setSaving("ai");
+    try {
+      const next = !settings.ai_enabled;
+      await api.setSetting("ai_enabled", next);
+      setSettings(s => ({ ...s, ai_enabled: next }));
+      flash(true, next ? "Đã bật AI parse cuốc xe." : "Đã tắt AI parse cuốc xe.");
+    } catch (e) { flash(false, e.message || "Lỗi lưu"); }
+    finally { setSaving(null); }
+  };
+
+  const saveGroqKey = async () => {
+    setSaving("groq");
+    try {
+      const r = await api.setSetting("groq_api_key", groqKey.trim());
+      setSettings(s => ({ ...s, groq_key_set: r.groq_key_set, groq_key_hint: r.groq_key_hint }));
+      setGroqKey("");
+      flash(true, groqKey.trim() ? "Đã lưu Groq API Key." : "Đã xoá Groq API Key.");
+    } catch (e) { flash(false, e.message || "Lỗi lưu"); }
+    finally { setSaving(null); }
+  };
+
+  const saveGeminiKey = async () => {
+    setSaving("gemini");
+    try {
+      const r = await api.setSetting("gemini_api_key", geminiKey.trim());
+      setSettings(s => ({ ...s, gemini_key_set: r.gemini_key_set, gemini_key_hint: r.gemini_key_hint }));
+      setGeminiKey("");
+      flash(true, geminiKey.trim() ? "Đã lưu Gemini API Key." : "Đã xoá Gemini API Key.");
     } catch (e) { flash(false, e.message || "Lỗi lưu"); }
     finally { setSaving(null); }
   };
@@ -176,6 +213,84 @@ function AdminSettingsTab() {
         </p>
       </div>
 
+      {/* AI Parse */}
+      <div style={cardStyle}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+          <Bot size={17} color="#f59e0b"/>
+          <span style={{fontWeight:700,fontSize:15}}>AI Parse cuốc xe (Groq + Gemini)</span>
+          <span style={{marginLeft:"auto"}}>
+            {settings === null
+              ? <span style={{color:"var(--ink-dim)",fontSize:13}}>Đang tải…</span>
+              : <button onClick={toggleAI} disabled={!!saving} style={{
+                  display:"inline-flex",alignItems:"center",gap:7,padding:"7px 18px",
+                  borderRadius:99,cursor:saving?"default":"pointer",fontWeight:700,fontSize:13,
+                  background:settings.ai_enabled?"rgba(245,158,11,.15)":"rgba(239,68,68,.1)",
+                  color:settings.ai_enabled?"#f59e0b":"#f87171",
+                  border:"1px solid "+(settings.ai_enabled?"#f59e0b55":"#f8717155"),
+                }}>
+                  <span style={{width:9,height:9,borderRadius:99,background:settings.ai_enabled?"#f59e0b":"#f87171",display:"inline-block"}}/>
+                  {saving==="ai" ? "Đang lưu…" : settings.ai_enabled ? "Đang BẬT" : "Đang TẮT"}
+                </button>
+            }
+          </span>
+        </div>
+        <p style={{color:"var(--ink-dim)",fontSize:13,lineHeight:1.6,margin:"0 0 14px"}}>
+          Khi <b>bật</b>: tin nhắn regex không parse được sẽ gửi lên AI (Groq trước, Gemini fallback). AI hiểu viết tắt taxi, tuyến tỉnh, sân bay, và phân loại nội thành/ngoại thành/liên tỉnh.<br/>
+          Khi <b>tắt</b>: chỉ dùng regex, không tốn API.
+        </p>
+
+        {/* Groq Key */}
+        <div style={{marginBottom:14}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:7}}>
+            <span style={{fontSize:13,fontWeight:700,color:"var(--ink-dim)"}}>Groq API Key <span style={{fontWeight:400,fontSize:11}}>(ưu tiên · miễn phí)</span></span>
+            {settings?.groq_key_set && <span style={{fontSize:12,color:"#34d399",fontWeight:700,display:"flex",alignItems:"center",gap:4}}><CheckCircle2 size={12}/> {settings.groq_key_hint}</span>}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <div style={{flex:1,position:"relative"}}>
+              <input type={showGroq?"text":"password"} value={groqKey} onChange={e=>setGroqKey(e.target.value)}
+                placeholder={settings?.groq_key_set?"Nhập key mới để thay thế…":"Nhập Groq API Key…"}
+                style={{width:"100%",boxSizing:"border-box",padding:"10px 38px 10px 12px",borderRadius:10,border:"1px solid var(--line)",background:"rgba(0,0,0,.2)",color:"var(--ink)",fontSize:13,outline:"none"}}
+                onKeyDown={e=>e.key==="Enter"&&groqKey.trim()&&saveGroqKey()}/>
+              <button onClick={()=>setShowGroq(p=>!p)} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"var(--ink-dim)",padding:2}}>
+                {showGroq?<EyeOff size={15}/>:<Eye size={15}/>}
+              </button>
+            </div>
+            <button onClick={saveGroqKey} disabled={!!saving||!groqKey.trim()} style={{padding:"10px 16px",borderRadius:10,cursor:groqKey.trim()&&!saving?"pointer":"default",fontWeight:700,fontSize:13,background:"rgba(245,158,11,.15)",color:"#f59e0b",border:"1px solid #f59e0b44",whiteSpace:"nowrap"}}>
+              {saving==="groq"?"Đang lưu…":"Lưu key"}
+            </button>
+          </div>
+          {settings?.groq_key_set&&<button onClick={async()=>{try{await api.setSetting("groq_api_key","");setSettings(s=>({...s,groq_key_set:false,groq_key_hint:null}));flash(true,"Đã xoá Groq Key.");}catch(e){flash(false,e.message);}}} style={{marginTop:6,background:"none",border:"none",cursor:"pointer",color:"#f87171",fontSize:12,textDecoration:"underline",padding:0}}>Xoá key</button>}
+        </div>
+
+        {/* Gemini Key */}
+        <div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:7}}>
+            <span style={{fontSize:13,fontWeight:700,color:"var(--ink-dim)"}}>Gemini API Key <span style={{fontWeight:400,fontSize:11}}>(fallback · free tier)</span></span>
+            {settings?.gemini_key_set && <span style={{fontSize:12,color:"#34d399",fontWeight:700,display:"flex",alignItems:"center",gap:4}}><CheckCircle2 size={12}/> {settings.gemini_key_hint}</span>}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <div style={{flex:1,position:"relative"}}>
+              <input type={showGemini?"text":"password"} value={geminiKey} onChange={e=>setGeminiKey(e.target.value)}
+                placeholder={settings?.gemini_key_set?"Nhập key mới để thay thế…":"Nhập Gemini API Key…"}
+                style={{width:"100%",boxSizing:"border-box",padding:"10px 38px 10px 12px",borderRadius:10,border:"1px solid var(--line)",background:"rgba(0,0,0,.2)",color:"var(--ink)",fontSize:13,outline:"none"}}
+                onKeyDown={e=>e.key==="Enter"&&geminiKey.trim()&&saveGeminiKey()}/>
+              <button onClick={()=>setShowGemini(p=>!p)} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"var(--ink-dim)",padding:2}}>
+                {showGemini?<EyeOff size={15}/>:<Eye size={15}/>}
+              </button>
+            </div>
+            <button onClick={saveGeminiKey} disabled={!!saving||!geminiKey.trim()} style={{padding:"10px 16px",borderRadius:10,cursor:geminiKey.trim()&&!saving?"pointer":"default",fontWeight:700,fontSize:13,background:"rgba(245,158,11,.15)",color:"#f59e0b",border:"1px solid #f59e0b44",whiteSpace:"nowrap"}}>
+              {saving==="gemini"?"Đang lưu…":"Lưu key"}
+            </button>
+          </div>
+          {settings?.gemini_key_set&&<button onClick={async()=>{try{await api.setSetting("gemini_api_key","");setSettings(s=>({...s,gemini_key_set:false,gemini_key_hint:null}));flash(true,"Đã xoá Gemini Key.");}catch(e){flash(false,e.message);}}} style={{marginTop:6,background:"none",border:"none",cursor:"pointer",color:"#f87171",fontSize:12,textDecoration:"underline",padding:0}}>Xoá key</button>}
+        </div>
+
+        <p style={{color:"var(--ink-dim)",fontSize:12,lineHeight:1.5,marginTop:12,marginBottom:0}}>
+          Groq: lấy key tại <b>console.groq.com</b> → API Keys (miễn phí, nhanh nhất).<br/>
+          Gemini: lấy key tại <b>aistudio.google.com</b> → Get API Key (free tier 1500 req/ngày).
+        </p>
+      </div>
+
       {msg && (
         <div style={{padding:"10px 14px",borderRadius:10,fontSize:13,fontWeight:600,
           background:msg.ok?"rgba(52,211,153,.12)":"rgba(239,68,68,.12)",
@@ -199,6 +314,7 @@ function AdminApp({ me, onLogout }) {
   const [resetTarget,setResetTarget]=useState(null);
   const [acctTarget,setAcctTarget]=useState(null);
   const [deleteTarget,setDeleteTarget]=useState(null);
+  const [renewTarget,setRenewTarget]=useState(null);
   const fmt=n=>n.toLocaleString("vi-VN")+"đ";
   const reload=()=>api.adminUsers().then(setUsers).catch(()=>{});
   useEffect(()=>{ reload(); const t=setInterval(reload,30000); return ()=>clearInterval(t); },[]);
@@ -326,7 +442,7 @@ function AdminApp({ me, onLogout }) {
                           </>) : (<>
                             <button onClick={()=>setRole(u.id,"admin")} style={miniBtn("#a78bfa")}><Shield size={13}/> Cấp admin</button>
                             <button onClick={()=>setAcctTarget(u)} style={miniBtn("#f59e0b")}><Users size={13}/> Cấp KT</button>
-                            <button onClick={()=>renew(u.id)} style={miniBtn("#22c55e")}><RefreshCw size={13}/> Gia hạn</button>
+                            <button onClick={()=>setRenewTarget(u)} style={miniBtn("#22c55e")}><RefreshCw size={13}/> Gia hạn</button>
                             <button onClick={()=>ban(u.id)} style={miniBtn(u.status==="banned"?"#3b82f6":"#ef4444")}><Ban size={13}/> {u.status==="banned"?"Mở":"Khoá"}</button>
                             <button onClick={()=>setDeleteTarget(u)} style={miniBtn("#ef4444")}>✕ Xóa</button>
                           </>)}
@@ -348,6 +464,7 @@ function AdminApp({ me, onLogout }) {
       {resetTarget&&<ResetPwdModal target={resetTarget} onClose={()=>setResetTarget(null)} onDone={reload}/>}
       {acctTarget&&<SetAccountantModal target={acctTarget} onClose={()=>setAcctTarget(null)} onDone={()=>{setAcctTarget(null);reload();}}/>}
       {deleteTarget&&<DeleteUserModal target={deleteTarget} onClose={()=>setDeleteTarget(null)} onDone={()=>{setDeleteTarget(null);reload();}}/>}
+      {renewTarget&&<RenewModal target={renewTarget} week={week} month={month} onClose={()=>setRenewTarget(null)} onDone={()=>{setRenewTarget(null);reload();}}/>}
     </div>
   );
 }
@@ -969,6 +1086,63 @@ function DeleteUserModal({target,onClose,onDone}){
               <button onClick={onClose} style={{flex:1,padding:"10px",borderRadius:12,border:"1px solid var(--line)",background:"transparent",cursor:"pointer",fontWeight:700,fontSize:14,color:"var(--ink-dim)"}}>Hủy</button>
               <button onClick={confirm} disabled={busy} style={{flex:1,padding:"10px",borderRadius:12,border:"none",cursor:busy?"default":"pointer",fontWeight:800,fontSize:14,background:"rgba(239,68,68,.2)",color:"#ef4444",opacity:busy?0.6:1}}>
                 {busy?"Đang xóa…":"Xóa tài khoản"}
+              </button>
+            </div>
+          </>
+        }
+      </div>
+    </div>
+  );
+}
+
+/* ===== Admin: Gia hạn gói cước ===== */
+function RenewModal({target,week,month,onClose,onDone}){
+  const [plan,setPlan]=useState(target.plan||"Tuần");
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState("");
+  const [done,setDone]=useState(false);
+  const fmt=n=>n.toLocaleString("vi-VN")+"đ";
+  const amount=plan==="Tháng"?month:week;
+  const confirm=async()=>{
+    setBusy(true);setErr("");
+    try{await api.renew(target.id,amount);setDone(true);setTimeout(onDone,900);}
+    catch(e){setErr(e.message);setBusy(false);}
+  };
+  useEffect(()=>{const k=e=>e.key==="Escape"&&onClose();window.addEventListener("keydown",k);return()=>window.removeEventListener("keydown",k);},[onClose]);
+  const planBtn=(p)=>{
+    const sel=plan===p;
+    return(
+      <button onClick={()=>setPlan(p)} style={{flex:1,padding:"12px 8px",borderRadius:12,border:"2px solid "+(sel?"#22c55e":"var(--line)"),background:sel?"rgba(34,197,94,.1)":"transparent",cursor:"pointer",fontWeight:sel?800:500,fontSize:14,color:sel?"#22c55e":"var(--ink-dim)",transition:"all .15s"}}>
+        <div style={{fontWeight:800,fontSize:15,marginBottom:3}}>{p}</div>
+        <div style={{fontSize:12,opacity:.8}}>{p==="Tuần"?"7 ngày":"30 ngày"}</div>
+        <div style={{marginTop:4,fontWeight:800,fontSize:16,color:sel?"#22c55e":"var(--ink)"}}>{fmt(p==="Tháng"?month:week)}</div>
+      </button>
+    );
+  };
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:200,display:"grid",placeItems:"center",background:"rgba(3,6,14,.72)",backdropFilter:"blur(4px)",padding:18}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:380,background:"var(--card)",borderRadius:20,border:"1px solid #22c55e44",padding:"22px 20px",boxShadow:"0 24px 70px rgba(0,0,0,.6)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:16}}>
+          <div style={{width:36,height:36,borderRadius:10,background:"rgba(34,197,94,.15)",display:"grid",placeItems:"center",flexShrink:0}}>
+            <RefreshCw size={18} color="#22c55e"/>
+          </div>
+          <div>
+            <div style={{fontWeight:800,fontSize:17,fontFamily:"var(--display)"}}>Gia hạn gói cước</div>
+            <div style={{fontSize:12.5,color:"var(--ink-dim)",marginTop:1}}>{target.name||"—"} · {target.phone}</div>
+          </div>
+          <button onClick={onClose} style={{marginLeft:"auto",background:"none",border:"none",color:"var(--ink-dim)",cursor:"pointer"}}><X size={18}/></button>
+        </div>
+        {done
+          ? <div style={{textAlign:"center",padding:"20px 0",color:"#34d399"}}><CheckCircle2 size={40}/><div style={{fontWeight:800,marginTop:8}}>Đã gia hạn thành công!</div></div>
+          : <>
+            <div style={{fontSize:12.5,color:"var(--ink-dim)",fontWeight:600,marginBottom:8}}>Chọn gói cước</div>
+            <div style={{display:"flex",gap:10,marginBottom:16}}>{planBtn("Tuần")}{planBtn("Tháng")}</div>
+            {target.plan&&target.plan!==plan&&<div style={{fontSize:12,color:"#f59e0b",marginBottom:12,padding:"7px 10px",background:"rgba(245,158,11,.08)",borderRadius:8,border:"1px solid rgba(245,158,11,.2)"}}>Gói hiện tại: <b>{target.plan}</b> → Sẽ đổi sang <b>{plan}</b></div>}
+            {err&&<ErrBox>{err}</ErrBox>}
+            <div style={{display:"flex",gap:8,marginTop:4}}>
+              <button onClick={onClose} style={{flex:1,padding:"10px",borderRadius:12,border:"1px solid var(--line)",background:"transparent",cursor:"pointer",fontWeight:700,fontSize:14,color:"var(--ink-dim)"}}>Hủy</button>
+              <button onClick={confirm} disabled={busy} style={{flex:2,padding:"11px",borderRadius:12,border:"none",cursor:busy?"default":"pointer",fontWeight:800,fontSize:14,background:busy?"rgba(34,197,94,.15)":"linear-gradient(135deg,#22c55e,#16a34a)",color:busy?"#22c55e":"#04140a",opacity:busy?0.7:1}}>
+                {busy?"Đang gia hạn…":`Xác nhận · ${fmt(amount)}`}
               </button>
             </div>
           </>

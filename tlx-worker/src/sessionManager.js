@@ -7,6 +7,7 @@
 // ============================================================
 import { Zalo } from "zca-js";
 import { parseMultipleTrips, isConfirmMessage, isClaimMessage, parseBonus } from "./parser.js";
+import { parseWithAI, aiToTrip } from "./aiParser.js";
 import { transcribeVoice, getVoiceUrl } from "./stt.js";
 import { config } from "./config.js";
 import * as dbm from "./dbLayer.js";
@@ -666,7 +667,19 @@ function onMessage(sess, msg) {
     }
 
     // (B) cuốc mới — 1 tin có thể chứa nhiều cuốc
-    const trips = parseMultipleTrips({ groupId, groupName, senderId, senderName, msgId, text, time });
+    let trips = parseMultipleTrips({ groupId, groupName, senderId, senderName, msgId, text, time });
+
+    // AI fallback khi regex không parse được và AI được bật
+    if (trips.length === 0 && config.aiEnabled && (config.groqApiKey || config.geminiApiKey)) {
+      try {
+        const ai = await parseWithAI(text);
+        const t = aiToTrip(ai, { groupId, groupName, senderId, senderName, msgId, time, text });
+        if (t) { trips = [t]; console.log(`[${sess.userId}] 🤖 AI parse: ${t.type} ${t.price}k ${t.route?.from}→${t.route?.to}`); }
+      } catch (e) {
+        console.warn(`[${sess.userId}] AI parse lỗi: ${e?.message || e}`);
+      }
+    }
+
     if (trips.length > 0) {
       cacheRawMsg(sess, msgId, msg);
       // Kế toán: lưu cuốc vào tripMsgCache để (C) phát hiện claim sau
