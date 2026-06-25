@@ -518,6 +518,8 @@ function AdminGroupsTab() {
   const [msg, setMsg] = useState(null);
   const [resetTarget, setResetTarget] = useState(null);
   const [resetting, setResetting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [accessGroup, setAccessGroup] = useState(null);
 
   const load = () => api.listAllGroups().then(setGroups).catch(() => {});
@@ -535,6 +537,18 @@ function AdminGroupsTab() {
       load();
     } catch (e) { flash(false, e.message); }
     finally { setResetting(false); }
+  };
+
+  const doDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.deleteGroup(deleteTarget.group_id);
+      flash(true, `Đã xóa nhóm "${deleteTarget.group_name}" và toàn bộ dữ liệu liên quan.`);
+      setDeleteTarget(null);
+      load();
+    } catch (e) { flash(false, e.message); }
+    finally { setDeleting(false); }
   };
 
   const doMerge = async () => {
@@ -577,6 +591,26 @@ function AdminGroupsTab() {
         </div>
       )}
 
+      {/* Modal xác nhận xóa nhóm */}
+      {deleteTarget && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "28px 32px", maxWidth: 420, width: "90%" }}>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 10, color: "#f87171" }}>⚠️ Xóa nhóm?</div>
+            <div style={{ fontSize: 14, color: "var(--ink-dim)", lineHeight: 1.6, marginBottom: 20 }}>
+              Nhóm: <b style={{ color: "var(--ink)" }}>{deleteTarget.group_name}</b><br />
+              Hành động này sẽ <b>xóa hoàn toàn nhóm</b>, toàn bộ thành viên, giao dịch, barem và quyền kế toán của nhóm này.<br />
+              <span style={{ color: "#f87171", fontWeight: 700 }}>KHÔNG THỂ HOÀN TÁC.</span>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setDeleteTarget(null)} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "1px solid var(--line)", background: "none", color: "var(--ink-dim)", cursor: "pointer", fontWeight: 600 }}>Hủy</button>
+              <button onClick={doDelete} disabled={deleting} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "none", background: "rgba(239,68,68,.2)", color: "#f87171", cursor: deleting ? "default" : "pointer", fontWeight: 800, opacity: deleting ? 0.6 : 1 }}>
+                {deleting ? "Đang xóa…" : "Xác nhận Xóa nhóm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hướng dẫn */}
       <div style={{ background: "rgba(96,165,250,.08)", border: "1px solid rgba(96,165,250,.2)", borderRadius: 12, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "var(--ink-dim)", lineHeight: 1.6 }}>
         <b style={{ color: "#60a5fa" }}>Merge nhóm:</b> Khi 2 kế toán dùng 2 tài khoản Zalo khác nhau add cùng 1 nhóm vật lý, Zalo có thể trả về 2 group ID khác nhau. Chọn <b>Nhóm nguồn</b> (sẽ bị xóa) và <b>Nhóm đích</b> (giữ lại), rồi nhấn Merge. Toàn bộ thành viên, giao dịch, barem sẽ được chuyển sang nhóm đích.
@@ -602,6 +636,7 @@ function AdminGroupsTab() {
                   <th style={{ ...th, textAlign: "right" }}>Phân quyền</th>
                   <th style={{ ...th, textAlign: "right" }}>Merge</th>
                   <th style={{ ...th, textAlign: "right" }}>Reset</th>
+                  <th style={{ ...th, textAlign: "right" }}>Xóa</th>
                 </tr></thead>
                 <tbody>{groups.map((g, i) => {
                   const isSrc = source?.group_id === g.group_id;
@@ -637,6 +672,13 @@ function AdminGroupsTab() {
                           onClick={() => setResetTarget(g)}
                           style={{ ...miniBtn("#f87171"), fontSize: 11 }}>
                           Reset data
+                        </button>
+                      </td>
+                      <td style={{ ...td, textAlign: "right" }}>
+                        <button
+                          onClick={() => setDeleteTarget(g)}
+                          style={{ ...miniBtn("#ef4444"), fontSize: 11, fontWeight: 800 }}>
+                          Xóa nhóm
                         </button>
                       </td>
                     </tr>

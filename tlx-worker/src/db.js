@@ -443,6 +443,18 @@ export function resetGroupData(groupId) {
   return { ok: true };
 }
 
+export function deleteGroup(groupId) {
+  db.transaction(() => {
+    db.prepare("DELETE FROM members WHERE group_id=?").run(groupId);
+    db.prepare("DELETE FROM point_transactions WHERE group_id=?").run(groupId);
+    db.prepare("DELETE FROM point_rules WHERE group_id=?").run(groupId);
+    db.prepare("DELETE FROM accountant_groups WHERE group_id=?").run(groupId);
+    try { db.prepare("DELETE FROM pending_transfers WHERE group_id=?").run(groupId); } catch {}
+    try { db.prepare("DELETE FROM raw_messages WHERE group_id=?").run(groupId); } catch {}
+  })();
+  return { ok: true };
+}
+
 // ---------- Raw messages: audit log + anti-cheat + catchup ----------
 export function listRawMessages(groupId, { dateFrom, dateTo, search, limit = 500 } = {}) {
   let sql = "SELECT * FROM raw_messages WHERE group_id=?";

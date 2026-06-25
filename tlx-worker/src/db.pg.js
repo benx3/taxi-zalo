@@ -660,6 +660,16 @@ export async function resetGroupData(groupId) {
   return { ok: true };
 }
 
+export async function deleteGroup(groupId) {
+  await q("DELETE FROM members WHERE group_id=$1", [groupId]);
+  await q("DELETE FROM point_transactions WHERE group_id=$1", [groupId]);
+  await q("DELETE FROM point_rules WHERE group_id=$1", [groupId]);
+  await q("DELETE FROM accountant_groups WHERE group_id=$1", [groupId]);
+  try { await q("DELETE FROM pending_transfers WHERE group_id=$1", [groupId]); } catch {}
+  try { await q("DELETE FROM raw_messages WHERE group_id=$1", [groupId]); } catch {}
+  return { ok: true };
+}
+
 export async function listRawMessages(groupId, { dateFrom, dateTo, search, limit = 500 } = {}) {
   let sql = "SELECT * FROM raw_messages WHERE group_id=$1";
   const params = [groupId];
