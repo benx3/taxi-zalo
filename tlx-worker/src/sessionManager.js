@@ -322,7 +322,7 @@ function calcBaremPoints(rulesRow, parserType, price) {
   return 0;
 }
 
-function onMessage(sess, msg) {
+async function onMessage(sess, msg) {
   try {
     const isGroup = msg?.type === 1 || (msg?.threadId && String(msg.threadId).length > 15);
     if (!isGroup) return;
