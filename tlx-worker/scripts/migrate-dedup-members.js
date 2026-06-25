@@ -51,19 +51,19 @@ let totalMerged = 0;
 const affectedGroups = new Set();
 
 for (const dupe of dupes) {
-  // Lấy tất cả thành viên cùng tên, sắp xếp created_at ASC
-  // → người được tạo sớm nhất là từ primary session → làm canonical
+  // Lấy tất cả thành viên cùng tên, sắp xếp created_at DESC
+  // → người được tạo MỚI NHẤT là canonical (session kế toán hiện tại vào sau)
   const members = db.prepare(`
     SELECT * FROM members
     WHERE group_id = ? AND display_name = ?
-    ORDER BY created_at ASC
+    ORDER BY created_at DESC
   `).all(dupe.group_id, dupe.display_name);
 
-  const canonical = members[0];
+  const canonical = members[0]; // MỚI NHẤT = session kế toán hiện tại
   const duplicates = members.slice(1);
 
   console.log(`[${dupe.group_id}] "${dupe.display_name}" (${members.length} bản):`);
-  console.log(`  canonical → zalo_uid=${canonical.zalo_uid} points=${canonical.points} id=${canonical.id}`);
+  console.log(`  canonical (mới nhất) → zalo_uid=${canonical.zalo_uid} points=${canonical.points} id=${canonical.id}`);
 
   for (const dup of duplicates) {
     console.log(`  duplicate → zalo_uid=${dup.zalo_uid} points=${dup.points} id=${dup.id}`);
