@@ -22,6 +22,17 @@ const yieldLoop = () => new Promise(r => setImmediate(r));
 // userId -> phiên
 const sessions = new Map();
 
+// Cache barem rules theo groupId (TTL 90s) — tránh query DB mỗi tin nhắn
+const _rulesCache = new Map(); // groupId → { row, ts }
+function getBaremRulesCached(groupId) {
+  const entry = _rulesCache.get(groupId);
+  if (entry && Date.now() - entry.ts < 90_000) return entry.row;
+  const row = dbm.getRules(groupId);
+  _rulesCache.set(groupId, { row, ts: Date.now() });
+  return row;
+}
+export function invalidateBaremCache(groupId) { _rulesCache.delete(groupId); }
+
 export function getSession(userId) { return sessions.get(userId); }
 export function hasSession(userId) { return sessions.has(userId); }
 export function sessionCount() { return sessions.size; }
@@ -713,12 +724,18 @@ async function onMessage(sess, msg) {
             sess.tripMsgCache.delete(sess.tripMsgCache.keys().next().value);
         }
       }
+      const rulesRow = getBaremRulesCached(dbGroupId);
       for (let i = 0; i < trips.length; i++) {
         const subMsgId = trips.length === 1 ? msgId : `${msgId}_${i}`;
         const tripOut = { ...trips[i], msgId: subMsgId };
         if (trips.length > 1) {
           tripOut.replyMsgId = msgId; // reply về tin gốc chứa tất cả cuốc
           sess.rawMsgById.set(subMsgId, msg);
+        }
+        // Ước tính điểm theo barem (hiển thị ~ trên TripCard tài xế)
+        if (trips[i].price > 0 && !trips[i].free) {
+          const est = calcBaremPoints(rulesRow, trips[i].type, trips[i].price);
+          if (est > 0) tripOut.estPts = est;
         }
         sess.onEvent(sess.userId, { type: "trip", trip: tripOut });
       }
@@ -744,12 +761,17 @@ async function handleVoiceTrip(sess, base, rawMsg, voiceUrl) {
   console.log(`[${sess.userId}] 🎤 voice "${text.slice(0, 80)}"`);
   const trips = parseMultipleTrips({ ...base, text });
   if (trips.length === 0) return;
+  const rulesRow = getBaremRulesCached(resolveGroupId(sess, base.groupId));
   for (let i = 0; i < trips.length; i++) {
     const subMsgId = trips.length === 1 ? base.msgId : `${base.msgId}_${i}`;
     const tripOut = { ...trips[i], msgId: subMsgId, isVoice: true };
     if (trips.length > 1) {
       tripOut.replyMsgId = base.msgId;
       sess.rawMsgById.set(subMsgId, rawMsg);
+    }
+    if (trips[i].price > 0 && !trips[i].free) {
+      const est = calcBaremPoints(rulesRow, trips[i].type, trips[i].price);
+      if (est > 0) tripOut.estPts = est;
     }
     sess.onEvent(sess.userId, { type: "trip", trip: tripOut });
   }
