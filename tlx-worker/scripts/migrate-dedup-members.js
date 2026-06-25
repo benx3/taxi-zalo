@@ -107,7 +107,48 @@ for (const dupe of dupes) {
   }
 }
 
-// ---- 2. Tính lại điểm từ giao dịch (sau merge, points column có thể cộng dồn sai) ----
+// ---- 2. Xóa transaction trùng (cùng trip_msg_id trong cùng nhóm) ----
+// Xảy ra khi 2 session cùng xử lý 1 tin nhắn → ghi 2 dòng cho cùng 1 cuốc
+console.log(`\n🔍 Kiểm tra transaction trùng trip_msg_id...`);
+let totalTxDedup = 0;
+const txCheckGroups = DRY_RUN
+  ? new Set(dupes.map(d => d.group_id))
+  : affectedGroups;
+
+for (const groupId of txCheckGroups) {
+  const dupTxList = db.prepare(`
+    SELECT trip_msg_id, COUNT(*) as cnt
+    FROM point_transactions
+    WHERE group_id = ? AND trip_msg_id IS NOT NULL AND trip_msg_id != ''
+    GROUP BY trip_msg_id
+    HAVING COUNT(*) > 1
+  `).all(groupId);
+
+  for (const dup of dupTxList) {
+    const keepRow = db.prepare(`
+      SELECT id FROM point_transactions
+      WHERE group_id = ? AND trip_msg_id = ?
+      ORDER BY created_at ASC LIMIT 1
+    `).get(groupId, dup.trip_msg_id);
+    if (!keepRow) continue;
+
+    if (!DRY_RUN) {
+      const r = db.prepare(`
+        DELETE FROM point_transactions
+        WHERE group_id = ? AND trip_msg_id = ? AND id != ?
+      `).run(groupId, dup.trip_msg_id, keepRow.id);
+      console.log(`  [${groupId}] trip_msg_id=${dup.trip_msg_id}: xóa ${r.changes} tx trùng`);
+      totalTxDedup += r.changes;
+      affectedGroups.add(groupId);
+    } else {
+      console.log(`  [${groupId}] [DRY] trip_msg_id=${dup.trip_msg_id}: ${dup.cnt} bản → sẽ xóa ${dup.cnt - 1}`);
+      totalTxDedup += dup.cnt - 1;
+    }
+  }
+}
+if (totalTxDedup === 0) console.log("  ✅ Không có transaction trùng.");
+
+// ---- 3. Tính lại điểm từ giao dịch (sau merge, points column có thể cộng dồn sai) ----
 if (!DRY_RUN && affectedGroups.size > 0) {
   console.log(`\n♻️  Tính lại điểm cho ${affectedGroups.size} nhóm bị ảnh hưởng...`);
 
@@ -140,9 +181,13 @@ if (!DRY_RUN && affectedGroups.size > 0) {
 // ---- Tổng kết ----
 console.log("\n" + "=".repeat(50));
 if (DRY_RUN) {
-  console.log(`🔍 DRY RUN xong: ${totalMerged} thành viên sẽ bị merge trong ${affectedGroups.size} nhóm`);
+  console.log(`🔍 DRY RUN xong:`);
+  console.log(`   ${totalMerged} thành viên sẽ bị merge trong ${txCheckGroups.size} nhóm`);
+  console.log(`   ${totalTxDedup} transaction trùng (same trip_msg_id) sẽ bị xóa`);
   console.log(`   Chạy lại KHÔNG có DRY_RUN=1 để áp dụng thật.`);
 } else {
-  console.log(`✅ Migration xong: đã merge ${totalMerged} thành viên trùng trong ${affectedGroups.size} nhóm`);
+  console.log(`✅ Migration xong:`);
+  console.log(`   Merged ${totalMerged} thành viên trùng trong ${affectedGroups.size} nhóm`);
+  console.log(`   Xóa ${totalTxDedup} transaction trùng (same trip_msg_id)`);
   console.log(`   Điểm đã được tính lại từ lịch sử giao dịch.`);
 }

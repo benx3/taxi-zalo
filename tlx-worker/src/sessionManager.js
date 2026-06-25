@@ -881,31 +881,43 @@ export async function setWatchedGroups(userId, groupIds) {
 
       for (const gId of ids) {
         const alreadyTracked = currentZaloSet.has(gId) || currentCanonicalSet.has(gId);
+
+        // Lấy canonicalId + groupName cho cả nhóm mới lẫn nhóm đã theo dõi
+        let canonicalId = gId;
+        let groupName = gId;
         if (!alreadyTracked) {
           const g = sess.groups.find(gr => gr.id === gId);
-          const groupName = g?.name || gId;
-
-          // Tìm nhóm cùng tên trong DB (kế toán khác đã thêm với ID Zalo khác)
+          groupName = g?.name || gId;
           const existing = await dbm.findGroupByName(groupName);
-          const canonicalId = (existing && existing.group_id !== gId) ? existing.group_id : gId;
+          canonicalId = (existing && existing.group_id !== gId) ? existing.group_id : gId;
+        } else {
+          const rec = current.find(g => (g.zalo_group_id || g.group_id) === gId || g.group_id === gId);
+          if (rec) { canonicalId = rec.group_id; groupName = rec.group_name || gId; }
+        }
 
-          // Kiểm tra nhóm đã có kế toán khác theo dõi chưa (1 nhóm = 1 kế toán)
-          const groupAccountants = await dbm.getGroupAccountants(canonicalId);
-          const otherOwner = groupAccountants.find(a => a.accountant_id !== userId);
-          if (otherOwner) {
-            console.warn(`[${userId}] ⛔ Nhóm "${groupName}" đã có kế toán khác (${otherOwner.accountant_id}) theo dõi — từ chối`);
+        // Kiểm tra conflict CHO TẤT CẢ nhóm — kể cả nhóm đã theo dõi từ trước
+        // Tránh 2 session cùng monitor 1 nhóm khi cả 2 đều có sẵn trong DB
+        const groupAccountants = await dbm.getGroupAccountants(canonicalId);
+        const otherAccountant = groupAccountants.find(a => a.accountant_id !== userId);
+        if (otherAccountant) {
+          // Sorted by phone ASC → phần tử đầu là primary owner (quyết định ai được giữ nhóm)
+          const primaryOwner = groupAccountants[0];
+          if (primaryOwner.accountant_id !== userId) {
+            console.warn(`[${userId}] ⛔ Nhóm "${groupName}" ưu tiên cho kế toán ${primaryOwner.accountant_id} — từ chối`);
             sess.onEvent(userId, {
               type: "group_conflict",
               groupId: gId,
               groupName,
-              ownerName: otherOwner.user_name || otherOwner.accountant_id,
+              ownerName: primaryOwner.name || primaryOwner.accountant_id,
             });
-            // Loại nhóm bị từ chối ra khỏi danh sách chấp nhận
+            // Không xóa accountant_groups — họ vẫn xem web được, chỉ không monitor Zalo
             const idx = acceptedIds.indexOf(gId);
             if (idx !== -1) acceptedIds.splice(idx, 1);
             continue;
           }
+        }
 
+        if (!alreadyTracked) {
           if (canonicalId !== gId) {
             sess.groupIdMap.set(gId, canonicalId);
             console.log(`[${userId}] 🔗 Group alias: ${gId} → ${canonicalId} (tên: "${groupName}")`);
