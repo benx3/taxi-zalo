@@ -456,6 +456,19 @@ export async function deleteRemovedMembers(groupId, activeUids) {
   );
   return r.rowCount;
 }
+export async function getPrimaryAccountantSelfIdForGroup(groupId) {
+  const r = await q(`
+    SELECT zs.zalo_uid FROM accountant_groups ag
+    JOIN zalo_sessions zs ON zs.user_id = ag.accountant_id
+    WHERE ag.group_id = $1 AND zs.zalo_uid IS NOT NULL
+    ORDER BY LENGTH(zs.zalo_uid) ASC, zs.zalo_uid ASC LIMIT 1
+  `, [groupId]);
+  return r.rows[0]?.zalo_uid || null;
+}
+export async function getMembersByDisplayName(groupId, name) {
+  const r = await q("SELECT * FROM members WHERE group_id=$1 AND display_name=$2", [groupId, name]);
+  return r.rows;
+}
 
 // ---------- Kế toán: giao dịch điểm ----------
 export async function adjustPoints(groupId, zaloUid, delta, reason, type = "manual", tripMsgId = null, fromMember = null, toMember = null, rawText = null) {

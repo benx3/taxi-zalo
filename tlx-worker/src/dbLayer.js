@@ -52,6 +52,7 @@ export const {
   getSetting, setSetting,
   getAccountantGroups, getGroupAccountants, findGroupByName, addAccountantGroup, removeAccountantGroup, setGroupPublicVisible,
   countMembers, listMembers, listMembersWithYesterday, getMemberByZaloUid, upsertMember, deleteRemovedMembers, setMemberAlias,
+  getPrimaryAccountantSelfIdForGroup, getMembersByDisplayName,
   listRawMessages, saveRawMessage, hasRawMessage,
   adjustPoints, getTransactionsByTripMsgId, listTransactions, updateTransaction, deleteTransaction,
   createPendingTransfer, listPendingTransfers, approvePendingTransfer, rejectPendingTransfer,

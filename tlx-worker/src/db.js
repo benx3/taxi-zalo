@@ -560,6 +560,20 @@ export function deleteRemovedMembers(groupId, activeUids) {
   return db.prepare(`DELETE FROM members WHERE group_id=? AND zalo_uid NOT IN (${placeholders})`)
     .run(groupId, ...activeUids).changes;
 }
+// Trả về zalo_uid của kế toán có selfId nhỏ nhất trong nhóm → đó là primary session
+// Dùng LENGTH + text sort để đảm bảo đúng thứ tự số nguyên mà không cần CAST (tránh overflow)
+export function getPrimaryAccountantSelfIdForGroup(groupId) {
+  const row = db.prepare(`
+    SELECT zs.zalo_uid FROM accountant_groups ag
+    JOIN zalo_sessions zs ON zs.user_id = ag.accountant_id
+    WHERE ag.group_id = ? AND zs.zalo_uid IS NOT NULL
+    ORDER BY LENGTH(zs.zalo_uid) ASC, zs.zalo_uid ASC LIMIT 1
+  `).get(groupId);
+  return row?.zalo_uid || null;
+}
+export function getMembersByDisplayName(groupId, name) {
+  return db.prepare("SELECT * FROM members WHERE group_id=? AND display_name=?").all(groupId, name);
+}
 
 // ---------- Kế toán: giao dịch điểm ----------
 export function adjustPoints(groupId, zaloUid, delta, reason, type = "manual", tripMsgId = null, fromMember = null, toMember = null, rawText = null) {

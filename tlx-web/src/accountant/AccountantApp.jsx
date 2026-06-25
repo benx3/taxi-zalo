@@ -25,7 +25,8 @@ export default function AccountantApp({ me: initMe, onLogout, worker }) {
   const [showZaloPanel, setShowZaloPanel] = useState(false);
 
   const { wsConnected, zaloConnected, qrImage, zaloGroups, selectedGroups,
-          setWatchedGroups, pendingTransfers, removePending, send, sessionExpired } = worker;
+          setWatchedGroups, pendingTransfers, removePending, send, sessionExpired,
+          groupConflict, clearGroupConflict } = worker;
 
   const reloadMe = () => api.me().then(setMe).catch(() => {});
 
@@ -54,6 +55,18 @@ export default function AccountantApp({ me: initMe, onLogout, worker }) {
 
   return (
     <div style={{ display: "flex", height: "100dvh", overflow: "hidden" }}>
+      {/* Toast: nhóm đã có kế toán khác */}
+      {groupConflict && (
+        <div style={{ position: "fixed", top: 18, left: "50%", transform: "translateX(-50%)", zIndex: 9999, background: "#1e293b", border: "1px solid #f59e0b", borderRadius: 10, padding: "12px 18px", display: "flex", alignItems: "center", gap: 12, boxShadow: "0 4px 24px rgba(0,0,0,.4)", maxWidth: 420, width: "90%" }}>
+          <AlertCircle size={18} style={{ color: "#f59e0b", flexShrink: 0 }} />
+          <div style={{ flex: 1, fontSize: 13, color: "#f1f5f9", lineHeight: 1.5 }}>
+            <strong style={{ color: "#fbbf24" }}>"{groupConflict.groupName}"</strong> đã có kế toán khác theo dõi. Mỗi nhóm chỉ có 1 kế toán.
+          </div>
+          <button onClick={clearGroupConflict} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 2, flexShrink: 0 }}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
       {/* ===== Sidebar ===== */}
       <aside style={{ width: 220, flexShrink: 0, background: "var(--card)", borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column" }}>
         {/* Logo */}

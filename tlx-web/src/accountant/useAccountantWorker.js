@@ -21,6 +21,7 @@ export default function useAccountantWorker() {
   const [zaloGroups, setZaloGroups] = useState([]);
   const [selectedGroups, setSelectedGroups] = useState([]);
   const [pendingTransfers, setPendingTransfers] = useState([]);
+  const [groupConflict, setGroupConflict] = useState(null); // {groupName, ownerName}
   const wsRef = useRef(null);
   const reconnectTimer = useRef(null);
 
@@ -69,6 +70,9 @@ export default function useAccountantWorker() {
         if (msg.type === "pending_transfer") {
           setPendingTransfers(prev => [msg, ...prev]);
         }
+        if (msg.type === "group_conflict") {
+          setGroupConflict({ groupName: msg.groupName, ownerName: msg.ownerName });
+        }
       } catch {}
     };
   }, []);
@@ -90,6 +94,7 @@ export default function useAccountantWorker() {
     wsConnected, zaloConnected, qrImage, zaloError, sessionExpired,
     zaloGroups, selectedGroups, setWatchedGroups,
     pendingTransfers, removePending,
+    groupConflict, clearGroupConflict: () => setGroupConflict(null),
     send, connect,
   };
 }

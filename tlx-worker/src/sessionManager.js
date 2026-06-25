@@ -408,7 +408,7 @@ function onMessage(sess, msg) {
                 type: "pending_transfer", txId,
                 groupId: dbGroupId, groupName,
                 fromUid: senderId, fromName: senderName,
-                toUid: sr.toUid, toName: sr.toName,
+                toUid: sr.toUid, toName: sr.toName || "",
                 points: sr.amount, rawText: text,
               });
             }).catch(e => console.error(`[${sess.userId}] san điểm (self):`, e?.message || e));
@@ -870,6 +870,8 @@ export async function setWatchedGroups(userId, groupIds) {
       const currentCanonicalSet = new Set(current.map(g => g.group_id));
 
       const newZaloIds = ids.filter(gId => !currentZaloSet.has(gId) && !currentCanonicalSet.has(gId));
+      // ids có thể bị thu hẹp nếu có nhóm bị từ chối (đã có kế toán khác theo dõi)
+      const acceptedIds = [...ids];
 
       for (const gId of ids) {
         const alreadyTracked = currentZaloSet.has(gId) || currentCanonicalSet.has(gId);
@@ -881,6 +883,23 @@ export async function setWatchedGroups(userId, groupIds) {
           const existing = await dbm.findGroupByName(groupName);
           const canonicalId = (existing && existing.group_id !== gId) ? existing.group_id : gId;
 
+          // Kiểm tra nhóm đã có kế toán khác theo dõi chưa (1 nhóm = 1 kế toán)
+          const groupAccountants = await dbm.getGroupAccountants(canonicalId);
+          const otherOwner = groupAccountants.find(a => a.accountant_id !== userId);
+          if (otherOwner) {
+            console.warn(`[${userId}] ⛔ Nhóm "${groupName}" đã có kế toán khác (${otherOwner.accountant_id}) theo dõi — từ chối`);
+            sess.onEvent(userId, {
+              type: "group_conflict",
+              groupId: gId,
+              groupName,
+              ownerName: otherOwner.user_name || otherOwner.accountant_id,
+            });
+            // Loại nhóm bị từ chối ra khỏi danh sách chấp nhận
+            const idx = acceptedIds.indexOf(gId);
+            if (idx !== -1) acceptedIds.splice(idx, 1);
+            continue;
+          }
+
           if (canonicalId !== gId) {
             sess.groupIdMap.set(gId, canonicalId);
             console.log(`[${userId}] 🔗 Group alias: ${gId} → ${canonicalId} (tên: "${groupName}")`);
@@ -888,6 +907,8 @@ export async function setWatchedGroups(userId, groupIds) {
           await dbm.addAccountantGroup(userId, canonicalId, groupName, canonicalId !== gId ? gId : null);
         }
       }
+      // Dùng acceptedIds thay ids cho các bước tiếp theo
+      ids = acceptedIds;
 
       // Khôi phục mapping cho các nhóm đã lưu từ trước
       for (const g of current) {
