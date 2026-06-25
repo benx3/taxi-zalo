@@ -26,6 +26,9 @@ free/fr=cuốc không tính điểm, 2c/2chiều=2 chiều (round trip)
 tg=trọn gói, tk=thu khách, ck=chuyển khoản, cth=có thu hộ
 >>> / ==>> / =>> / -> / → / về / lên / ra / sang = dấu phân tách tuyến đường
 "..." hoặc ".." cũng có thể là dấu phân tách tuyến
+Dấu "-" đơn giữa 2 tên địa điểm (không phải khoảng giờ như "5-6h") cũng là dấu phân tách tuyến
+  → Ví dụ: "dương văn bé-phủ lý" → from="Dương Văn Bé" to="Phủ Lý"
+  → Phân biệt: "5-6h" = khoảng giờ (số + dấu - + số + h); còn lại là tuyến
 
 GIÁ TIỀN — QUY ĐỔI VỀ NGHÌN ĐỒNG:
 950k → 950 | 1tr → 1000 | 1tr3 → 1300 | 1tr300 → 1300 | 1tr300k → 1300 | 200.000đ → 200
@@ -64,16 +67,19 @@ QUY TẮC from/to:
 - Ví dụ: "sáng mai 6h, 1ghe 200k, thạch bàn đi đại học công nghiệp phủ lý" → from="Thạch Bàn" to="Đại Học Công Nghiệp Phủ Lý"
 - Ví dụ: "VJ1128 dự 0h25p T1 ___ 289 Khuất Duy Tiến 250k tgct" → from="T1 Nội Bài" to="289 Khuất Duy Tiến"
 - Ví dụ: "sáng mai 6h-7h 1gh phố trạm lb- vin thọ huyện ngay hà hoa tiên 200k" → from="Phố Trạm" to="Vin Thọ Huyện"
+- Ví dụ: "5-6h dương văn bé-phủ lý 200k" → from="Dương Văn Bé" to="Phủ Lý" (5-6h là giờ, dấu "-" sau "bé" là tuyến)
+- Ví dụ: "lấy csct cầu ba đa phủ lý - phú minh sóc sơn 200k" → from="Cầu Ba Đa Phủ Lý" to="Phú Minh Sóc Sơn"
 
 QUY TẮC type:
-- "Hàng": ship/gửi hàng/chở hàng/kiện hàng/đồ (KHÔNG có từ "khách/người")
-- "Bao xe": bx/bxe/bao xe; hoặc không ghi số ghế (mặc định bao xe)
-- "Bao xe 2 chiều": bao xe + 2c/2chiều
-- "Sân bay tiễn": đưa khách từ nội đô ra sân bay
-- "Sân bay đón": đón khách từ sân bay về nội đô
-- "Sân bay 2 chiều": đón và tiễn sân bay cả 2 chiều
+- ƯU TIÊN SÂN BAY TRƯỚC: nếu tin nhắn có T1/T2/NB/Nội Bài/sân bay → type phải là "Sân bay đón"/"Sân bay tiễn"/"Sân bay 2 chiều"/"Sân bay", BẤT KỂ có bx hay không
+- "Sân bay tiễn": từ nội đô ĐI ra sân bay (from=nội đô, to=T1/T2/NB)
+- "Sân bay đón": ĐÓN khách TỪ sân bay về (from=T1/T2/NB, to=nội đô) — "dự hạ/dự về/đáp/hạ cánh" là dấu hiệu đón
+- "Sân bay 2 chiều": đón và tiễn cả 2 chiều (có "2c/2chiều" + sân bay)
 - "Sân bay": có sân bay nhưng không rõ chiều
-- "Ghép 1"/"Ghép 2"/"Ghép 3": theo số 1k/2k/3k hoặc 1 ghế/2 ghế/3 ghế
+- "Hàng": ship/gửi hàng/chở hàng/kiện hàng/đồ (KHÔNG có từ "khách/người")
+- "Bao xe": bx/bxe/bao xe NHƯNG không có sân bay; hoặc không ghi số ghế (mặc định bao xe)
+- "Bao xe 2 chiều": bao xe + 2c/2chiều, không có sân bay
+- "Ghép 1"/"Ghép 2"/"Ghép 3": theo số 1k/2k/3k hoặc 1 ghế/2 ghế/3 ghế, không có sân bay
 
 QUY TẮC seats:
 - "bx"/"bxe"/"bao xe"/"1bx" hoặc không ghi số → "Bao xe"
