@@ -6,7 +6,7 @@
 // nhóm đang theo dõi riêng, và các "claim" (cuốc đã xin) riêng.
 // ============================================================
 import { Zalo } from "zca-js";
-import { parseMultipleTrips, isConfirmMessage, isClaimMessage } from "./parser.js";
+import { parseMultipleTrips, isConfirmMessage, isClaimMessage, parseBonus } from "./parser.js";
 import { transcribeVoice, getVoiceUrl } from "./stt.js";
 import { config } from "./config.js";
 import * as dbm from "./dbLayer.js";
@@ -515,13 +515,17 @@ function onMessage(sess, msg) {
         const cachedTrip = sess.tripMsgCache.get(qCliId) || (qGlobId ? sess.tripMsgCache.get(qGlobId) : null);
         if (process.env.DEBUG_BAREM) console.log(`[BAREM_CLAIM] quoteOwnerId=${quoteOwnerId} cliMsgId=${qCliId} globalMsgId=${qGlobId} tripFound=${!!cachedTrip}`);
         if (cachedTrip && quoteOwnerId && quoteOwnerId !== senderId) {
+          // Điểm thỏa thuận ngay trong tin ok (vd: "@A ok 2đ dbcl") > điểm explicit trong tin đăng > barem
+          const claimNegotiatedPts = parseBonus(text) || 0;
+          if (claimNegotiatedPts > 0) console.log(`[${sess.userId}] 💬 Claim thỏa thuận: ${claimNegotiatedPts}đ từ "${text.slice(0,50)}"`);
           const claimData = {
             tripPosterId: cachedTrip.senderId, tripPosterName: cachedTrip.senderName,
             takerId: senderId, takerName: senderName,
             tripType: cachedTrip.type, tripPrice: cachedTrip.price,
             tripText: cachedTrip.text, tripTime: cachedTrip.time,
             claimText: text, claimTime: time,
-            explicitPoints: cachedTrip.explicitPoints || 0,
+            explicitPoints: claimNegotiatedPts || cachedTrip.explicitPoints || 0,
+            pointSource: claimNegotiatedPts > 0 ? "claim" : (cachedTrip.explicitPoints > 0 ? "trip" : "barem"),
           };
           sess.claimCache.set(msgId, claimData);
           if (msg.data.cliMsgId) sess.claimCache.set(String(msg.data.cliMsgId), claimData);
@@ -547,7 +551,8 @@ function onMessage(sess, msg) {
             const rulesRow = await dbm.getRules(dbGroupId);
             const baremPts = calcBaremPoints(rulesRow, cachedClaim.tripType, cachedClaim.tripPrice);
             const pts = cachedClaim.explicitPoints > 0 ? cachedClaim.explicitPoints : baremPts;
-            console.log(`[${sess.userId}] 📊 Barem confirm: type=${cachedClaim.tripType} price=${cachedClaim.tripPrice}k pts=${pts} ${cachedClaim.explicitPoints > 0 ? `(explicit từ tin đăng)` : `rules=${rulesRow ? "ok" : "null"}`}`);
+            const ptsSrc = cachedClaim.pointSource === "claim" ? "(thỏa thuận trong tin ok)" : cachedClaim.pointSource === "trip" ? "(explicit từ tin đăng)" : `rules=${rulesRow ? "ok" : "null"}`;
+            console.log(`[${sess.userId}] 📊 Barem confirm: type=${cachedClaim.tripType} price=${cachedClaim.tripPrice}k pts=${pts} ${ptsSrc}`);
             if (pts > 0) {
               const convo = JSON.stringify({
                 tripTime: cachedClaim.tripTime, tripPoster: cachedClaim.tripPosterName, tripText: cachedClaim.tripText,
