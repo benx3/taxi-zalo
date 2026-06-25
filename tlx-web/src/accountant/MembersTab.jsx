@@ -16,7 +16,7 @@ const noMark = (s) => (s || "").toLowerCase()
 
 const fmtPts = (p) => {
   const n = Number(p) || 0;
-  return (n >= 0 ? "+" : "") + n.toFixed(n % 1 === 0 ? 0 : 1) + "đ";
+  return (n >= 0 ? "+" : "") + parseFloat(n.toFixed(2)) + "đ";
 };
 const fmtTime = (ms) => {
   const d = new Date(Number(ms));
@@ -600,7 +600,7 @@ function MemberDetail({ member, groupId, onBack }) {
                   {tx.raw_text && <ConvoThread raw={tx.raw_text} />}
                 </div>
                 <div style={{ fontWeight: 800, fontSize: 15, color: delta >= 0 ? "#34d399" : "#f87171", flexShrink: 0 }}>
-                  {delta >= 0 ? "+" : ""}{delta.toFixed(delta % 1 === 0 ? 0 : 1)}đ
+                  {delta >= 0 ? "+" : ""}{parseFloat(delta.toFixed(2))}đ
                 </div>
               </div>
             </div>

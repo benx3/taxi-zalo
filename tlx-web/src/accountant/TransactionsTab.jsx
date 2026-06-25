@@ -280,7 +280,7 @@ function ConfirmDeleteModal({ tx, onClose, onDone }) {
           <span style={{ fontWeight: 700, fontSize: 15 }}>Hủy giao dịch?</span>
         </div>
         <p style={{ color: "var(--ink-dim)", fontSize: 13, lineHeight: 1.6, margin: "0 0 8px" }}>
-          Giao dịch <b>"{tx.reason || "này"}"</b> ({tx.points.toFixed(tx.points % 1 === 0 ? 0 : 1)}đ) sẽ bị xóa và điểm sẽ được hoàn lại tự động.
+          Giao dịch <b>"{tx.reason || "này"}"</b> ({parseFloat(tx.points.toFixed(2))}đ) sẽ bị xóa và điểm sẽ được hoàn lại tự động.
         </p>
         {err && <div style={{ color: "#f87171", fontSize: 12, marginBottom: 8 }}>{err}</div>}
         <div style={{ display: "flex", gap: 8 }}>
