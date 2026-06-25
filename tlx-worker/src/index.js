@@ -228,6 +228,53 @@ app.patch("/api/accountant/members/alias", async (req, res) => {
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// Import thành viên từ Excel — bước 1: tra cứu Zalo & xem trước
+app.post("/api/accountant/members/import-preview", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  const { groupId, rows } = req.body;
+  if (!groupId || !Array.isArray(rows)) return res.status(400).json({ error: "Thiếu groupId hoặc rows" });
+  if (!await checkGroupAccess(req, res, groupId)) return;
+  const preview = [];
+  for (let i = 0; i < rows.length; i++) {
+    const { stt, ten, sdt } = rows[i];
+    let phone = String(sdt || "").replace(/\D/g, "");
+    if (phone.startsWith("84")) phone = "0" + phone.slice(2);
+    if (phone.length >= 9) {
+      try {
+        const user = await sm.lookupUserByPhone(a.userId, phone);
+        const existing = await dbm.getMemberByZaloUid(groupId, user.uid);
+        preview.push({ stt, ten, sdt: phone, status: existing ? "found_exists" : "found_new", uid: user.uid, zalo_name: user.display_name });
+      } catch {
+        preview.push({ stt, ten, sdt: phone, status: "not_found", uid: null, zalo_name: null });
+      }
+      if (i < rows.length - 1) await new Promise(r => setTimeout(r, 200));
+    } else {
+      preview.push({ stt, ten, sdt: sdt || "", status: "no_phone", uid: null, zalo_name: null });
+    }
+  }
+  res.json(preview);
+});
+
+// Import thành viên từ Excel — bước 2: xác nhận ghi vào DB
+app.post("/api/accountant/members/import-confirm", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  const { groupId, rows } = req.body;
+  if (!groupId || !Array.isArray(rows)) return res.status(400).json({ error: "Thiếu groupId hoặc rows" });
+  if (!await checkGroupAccess(req, res, groupId)) return;
+  const batchTs = Date.now();
+  let added = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (row.status === "found_exists") continue;
+    const uid = row.uid || `~imp_${batchTs}_${i}`;
+    try {
+      await dbm.upsertMember(groupId, uid, { phone: row.sdt || null, display_name: row.ten || null });
+      added++;
+    } catch {}
+  }
+  res.json({ ok: true, added });
+});
+
 // Giao dịch điểm
 app.get("/api/accountant/transactions", async (req, res) => {
   const { groupId, zaloUid, limit } = req.query;

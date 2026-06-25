@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import { api } from "./api.js";
 import {
   Users, Search, Plus, ChevronRight, TrendingUp, TrendingDown,
-  X, Check, Clock, Edit2, Trash2, AlertTriangle, RefreshCw, Download
+  X, Check, Clock, Edit2, Trash2, AlertTriangle, RefreshCw, Download, Upload
 } from "lucide-react";
 
 const PAGE_SIZE = 25;
@@ -43,6 +43,10 @@ export default function MembersTab({ groupId }) {
   const [page, setPage] = useState(1);
   const [inlineEdit, setInlineEdit] = useState(null);
   const [sortBy, setSortBy] = useState("points_desc");
+  const importRef = useRef(null);
+  const [importPreview, setImportPreview] = useState(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importConfirming, setImportConfirming] = useState(false);
 
   const reload = () => {
     if (!groupId) return;
@@ -138,12 +142,79 @@ export default function MembersTab({ groupId }) {
     XLSX.writeFile(wb, `thanh-vien-${date}.xlsx`);
   };
 
+  const handleImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rawRows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      const rows = rawRows.map((r, i) => {
+        const keys = Object.keys(r);
+        const find = (...names) => keys.find(k => names.some(n => k.toLowerCase().trim().replace(/\s+/g,"") === n));
+        const tenKey = find("ten","tên","name","họtên","hoten","displayname");
+        const sdtKey = find("sdt","sđt","phone","sodienthoai","sốđiệnthoại","điệnthoại","dienthoai");
+        const sttKey = find("stt","số","no","#","sốthứtự");
+        return {
+          stt: r[sttKey] || (i + 1),
+          ten: String(r[tenKey] || "").trim(),
+          sdt: String(r[sdtKey] || "").trim(),
+        };
+      }).filter(r => r.ten);
+      if (rows.length === 0) {
+        setSyncMsg({ ok: false, text: "File không có dữ liệu hoặc thiếu cột Tên (cần: STT, Tên, SĐT)" });
+        setTimeout(() => setSyncMsg({ ok: null, text: "" }), 5000);
+        return;
+      }
+      setImportLoading(true);
+      setSyncMsg({ ok: null, text: `Đang tra cứu ${rows.length} thành viên trên Zalo, vui lòng chờ…` });
+      try {
+        const preview = await api.importMembersPreview(groupId, rows);
+        setImportPreview(preview);
+      } catch (err) {
+        setSyncMsg({ ok: false, text: "Lỗi tra cứu: " + err.message });
+        setTimeout(() => setSyncMsg({ ok: null, text: "" }), 5000);
+      } finally {
+        setImportLoading(false);
+        setSyncMsg({ ok: null, text: "" });
+      }
+    } catch {
+      setSyncMsg({ ok: false, text: "Không đọc được file Excel" });
+      setTimeout(() => setSyncMsg({ ok: null, text: "" }), 4000);
+    }
+  };
+
+  const doImportConfirm = async () => {
+    if (!importPreview) return;
+    setImportConfirming(true);
+    try {
+      const r = await api.importMembersConfirm(groupId, importPreview);
+      setImportPreview(null);
+      setSyncMsg({ ok: true, text: `Đã import ${r.added} thành viên thành công.` });
+      setTimeout(() => setSyncMsg({ ok: null, text: "" }), 5000);
+      reload();
+    } catch (err) {
+      setSyncMsg({ ok: false, text: "Lỗi import: " + err.message });
+      setTimeout(() => setSyncMsg({ ok: null, text: "" }), 5000);
+    } finally { setImportConfirming(false); }
+  };
+
   if (selected) return (
     <MemberDetail member={selected} groupId={groupId} onBack={() => { setSelected(null); reload(); }} />
   );
 
   return (
     <div style={{ padding: "0 0 24px" }}>
+      {importPreview && (
+        <ImportPreviewModal
+          preview={importPreview}
+          confirming={importConfirming}
+          onConfirm={doImportConfirm}
+          onClose={() => setImportPreview(null)}
+        />
+      )}
       {/* Header + search + add */}
       <div style={{ display: "flex", gap: 8, padding: "16px 24px", alignItems: "center" }}>
         <div style={{ flex: 1, position: "relative" }}>
@@ -158,6 +229,11 @@ export default function MembersTab({ groupId }) {
         <button onClick={enrichNames} disabled={syncing || enriching} title="Lấy tên Zalo cho các thành viên chưa có tên (batch 50/lần, ~30s cho 1000 người)" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid rgba(167,139,250,.4)", background: "rgba(167,139,250,.1)", color: enriching ? "var(--ink-dim)" : "#a78bfa", fontWeight: 700, fontSize: 13, cursor: (syncing || enriching) ? "default" : "pointer", whiteSpace: "nowrap" }}>
           <RefreshCw size={14} style={{ animation: enriching ? "spin 1s linear infinite" : "none" }} />
           {enriching ? "Đang lấy tên…" : "Lấy tên"}
+        </button>
+        <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }} onChange={handleImportFile} />
+        <button onClick={() => importRef.current?.click()} disabled={importLoading} title="Import thành viên từ file Excel (cột STT, Tên, SĐT)"
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid rgba(251,191,36,.4)", background: "rgba(251,191,36,.1)", color: importLoading ? "var(--ink-dim)" : "#fbbf24", fontWeight: 700, fontSize: 13, cursor: importLoading ? "default" : "pointer", whiteSpace: "nowrap", opacity: importLoading ? 0.6 : 1 }}>
+          <Upload size={14} style={{ animation: importLoading ? "spin 1s linear infinite" : "none" }} /> {importLoading ? "Đang tra cứu…" : "Import Excel"}
         </button>
         <button onClick={exportExcel} disabled={sorted.length === 0} title="Xuất danh sách ra file Excel"
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid rgba(96,165,250,.4)", background: "rgba(96,165,250,.1)", color: "#60a5fa", fontWeight: 700, fontSize: 13, cursor: sorted.length === 0 ? "default" : "pointer", whiteSpace: "nowrap", opacity: sorted.length === 0 ? 0.5 : 1 }}>
@@ -287,6 +363,86 @@ export default function MembersTab({ groupId }) {
       </div>
 
       {showAdd && <AddMemberModal groupId={groupId} onClose={() => setShowAdd(false)} onDone={() => { setShowAdd(false); reload(); }} />}
+    </div>
+  );
+}
+
+function ImportPreviewModal({ preview, onConfirm, onClose, confirming }) {
+  const countNew    = preview.filter(r => r.status === "found_new").length;
+  const countExists = preview.filter(r => r.status === "found_exists").length;
+  const countTemp   = preview.filter(r => r.status === "not_found" || r.status === "no_phone").length;
+  const toImport    = countNew + countTemp;
+
+  const badge = (status) => {
+    if (status === "found_new")    return { text: "Thêm mới",   bg: "rgba(52,211,153,.15)",  color: "#34d399" };
+    if (status === "found_exists") return { text: "Đã có",      bg: "rgba(148,163,184,.12)", color: "#94a3b8" };
+    if (status === "not_found")    return { text: "Thêm tạm*",  bg: "rgba(251,191,36,.12)",  color: "#fbbf24" };
+    return                                { text: "Thêm tạm",   bg: "rgba(96,165,250,.12)",  color: "#60a5fa" };
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.75)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 12px", overflowY: "auto" }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, width: "100%", maxWidth: 700 }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", padding: "14px 18px", borderBottom: "1px solid var(--line)" }}>
+          <div style={{ flex: 1, fontWeight: 800, fontSize: 15 }}>Xem trước import thành viên</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)", padding: 4 }}><X size={18} /></button>
+        </div>
+
+        {/* Tổng kết */}
+        <div style={{ display: "flex", gap: 8, padding: "12px 18px", flexWrap: "wrap" }}>
+          <span style={{ padding: "4px 10px", borderRadius: 20, background: "rgba(52,211,153,.12)", color: "#34d399", fontSize: 12, fontWeight: 700 }}>+{countNew} thêm mới</span>
+          <span style={{ padding: "4px 10px", borderRadius: 20, background: "rgba(148,163,184,.1)", color: "#94a3b8", fontSize: 12, fontWeight: 700 }}>{countExists} đã có (bỏ qua)</span>
+          {countTemp > 0 && <span style={{ padding: "4px 10px", borderRadius: 20, background: "rgba(251,191,36,.1)", color: "#fbbf24", fontSize: 12, fontWeight: 700 }}>{countTemp} thêm tạm</span>}
+        </div>
+        {countTemp > 0 && (
+          <div style={{ padding: "0 18px 10px", fontSize: 12, color: "var(--ink-dim)", lineHeight: 1.5 }}>
+            * Thêm tạm: không tìm thấy Zalo hoặc không có SĐT → lưu UID placeholder. UID thật sẽ tự cập nhật khi thành viên chat hoặc bị tag trong nhóm.
+          </div>
+        )}
+
+        {/* Bảng */}
+        <div style={{ maxHeight: 380, overflowY: "auto", borderTop: "1px solid var(--line)" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: "rgba(0,0,0,.25)", fontSize: 11, fontWeight: 700, color: "var(--ink-dim)", textTransform: "uppercase", textAlign: "left" }}>
+                <th style={{ padding: "8px 12px", width: 42 }}>STT</th>
+                <th style={{ padding: "8px 12px" }}>Tên (Excel)</th>
+                <th style={{ padding: "8px 12px", width: 110 }}>SĐT</th>
+                <th style={{ padding: "8px 12px" }}>Tên Zalo</th>
+                <th style={{ padding: "8px 12px", textAlign: "right" }}>Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preview.map((row, i) => {
+                const b = badge(row.status);
+                return (
+                  <tr key={i} style={{ borderTop: "1px solid var(--line)", opacity: row.status === "found_exists" ? 0.45 : 1 }}>
+                    <td style={{ padding: "8px 12px", color: "var(--ink-dim)", fontSize: 12 }}>{row.stt}</td>
+                    <td style={{ padding: "8px 12px", fontWeight: 600 }}>{row.ten}</td>
+                    <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 11, color: "var(--ink-dim)" }}>{row.sdt || "—"}</td>
+                    <td style={{ padding: "8px 12px", color: "var(--ink-dim)", fontSize: 12 }}>{row.zalo_name || "—"}</td>
+                    <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                      <span style={{ padding: "3px 8px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: b.bg, color: b.color }}>{b.text}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display: "flex", gap: 10, padding: "14px 18px", borderTop: "1px solid var(--line)" }}>
+          <button onClick={onClose} disabled={confirming} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid var(--line)", background: "none", color: "var(--ink-dim)", fontWeight: 600, cursor: confirming ? "default" : "pointer" }}>Hủy</button>
+          <button onClick={onConfirm} disabled={confirming || toImport === 0}
+            style={{ flex: 2, padding: "10px", borderRadius: 10, border: "none", fontWeight: 800, cursor: (confirming || toImport === 0) ? "default" : "pointer", opacity: confirming ? 0.6 : 1,
+              background: toImport > 0 ? "linear-gradient(135deg,#22c55e,#16a34a)" : "rgba(255,255,255,.05)",
+              color: toImport > 0 ? "#04140a" : "var(--ink-dim)" }}>
+            {confirming ? "Đang import…" : toImport > 0 ? `Xác nhận import ${toImport} thành viên` : "Không có thành viên mới"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

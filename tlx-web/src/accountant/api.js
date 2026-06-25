@@ -39,6 +39,8 @@ export const api = {
   enrichMemberNames: (groupId) => req(`/api/accountant/groups/${encodeURIComponent(groupId)}/enrich-members`, {}),
   setGroupPublicVisible: (groupId, visible) => req(`/api/accountant/groups/${encodeURIComponent(groupId)}/public-visible`, { visible }, "PATCH"),
   lookupUser: (phone) => req(`/api/accountant/lookup-user?phone=${encodeURIComponent(phone)}`, null, "GET"),
+  importMembersPreview: (groupId, rows) => req("/api/accountant/members/import-preview", { groupId, rows }),
+  importMembersConfirm: (groupId, rows) => req("/api/accountant/members/import-confirm", { groupId, rows }),
 
   // Giao dịch điểm
   listTransactions: (groupId, zaloUid, limit) => {
