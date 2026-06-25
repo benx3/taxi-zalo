@@ -108,14 +108,14 @@ export function parseSeats(t) {
   // N k (standalone "k") — "1k"=1 ghế, "2k"/"3k"=N khách
   const nk = l.match(/\b([1-6])\s*k\b/);
   if (nk) return nk[1] === "1" ? "1 ghế" : nk[1] + " khách";
-  // 3 khách: 3ghế/3ghép/3kh/3gh/3g và biến thể có khoảng trắng
-  if (/3\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|gh\b|g\b)/.test(l)) return "3 khách";
-  // 2 khách: 2ghế/2ghép/2kh/2gh/2g và biến thể có khoảng trắng
-  if (/2\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|gh\b|g\b)/.test(l)) return "2 khách";
+  // 3 khách: 3ghế/3ghép/3kh/3gh/3g/3ghe và biến thể có khoảng trắng
+  if (/3\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|ghe\b|gh\b|g\b)/.test(l)) return "3 khách";
+  // 2 khách: 2ghế/2ghép/2kh/2gh/2g/2ghe và biến thể có khoảng trắng
+  if (/2\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|ghe\b|gh\b|g\b)/.test(l)) return "2 khách";
   // Bao xe (check trước để "1bx" không nhầm thành 1 ghế)
   if (/bao\s*hàng|bao\s*xe|bxe|1bx|\bbx\b|bx\d+/.test(l)) return "Bao xe";
-  // 1 ghế: 1ghế/1ghép/1kh/1gh/1g và biến thể có khoảng trắng
-  if (/1\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|gh\b|g\b)/.test(l)) return "1 ghế";
+  // 1 ghế: 1ghế/1ghép/1kh/1gh/1g/1ghe và biến thể có khoảng trắng
+  if (/1\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|ghe\b|gh\b|g\b)/.test(l)) return "1 ghế";
   return "Không rõ";
 }
 
@@ -171,19 +171,24 @@ function cleanPlace(s) {
   do {
     prev = s;
     s = s
+      // số hiệu chuyến bay: VJ123, VN204, QH123, BL456, VU789...
+      .replace(/^\s*[A-Z]{2}\d{3,4}\b[\s.:,_-]*/i, "")
       // các từ khoá ở ĐẦU. KHÔNG dùng \b (sai với chữ Việt có dấu); dùng (?=[\s.:,_-]|$)
       .replace(/^\s*(csct|cs ct|cnct|cn ct|snct|sn ct|free+|fr+ee|fer+|vtri|vt|vị trí|yc|ycvt|dự|sm|sd|sáng mai|ngày mai|mai|gấp|gap)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")
       .replace(/^\s*\d{1,2}\s*(?:[-–]\s*\d{1,2})?\s*[h:]\s*\d{0,2}\s*(?:[-–_]\s*\d{1,2}\s*[h:]?\s*\d{0,2})?\s*(sm|sáng mai)?[\s.:,_-]*/i, "") // "22h","6h30","5-6h","6h_6h30","5-6h sm"
       .replace(/^\s*\d{1,3}\s*p(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")  // "30p"
-      .replace(/^\s*\d+\s*(ghép|ghế|ghê|ghé|gh|khách|khach|kh|k|g)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "") // "1 ghế","1ghép","1k","1g"
+      .replace(/^\s*\d+\s*(ghép|ghế|ghê|ghé|ghe|gh|khách|khach|kh|k|g)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "") // "1 ghế","1ghép","1k","1g","1ghe"
       .replace(/^\s*(ghép|ghế|ghê|ghé|bao\s*xe|bao\s*hàng|bxe|bx\d*|k|g)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")  // "ghép","bao xe","k","g" lẻ
-      .replace(/^\s*(để|de|đồ|do|hàng|hang|gửi|gui|ship|chở|cho|đón|don|lấy|lay|trả|tra|màn\s*máy\s*tính|màn|man|máy\s*tính|may\s*tinh)(?=[\s.:,_-]|$)[\s.:,_-]*/i, ""); // ghi chú đồ vật
+      .replace(/^\s*(để|de|đồ|do|hàng|hang|gửi|gui|ship|chở|cho|đón|don|lấy|lay|trả|tra|màn\s*máy\s*tính|màn|man|máy\s*tính|may\s*tinh)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "") // ghi chú đồ vật
+      // giá tiền đứng trước địa điểm, cách nhau bởi dấu phẩy: "200k, thạch bàn" → "thạch bàn"
+      .replace(/^\s*\d[\d.,]*\s*(k|đ|nghìn|tr|triệu)\b\s*[,.:;]+\s*/i, "");
   } while (s !== prev && s.length > 0);
   return s
     .replace(/\d[\d.,]*\s*(k|đ|nghìn|tr|triệu)\b.*$/i, "")  // giá có đơn vị + đuôi
     .replace(/\d{1,3}(?:[.,]\d{3})+\s*đ?.*$/i, "")          // giá "200.000"
     .replace(/\b(free+|fr+ee|fer+|tg|tgct|tgian|ki\d+|sd|cl|0[.,]5)\b.*$/i, "")
     .replace(/khách\s*(cần|can|có mặt|co mat).*/i, "")       // bỏ ghi chú "khách cần có mặt 8h40"
+    .replace(/\b(lb|lx|cl|dv\d?|ck|tk|cth)\s*[-:]?\s*$/i, "") // bỏ suffix noise cuối: lb-, lx, dv1...
     .replace(/_{2,}/g, " ")                                  // gạch dưới dài → space
     .replace(/^[\s\-.,:;>()_]+|[\s\-.,:;>()_]+$/g, "")
     .replace(/\s{2,}/g, " ")
@@ -273,5 +278,6 @@ function isHardNoise(text) {
   const t = text.trim();
   if (/^@/.test(t)) return true;                 // reply người khác
   if (NOISE_RE.test(t)) return true;             // hủy lịch, sản điểm, ck rồi...
+  if (/^\+\s*\d+\s*ngh\b/i.test(t)) return true; // "+ 2ngh 400k" = phụ phí nghỉ đêm
   return false;
 }

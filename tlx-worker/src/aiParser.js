@@ -49,12 +49,21 @@ TRƯỜNG JSON CẦN TRẢ VỀ:
 QUY TẮC isTrip:
 - TRUE: có giá (số+k/tr/triệu/đồng) trong khoảng 50–5000k VÀ là cuốc xe/hàng thực sự
 - FALSE: chỉ "ok/oke/oki/okie/ib", "hủy lịch/hủy/đã hủy", "cảm ơn/thank", "sản điểm/san điểm/sản giúp/san giúp", "đã ck/đã chuyển/đã bay", "@mention" đơn thuần, không có giá hợp lệ
+- FALSE: dòng bắt đầu bằng "+" kèm số lượng nghỉ như "+ 2ngh", "+ 1ngh" = phụ phí nghỉ đêm (supplement), không phải cuốc riêng
+- "ngh/ngủ" sau số = nghỉ đêm (overnight stay), không phải địa điểm
 
 QUY TẮC from/to:
 - Chỉ tên địa điểm thuần túy (tên đường/phường/quận/huyện/tỉnh/địa danh), max 32 ký tự
-- Bỏ hoàn toàn ở đầu: số ghế, giờ, giá, vtri/vt/ycvt/csct/snct/free/sm/sd/gấp
+- Bỏ hoàn toàn: số hiệu chuyến bay (VJ123, VN204, QH456, BL789...), số ghế, giờ, giá, vtri/vt/ycvt/csct/snct/free/sm/sd/gấp/dự/tgct
+- Bỏ ký tự bullet đầu dòng: "-", "+", "•", "👉"
+- Bỏ suffix noise cuối tên địa điểm: "lb-", "lb", "lx", "dv1", "ck", "-" lẻ
+- "ngay [địa điểm]" → [địa điểm] là địa chỉ cụ thể, giữ lại
+- Khi preamble (thời gian, ghế, giá) đứng trước địa điểm cách bởi dấu phẩy → chỉ lấy phần sau dấu phẩy cuối cùng trước dấu phân tách tuyến
+- T1/T2 = ga sân bay (Terminal 1/2 Nội Bài) → from="T1" hoặc to="T1" tùy chiều
 - Ví dụ: "vtri bx5 2chiều mỹ đình >>>>bạch mai 2...950k" → from="Mỹ Đình" to="Bạch Mai"
-- Ví dụ: "8h sb tiễn 1k lăng cha cả 250k" → from="Lăng Cha Cả" to="Sân bay"
+- Ví dụ: "sáng mai 6h, 1ghe 200k, thạch bàn đi đại học công nghiệp phủ lý" → from="Thạch Bàn" to="Đại Học Công Nghiệp Phủ Lý"
+- Ví dụ: "VJ1128 dự 0h25p T1 ___ 289 Khuất Duy Tiến 250k tgct" → from="T1 Nội Bài" to="289 Khuất Duy Tiến"
+- Ví dụ: "sáng mai 6h-7h 1gh phố trạm lb- vin thọ huyện ngay hà hoa tiên 200k" → from="Phố Trạm" to="Vin Thọ Huyện"
 
 QUY TẮC type:
 - "Hàng": ship/gửi hàng/chở hàng/kiện hàng/đồ (KHÔNG có từ "khách/người")
