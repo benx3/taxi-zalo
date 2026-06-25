@@ -689,7 +689,7 @@ async function onMessage(sess, msg) {
     // Bước 2: AI (chỉ khi mode!=="regex" và có key)
     if (mode !== "regex" && hasAIKey) {
       const needFallback = trips.length === 0;
-      const needEnrich = trips.length > 0 && trips.some(t => !t.route || (t.route.from === "?" && t.route.to === "?"));
+      const needEnrich = trips.length > 0 && trips.some(t => !t.route || t.route.from === "?" || t.route.to === "?");
       if (needFallback || needEnrich) {
         try {
           const ai = await parseWithAI(text, msgId);

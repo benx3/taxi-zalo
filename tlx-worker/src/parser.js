@@ -143,9 +143,15 @@ export function parseType(t) {
 const ROUTE_SPLIT = /\s*(?:={0,3}>{1,}|-{2,}>?|->|→|⇒|»+|_{2,}|\u2192|\.{3,}|\s-\s(?!\d)|(?<=[a-zA-Z\xC0-ỹ])-(?=[a-zA-Z\xC0-ỹ])|\bvề\b|\bve\b|\blên\b|\blen\b|\bđi\b(?!\s*ngay)|\bra\b|\bsang\b)\s*/i;
 
 export function parseRoute(t) {
+  // Strip nội dung ngoặc đơn (...) — luôn là ghi chú, không phải địa điểm
+  // Strip ---- (4+ dashes) trở đi cuối mỗi dòng — thường là divider trang trí
+  t = t
+    .replace(/\([^)]{0,80}\)/g, " ")
+    .replace(/-{4,}[^a-zA-ZÀ-ỹ\d]*$/gm, "")
+    .replace(/\s+/g, " ").trim();
   let parts = t.split(ROUTE_SPLIT).map(s => s.trim()).filter(s => s.length > 1);
-  // bỏ các mảnh chỉ toàn ký tự rác
-  parts = parts.filter(s => /[a-zA-ZÀ-ỹ]/.test(s));
+  // bỏ các mảnh chỉ toàn ký tự rác hoặc thuần giá tiền (900k, 1tr, 200đ)
+  parts = parts.filter(s => /[a-zA-ZÀ-ỹ]/.test(s) && !/^\d[\d.,]*\s*(k|tr|đ|nghìn|triệu)?\s*$/i.test(s));
   if (parts.length >= 2) {
     const from = cleanPlace(parts[parts.length - 2]);
     const to = cleanPlace(parts[parts.length - 1]);
@@ -175,10 +181,11 @@ function cleanPlace(s) {
       .replace(/^\s*[A-Z]{2}\d{3,4}\b[\s.:,_-]*/i, "")
       // các từ khoá ở ĐẦU. KHÔNG dùng \b (sai với chữ Việt có dấu); dùng (?=[\s.:,_-]|$)
       .replace(/^\s*(csct|cs ct|cnct|cn ct|snct|sn ct|free+|fr+ee|fer+|vtri|vt|vị trí|yc|ycvt|dự|sm|sd|sáng mai|ngày mai|mai|gấp|gap)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")
-      .replace(/^\s*\d{1,2}\s*(?:[-–]\s*\d{1,2})?\s*[h:]\s*\d{0,2}\s*(?:[-–_]\s*\d{1,2}\s*[h:]?\s*\d{0,2})?\s*(sm|sáng mai)?[\s.:,_-]*/i, "") // "22h","6h30","5-6h","6h_6h30","5-6h sm"
+      .replace(/^\s*\d{1,2}\s*(?:[-–]\s*\d{1,2})?\s*[h:]\s*\d{0,2}\s*p?\s*(?:[-–_]\s*\d{1,2}\s*[h:]?\s*\d{0,2}\s*p?)?\s*(sm|sáng mai)?[\s.:,_-]*/i, "") // "22h","6h30","5-6h","0h25p","6h_6h30"
       .replace(/^\s*\d{1,3}\s*p(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")  // "30p"
       .replace(/^\s*\d+\s*(ghép|ghế|ghê|ghé|ghe|gh|khách|khach|kh|k|g)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "") // "1 ghế","1ghép","1k","1g","1ghe"
       .replace(/^\s*(ghép|ghế|ghê|ghé|bao\s*xe|bao\s*hàng|bxe|bx\d*|k|g)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")  // "ghép","bao xe","k","g" lẻ
+      .replace(/^\s*\d*\s*(chiều|chieu)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")  // "2 chiều","1 chiều" lẻ đầu
       .replace(/^\s*(để|de|đồ|do|hàng|hang|gửi|gui|ship|chở|cho|đón|don|lấy|lay|trả|tra|màn\s*máy\s*tính|màn|man|máy\s*tính|may\s*tinh)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "") // ghi chú đồ vật
       // giá tiền đứng trước địa điểm, cách nhau bởi dấu phẩy: "200k, thạch bàn" → "thạch bàn"
       .replace(/^\s*\d[\d.,]*\s*(k|đ|nghìn|tr|triệu)\b\s*[,.:;]+\s*/i, "");
