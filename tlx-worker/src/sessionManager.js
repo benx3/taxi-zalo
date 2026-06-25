@@ -669,12 +669,25 @@ async function onMessage(sess, msg) {
     // (B) cuốc mới — 1 tin có thể chứa nhiều cuốc
     let trips = parseMultipleTrips({ groupId, groupName, senderId, senderName, msgId, text, time });
 
-    // AI fallback khi regex không parse được và AI được bật
-    if (trips.length === 0 && config.aiEnabled && (config.groqApiKey || config.geminiApiKey)) {
+    // AI: (1) fallback khi regex bỏ qua hoàn toàn, hoặc (2) enrich khi regex parse được nhưng thiếu route
+    const needAI = config.aiEnabled && (config.groqApiKey || config.geminiApiKey) &&
+      (trips.length === 0 || trips.some(t => !t.route || (t.route.from === "?" && t.route.to === "?")));
+    if (needAI) {
       try {
         const ai = await parseWithAI(text, msgId);
-        const t = aiToTrip(ai, { groupId, groupName, senderId, senderName, msgId, time, text });
-        if (t) { trips = [t]; console.log(`[${sess.userId}] 🤖 AI parse: ${t.type} ${t.price}k ${t.route?.from}→${t.route?.to}`); }
+        if (trips.length === 0) {
+          // Fallback: regex không ra gì, thử tạo trip từ AI
+          const t = aiToTrip(ai, { groupId, groupName, senderId, senderName, msgId, time, text });
+          if (t) { trips = [t]; console.log(`[${sess.userId}] 🤖 AI new: ${t.type} ${t.price}k ${t.route?.from}→${t.route?.to}`); }
+        } else if (ai?.isTrip && (ai.from || ai.to)) {
+          // Enrich: bổ sung route + tripType vào trip regex đã parse
+          trips = trips.map(t => (!t.route || (t.route.from === "?" && t.route.to === "?")) ? {
+            ...t,
+            route: { from: ai.from || "?", to: ai.to || "?" },
+            tripType: ai.tripType || t.tripType || null,
+          } : t);
+          console.log(`[${sess.userId}] 🤖 AI enrich: ${ai.from}→${ai.to} (${ai.tripType})`);
+        }
       } catch (e) {
         console.warn(`[${sess.userId}] AI parse lỗi: ${e?.message || e}`);
       }
