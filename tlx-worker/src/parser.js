@@ -116,7 +116,10 @@ export function parseSeats(t) {
 export function parseType(t) {
   const l = t.toLowerCase();
   if (/(bao\s*hàng|csct\s*đồ|(?:^|[\s\d,.])\s*đồ\s|gửi\s*hàng|giao\s*hàng|chở\s*hàng|ship\b|kiện\s*hàng|hàng\s+(?:nhỏ|nặng|lớn|to|bé|gọn|cồng|kềnh))/.test(l) && !/1\s*ghế|1k\b|gái|khách/.test(l)) return "Hàng";
-  if (/bao\s*xe|\bbxe\b|\bbx\b|bx\d+|\bxe\s*7\b|7\s*chỗ|\b7c\b|\blịch\s*taxi\b|\btaxi\b/.test(l)) return "Bao xe";
+  if (/bao\s*xe|\bbxe\b|\bbx\b|bx\d+|\bxe\s*7\b|7\s*chỗ|\b7c\b|\blịch\s*taxi\b|\btaxi\b/.test(l)) {
+    if (/bx\s*2c\b|bxe\s*2c\b|bao\s*xe\s*2c\b|2\s*chi[eề]u|2\s*chieu/.test(l)) return "Bao xe 2 chiều";
+    return "Bao xe";
+  }
   if (/sân\s*bay|nội\s*bài|noi\s*bai|\bnb\b|\bsb\b|\bt1\b|\bt2\b|sảnh/.test(l)) {
     if (/2\s*chi[eề]u|\b2c\b/.test(l)) return "Sân bay 2 chiều";
     if (/ti[eễ]n|đưa\s*đi|dua\s*di/.test(l)) return "Sân bay tiễn";

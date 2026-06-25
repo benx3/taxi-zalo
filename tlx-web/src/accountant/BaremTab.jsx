@@ -3,7 +3,8 @@ import { api } from "./api.js";
 import { Plus, Trash2, Save, X, ChevronDown, ChevronUp, Check, Search } from "lucide-react";
 
 const TRIP_TYPES = [
-  { value: "bao_xe",        label: "Bao xe" },
+  { value: "bao_xe",        label: "Bao xe 1 chiều" },
+  { value: "bao_xe_2c",    label: "Bao xe 2 chiều" },
   { value: "ghep_1",        label: "Ghép 1 khách" },
   { value: "ghep_2",        label: "Ghép 2 khách" },
   { value: "ship",          label: "Gửi hàng / Ship" },

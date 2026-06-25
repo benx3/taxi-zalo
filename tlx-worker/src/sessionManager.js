@@ -281,6 +281,7 @@ async function loadGroups(sess) {
 // Ánh xạ parseType (parser output) → barem type codes (lưu trong DB từ BaremTab)
 const PARSER_TO_BAREM = {
   "Bao xe":          ["bao_xe"],
+  "Bao xe 2 chiều":  ["bao_xe_2c"],
   "Ghép 1":          ["ghep_1"],
   "Ghép 2":          ["ghep_2"],
   "Hàng":            ["ship"],
