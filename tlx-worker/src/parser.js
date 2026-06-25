@@ -140,7 +140,7 @@ export function parseType(t) {
 // ----- TUYẾN: tách điểm đón → điểm đến, làm sạch giờ/ghế/giá ở đầu -----
 // Dấu phân tách rất đa dạng: >>>, --->, =>>>, ==}}, ->, →, "về", "đi",
 // gạch dưới dài ____, gạch nối " - ", dấu ".." v.v.
-const ROUTE_SPLIT = /\s*(?:={0,3}>{1,}|-{2,}>?|->|→|⇒|»+|_{2,}|\u2192|\.{3,}|\s-\s(?!\d)|(?<=[a-zA-Z\xC0-ỹ])-(?=[a-zA-Z\xC0-ỹ])|\bvề\b|\bve\b|\blên\b|\blen\b|\bđi\b(?!\s*ngay)|\bra\b|\bsang\b)\s*/i;
+const ROUTE_SPLIT = /\s*(?:={0,3}[>}]{1,}|-{2,}>?|->|→|⇒|»+|_{2,}|\u2192|\.{3,}|\s-\s(?!\d)|(?<=[a-zA-Z\xC0-ỹ])-(?=[a-zA-Z\xC0-ỹ])|\bvề\b|\bve\b|\blên\b(?!\s*(?:xe|tàu|tau|phà|pha|bus|máy|may)\b)|\blen\b|\bđi\b(?!\s*ngay)|\bra\b|\bsang\b)\s*/i;
 
 export function parseRoute(t) {
   // Strip nội dung ngoặc đơn (...) — luôn là ghi chú, không phải địa điểm
