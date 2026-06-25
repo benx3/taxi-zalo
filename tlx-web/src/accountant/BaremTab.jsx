@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { api } from "./api.js";
-import { Plus, Trash2, Save, X, ChevronDown, ChevronUp, Check, Search } from "lucide-react";
+import { Plus, Trash2, Save, X, ChevronDown, ChevronUp, Check, Search, Download, Upload } from "lucide-react";
 
 const TRIP_TYPES = [
   { value: "bao_xe",        label: "Bao xe 1 chiều" },
@@ -29,6 +29,7 @@ export default function BaremTab({ groupId }) {
   const [ktUid, setKtUid] = useState("");
   const [ktSaving, setKtSaving] = useState(false);
   const [members, setMembers] = useState([]);
+  const importRef = React.useRef(null);
 
   const load = () => {
     if (!groupId) return;
@@ -65,6 +66,36 @@ export default function BaremTab({ groupId }) {
     finally { setKtSaving(false); }
   };
 
+  const exportBarem = () => {
+    const payload = { version: 1, rules, raw_text: rawText };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `barem_${groupId}_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importBarem = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!Array.isArray(data.rules)) throw new Error("File không hợp lệ — thiếu trường 'rules'");
+        setRules(data.rules);
+        if (typeof data.raw_text === "string") setRawText(data.raw_text);
+        flash(true, `Đã nhập ${data.rules.length} quy tắc — nhớ bấm "Lưu barem" để lưu.`);
+      } catch (err) {
+        flash(false, "Lỗi đọc file: " + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const addRule = () => setRules(r => [...r, emptyRule()]);
   const removeRule = (i) => setRules(r => r.filter((_, idx) => idx !== i));
   const updateRule = (i, field, val) => setRules(r => r.map((rule, idx) => idx === i ? { ...rule, [field]: val } : rule));
@@ -76,8 +107,15 @@ export default function BaremTab({ groupId }) {
 
   return (
     <div style={{ padding: "0 16px 80px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 0 10px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 0 10px", flexWrap: "wrap" }}>
         <span style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>Biểu điểm (Barem)</span>
+        <input ref={importRef} type="file" accept=".json" style={{ display: "none" }} onChange={importBarem} />
+        <button onClick={() => importRef.current?.click()} title="Nhập barem từ file JSON" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 13px", borderRadius: 10, border: "1px solid var(--line)", cursor: "pointer", fontWeight: 700, fontSize: 13, background: "rgba(99,102,241,.12)", color: "#a5b4fc" }}>
+          <Upload size={14} /> Nhập
+        </button>
+        <button onClick={exportBarem} title="Xuất barem ra file JSON" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 13px", borderRadius: 10, border: "1px solid var(--line)", cursor: "pointer", fontWeight: 700, fontSize: 13, background: "rgba(99,102,241,.12)", color: "#a5b4fc" }}>
+          <Download size={14} /> Xuất
+        </button>
         <button onClick={save} disabled={saving} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 10, border: "none", cursor: saving ? "default" : "pointer", fontWeight: 800, fontSize: 13, background: "linear-gradient(135deg,#22c55e,#16a34a)", color: "#04140a" }}>
           <Save size={14} /> {saving ? "Đang lưu…" : "Lưu barem"}
         </button>
