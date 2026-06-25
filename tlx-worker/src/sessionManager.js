@@ -672,7 +672,7 @@ async function onMessage(sess, msg) {
     // AI fallback khi regex không parse được và AI được bật
     if (trips.length === 0 && config.aiEnabled && (config.groqApiKey || config.geminiApiKey)) {
       try {
-        const ai = await parseWithAI(text);
+        const ai = await parseWithAI(text, msgId);
         const t = aiToTrip(ai, { groupId, groupName, senderId, senderName, msgId, time, text });
         if (t) { trips = [t]; console.log(`[${sess.userId}] 🤖 AI parse: ${t.type} ${t.price}k ${t.route?.from}→${t.route?.to}`); }
       } catch (e) {

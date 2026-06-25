@@ -4,6 +4,14 @@
 // ============================================================
 import { config } from "./config.js";
 
+// Cache kết quả AI theo msgId — tránh gọi lại khi nhiều session cùng theo 1 nhóm
+const _cache = new Map(); // msgId → { result, ts }
+const CACHE_TTL = 5 * 60 * 1000; // 5 phút
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of _cache) if (now - v.ts > CACHE_TTL) _cache.delete(k);
+}, 60_000);
+
 const SYSTEM_PROMPT = `Bạn phân tích tin nhắn đặt xe taxi trong nhóm Zalo VIP taxi tại Hà Nội/Hà Nam.
 Trả về JSON hợp lệ duy nhất, không có markdown hay giải thích.
 
@@ -130,34 +138,41 @@ async function callGemini(text, key) {
   return JSON.parse(d.candidates[0].content.parts[0].text);
 }
 
-export async function parseWithAI(text) {
+export async function parseWithAI(text, msgId) {
+  // Cache hit — cùng tin nhắn, nhiều session cùng nhóm không gọi AI lại
+  if (msgId && _cache.has(msgId)) {
+    return _cache.get(msgId).result;
+  }
+
   const { groqApiKey, geminiApiKey } = config;
   let lastErr = null;
+  let result = null;
 
   if (groqApiKey) {
     try {
-      const result = await callGroq(text, groqApiKey);
+      result = await callGroq(text, groqApiKey);
       console.log(`[AI] Groq OK — isTrip=${result?.isTrip} price=${result?.price}`);
-      return result;
     } catch (e) {
       lastErr = e;
       console.warn(`[AI] Groq lỗi: ${e.message}`);
     }
   }
 
-  if (geminiApiKey) {
+  if (!result && geminiApiKey) {
     try {
-      const result = await callGemini(text, geminiApiKey);
+      result = await callGemini(text, geminiApiKey);
       console.log(`[AI] Gemini OK — isTrip=${result?.isTrip} price=${result?.price}`);
-      return result;
     } catch (e) {
       lastErr = e;
       console.warn(`[AI] Gemini lỗi: ${e.message}`);
     }
   }
 
-  if (lastErr) throw lastErr;
-  return null;
+  // Lưu cache kể cả khi result=null (để không retry cho tin không phải cuốc)
+  if (msgId) _cache.set(msgId, { result, ts: Date.now() });
+
+  if (!result && lastErr) throw lastErr;
+  return result;
 }
 
 export function aiToTrip(ai, raw) {
