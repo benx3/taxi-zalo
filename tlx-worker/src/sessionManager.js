@@ -368,6 +368,15 @@ function onMessage(sess, msg) {
     if (senderId && sess.isAccountant) {
       Promise.resolve(dbm.upsertMember(dbGroupId, senderId, { display_name: senderName !== "Không rõ" ? senderName : null }))
         .catch(() => {});
+      // Lưu cả những người bị tag trong tin nhắn (kể cả khi họ chưa chat lần nào)
+      const mentioned = msg.data?.mentions || [];
+      for (const mn of mentioned) {
+        const uid = String(mn.uid);
+        const name = mn.display_name || mn.dName || null;
+        if (uid && uid !== String(sess.selfId)) {
+          Promise.resolve(dbm.upsertMember(dbGroupId, uid, { display_name: name || undefined })).catch(() => {});
+        }
+      }
     }
 
     // (A.0) San điểm: ai đó tag kế toán + "san" + số điểm → tạo pending transfer
