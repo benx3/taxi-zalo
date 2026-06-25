@@ -667,29 +667,35 @@ async function onMessage(sess, msg) {
     }
 
     // (B) cuốc mới — 1 tin có thể chứa nhiều cuốc
-    let trips = parseMultipleTrips({ groupId, groupName, senderId, senderName, msgId, text, time });
+    const mode = config.parseMode || "regex";
+    const hasAIKey = !!(config.groqApiKey || config.geminiApiKey);
 
-    // AI: (1) fallback khi regex bỏ qua hoàn toàn, hoặc (2) enrich khi regex parse được nhưng thiếu route
-    const needAI = config.aiEnabled && (config.groqApiKey || config.geminiApiKey) &&
-      (trips.length === 0 || trips.some(t => !t.route || (t.route.from === "?" && t.route.to === "?")));
-    if (needAI) {
-      try {
-        const ai = await parseWithAI(text, msgId);
-        if (trips.length === 0) {
-          // Fallback: regex không ra gì, thử tạo trip từ AI
-          const t = aiToTrip(ai, { groupId, groupName, senderId, senderName, msgId, time, text });
-          if (t) { trips = [t]; console.log(`[${sess.userId}] 🤖 AI new: ${t.type} ${t.price}k ${t.route?.from}→${t.route?.to}`); }
-        } else if (ai?.isTrip && (ai.from || ai.to)) {
-          // Enrich: bổ sung route + tripType vào trip regex đã parse
-          trips = trips.map(t => (!t.route || (t.route.from === "?" && t.route.to === "?")) ? {
-            ...t,
-            route: { from: ai.from || "?", to: ai.to || "?" },
-            tripType: ai.tripType || t.tripType || null,
-          } : t);
-          console.log(`[${sess.userId}] 🤖 AI enrich: ${ai.from}→${ai.to} (${ai.tripType})`);
+    // Bước 1: Regex (bỏ qua nếu mode==="ai")
+    let trips = (mode !== "ai")
+      ? parseMultipleTrips({ groupId, groupName, senderId, senderName, msgId, text, time })
+      : [];
+
+    // Bước 2: AI (chỉ khi mode!=="regex" và có key)
+    if (mode !== "regex" && hasAIKey) {
+      const needFallback = trips.length === 0;
+      const needEnrich = trips.length > 0 && trips.some(t => !t.route || (t.route.from === "?" && t.route.to === "?"));
+      if (needFallback || needEnrich) {
+        try {
+          const ai = await parseWithAI(text, msgId);
+          if (needFallback) {
+            const t = aiToTrip(ai, { groupId, groupName, senderId, senderName, msgId, time, text });
+            if (t) { trips = [t]; console.log(`[${sess.userId}] 🤖 AI new: ${t.type} ${t.price}k ${t.route?.from}→${t.route?.to}`); }
+          } else if (needEnrich && ai?.isTrip && (ai.from || ai.to)) {
+            trips = trips.map(t => (!t.route || (t.route.from === "?" && t.route.to === "?")) ? {
+              ...t,
+              route: { from: ai.from || "?", to: ai.to || "?" },
+              tripType: ai.tripType || t.tripType || null,
+            } : t);
+            console.log(`[${sess.userId}] 🤖 AI enrich: ${ai.from}→${ai.to} (${ai.tripType})`);
+          }
+        } catch (e) {
+          console.warn(`[${sess.userId}] AI parse lỗi: ${e?.message || e}`);
         }
-      } catch (e) {
-        console.warn(`[${sess.userId}] AI parse lỗi: ${e?.message || e}`);
       }
     }
 

@@ -21,7 +21,7 @@ await dbm.purgeOld();
 config.voiceEnabled = (await dbm.getSetting("voice_enabled", "1")) === "1";
 const _storedFptKey = await dbm.getSetting("fpt_stt_api_key", null);
 if (_storedFptKey) config.fptSttApiKey = _storedFptKey;
-config.aiEnabled = (await dbm.getSetting("ai_enabled", "0")) === "1";
+config.parseMode = (await dbm.getSetting("parse_mode", "regex")) || "regex";
 const _groqKey = await dbm.getSetting("groq_api_key", null);
 if (_groqKey) config.groqApiKey = _groqKey;
 const _geminiKey = await dbm.getSetting("gemini_api_key", null);
@@ -135,7 +135,7 @@ app.get("/api/admin/settings", async (req, res) => {
     voice_enabled: config.voiceEnabled,
     fpt_api_key_set: !!key,
     fpt_api_key_hint: key ? "****" + key.slice(-4) : null,
-    ai_enabled: config.aiEnabled,
+    parse_mode: config.parseMode,
     groq_key_set: !!config.groqApiKey,
     groq_key_hint: config.groqApiKey ? "****" + config.groqApiKey.slice(-4) : null,
     gemini_key_set: !!config.geminiApiKey,
@@ -156,10 +156,11 @@ app.post("/api/admin/settings", async (req, res) => {
     config.fptSttApiKey = trimmed || null;
     return res.json({ ok: true, fpt_api_key_set: !!trimmed, fpt_api_key_hint: trimmed ? "****" + trimmed.slice(-4) : null });
   }
-  if (key === "ai_enabled") {
-    await dbm.setSetting("ai_enabled", value ? "1" : "0");
-    config.aiEnabled = !!value;
-    return res.json({ ok: true, ai_enabled: !!value });
+  if (key === "parse_mode") {
+    const mode = ["regex", "both", "ai"].includes(value) ? value : "regex";
+    await dbm.setSetting("parse_mode", mode);
+    config.parseMode = mode;
+    return res.json({ ok: true, parse_mode: mode });
   }
   if (key === "groq_api_key") {
     const trimmed = String(value || "").trim();

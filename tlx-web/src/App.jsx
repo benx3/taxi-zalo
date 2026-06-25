@@ -106,13 +106,13 @@ function AdminSettingsTab() {
     finally { setSaving(null); }
   };
 
-  const toggleAI = async () => {
+  const setParseMode = async (mode) => {
     setSaving("ai");
     try {
-      const next = !settings.ai_enabled;
-      await api.setSetting("ai_enabled", next);
-      setSettings(s => ({ ...s, ai_enabled: next }));
-      flash(true, next ? "Đã bật AI parse cuốc xe." : "Đã tắt AI parse cuốc xe.");
+      await api.setSetting("parse_mode", mode);
+      setSettings(s => ({ ...s, parse_mode: mode }));
+      const labels = { regex: "Chỉ Regex", both: "Regex + AI", ai: "Chỉ AI" };
+      flash(true, `Chế độ parse: ${labels[mode]}`);
     } catch (e) { flash(false, e.message || "Lỗi lưu"); }
     finally { setSaving(null); }
   };
@@ -215,29 +215,36 @@ function AdminSettingsTab() {
 
       {/* AI Parse */}
       <div style={cardStyle}>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
           <Bot size={17} color="#f59e0b"/>
-          <span style={{fontWeight:700,fontSize:15}}>AI Parse cuốc xe (Groq + Gemini)</span>
-          <span style={{marginLeft:"auto"}}>
-            {settings === null
-              ? <span style={{color:"var(--ink-dim)",fontSize:13}}>Đang tải…</span>
-              : <button onClick={toggleAI} disabled={!!saving} style={{
-                  display:"inline-flex",alignItems:"center",gap:7,padding:"7px 18px",
-                  borderRadius:99,cursor:saving?"default":"pointer",fontWeight:700,fontSize:13,
-                  background:settings.ai_enabled?"rgba(245,158,11,.15)":"rgba(239,68,68,.1)",
-                  color:settings.ai_enabled?"#f59e0b":"#f87171",
-                  border:"1px solid "+(settings.ai_enabled?"#f59e0b55":"#f8717155"),
-                }}>
-                  <span style={{width:9,height:9,borderRadius:99,background:settings.ai_enabled?"#f59e0b":"#f87171",display:"inline-block"}}/>
-                  {saving==="ai" ? "Đang lưu…" : settings.ai_enabled ? "Đang BẬT" : "Đang TẮT"}
-                </button>
-            }
-          </span>
+          <span style={{fontWeight:700,fontSize:15}}>Chế độ parse cuốc xe</span>
         </div>
-        <p style={{color:"var(--ink-dim)",fontSize:13,lineHeight:1.6,margin:"0 0 14px"}}>
-          Khi <b>bật</b>: tin nhắn regex không parse được sẽ gửi lên AI (Groq trước, Gemini fallback). AI hiểu viết tắt taxi, tuyến tỉnh, sân bay, và phân loại nội thành/ngoại thành/liên tỉnh.<br/>
-          Khi <b>tắt</b>: chỉ dùng regex, không tốn API.
-        </p>
+        {settings === null ? <div style={{color:"var(--ink-dim)",fontSize:13,marginBottom:14}}>Đang tải…</div> : (() => {
+          const cur = settings.parse_mode || "regex";
+          const modes = [
+            { key:"regex", label:"Chỉ Regex", desc:"Nhanh, miễn phí, không cần API key", color:"#60a5fa" },
+            { key:"both",  label:"Regex + AI", desc:"Regex trước, AI bổ sung khi thiếu route", color:"#f59e0b" },
+            { key:"ai",    label:"Chỉ AI",     desc:"Bỏ qua regex, AI xử lý toàn bộ", color:"#a78bfa" },
+          ];
+          return (
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              {modes.map(m => {
+                const sel = cur === m.key;
+                return (
+                  <button key={m.key} onClick={()=>!saving&&setParseMode(m.key)} style={{
+                    flex:1,padding:"10px 8px",borderRadius:12,cursor:saving?"default":"pointer",
+                    border:"2px solid "+(sel?m.color:"var(--line)"),
+                    background:sel?`${m.color}18`:"transparent",
+                    textAlign:"center",transition:"all .15s",
+                  }}>
+                    <div style={{fontWeight:800,fontSize:13,color:sel?m.color:"var(--ink-dim)",marginBottom:3}}>{m.label}</div>
+                    <div style={{fontSize:11,color:"var(--ink-dim)",lineHeight:1.4}}>{m.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {/* Groq Key */}
         <div style={{marginBottom:14}}>

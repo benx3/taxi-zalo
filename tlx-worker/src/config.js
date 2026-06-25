@@ -3,7 +3,7 @@
 export const config = {
   voiceEnabled: true,  // DB ghi đè khi khởi động
   fptSttApiKey: null,  // DB ghi đè khi khởi động; fallback sang env FPT_STT_API_KEY
-  aiEnabled: false,    // Bật/tắt AI parse (Groq + Gemini)
+  parseMode: "regex",  // "regex" | "both" | "ai"
   groqApiKey: null,    // Groq API key (ưu tiên đầu)
   geminiApiKey: null,  // Gemini API key (fallback)
 };
