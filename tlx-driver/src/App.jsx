@@ -3,7 +3,7 @@ import {
   Car, Package, Users, Plane, Search, Zap, Clock, Wallet, CheckCircle2,
   CreditCard, Ban, X, Megaphone, User, Radio, ArrowRight, Hourglass, Sparkles,
   Filter, MessageCircle, Lock, Phone, QrCode, LogOut, UserPlus, AlertTriangle,
-  ChevronRight, Settings, ListChecks, WifiOff, MapPin, ChevronDown, Mic
+  ChevronRight, Settings, ListChecks, WifiOff, MapPin, ChevronDown, Mic, Download
 } from "lucide-react";
 import { useWorker } from "./useWorker.js";
 import { api, getToken, setToken } from "./api.js";
@@ -221,7 +221,18 @@ function ConnectZalo({ worker, me, onConnected, onLogout }) {
         </div>
       </div>
       {zaloReady ? <div style={{textAlign:"center",color:"#34d399",fontWeight:800}}>Đã kết nối! Đang vào…</div>
-        : requested ? <div style={{textAlign:"center",color:"#f59e0b",fontWeight:700,fontSize:14}}><Hourglass size={15} style={{verticalAlign:-2,marginRight:5}}/> Đang chờ bạn quét QR…</div>
+        : requested ? <>
+            <div style={{textAlign:"center",color:"#f59e0b",fontWeight:700,fontSize:14,marginBottom:10}}><Hourglass size={15} style={{verticalAlign:-2,marginRight:5}}/> Đang chờ bạn quét QR…</div>
+            {qr && <button onClick={()=>{
+              const src=qr.startsWith("data:")?qr:`data:image/png;base64,${qr}`;
+              const a=document.createElement("a"); a.href=src; a.download="zalo-qr.png"; a.click();
+            }} style={{...primaryBtn,background:"rgba(0,104,255,.15)",color:"#60a5fa",border:"1px solid rgba(0,104,255,.3)",marginBottom:4}}>
+              <Download size={16} style={{marginRight:7,verticalAlign:-3}}/> Tải QR về máy để quét
+            </button>}
+            <div style={{textAlign:"center",fontSize:12,color:"var(--ink-dim)",lineHeight:1.5}}>
+              Mở Zalo → Quét QR → <b style={{color:"var(--ink)"}}>Chọn ảnh</b> → chọn file vừa tải
+            </div>
+          </>
         : <button onClick={start} disabled={!connected} style={{...primaryBtn,background:"linear-gradient(135deg,#0068ff,#0052cc)",color:"#fff",opacity:connected?1:0.5}}><QrCode size={17} style={{marginRight:7,verticalAlign:-3}}/> Hiện mã QR Zalo</button>}
       <button onClick={onLogout} style={{...ghostFull,marginTop:12,color:"var(--ink-dim)",fontSize:13}}><LogOut size={14} style={{marginRight:6,verticalAlign:-2}}/> Đăng xuất tài khoản</button>
     </AuthShell>
