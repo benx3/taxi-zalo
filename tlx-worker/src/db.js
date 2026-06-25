@@ -494,6 +494,16 @@ export function getGroupAccountants(groupId) {
     ORDER BY u.phone COLLATE NOCASE ASC
   `).all(groupId);
 }
+export function getGroupZaloOwner(groupId, excludeAccountantId) {
+  return db.prepare(`
+    SELECT ag.accountant_id, u.name
+    FROM accountant_groups ag
+    JOIN zalo_sessions zs ON zs.user_id = ag.accountant_id
+    JOIN users u ON u.id = ag.accountant_id
+    WHERE ag.group_id = ? AND ag.accountant_id != ? AND zs.zalo_uid IS NOT NULL
+    ORDER BY zs.zalo_uid ASC LIMIT 1
+  `).get(groupId, excludeAccountantId) || null;
+}
 export function setGroupPublicVisible(accountantId, groupId, visible) {
   db.prepare("UPDATE accountant_groups SET public_visible=? WHERE accountant_id=? AND group_id=?")
     .run(visible ? 1 : 0, accountantId, groupId);

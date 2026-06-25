@@ -382,6 +382,17 @@ export async function getGroupAccountants(groupId) {
   `, [groupId]);
   return r.rows;
 }
+export async function getGroupZaloOwner(groupId, excludeAccountantId) {
+  const r = await q(`
+    SELECT ag.accountant_id, u.name
+    FROM accountant_groups ag
+    JOIN zalo_sessions zs ON zs.user_id = ag.accountant_id
+    JOIN users u ON u.id = ag.accountant_id
+    WHERE ag.group_id = $1 AND ag.accountant_id != $2 AND zs.zalo_uid IS NOT NULL
+    ORDER BY zs.zalo_uid ASC LIMIT 1
+  `, [groupId, excludeAccountantId]);
+  return r.rows[0] || null;
+}
 export async function setGroupPublicVisible(accountantId, groupId, visible) {
   await q("UPDATE accountant_groups SET public_visible=$1 WHERE accountant_id=$2 AND group_id=$3",
     [visible ? 1 : 0, accountantId, groupId]);

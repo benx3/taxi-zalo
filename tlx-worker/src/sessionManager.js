@@ -895,22 +895,18 @@ export async function setWatchedGroups(userId, groupIds) {
           if (rec) { canonicalId = rec.group_id; groupName = rec.group_name || gId; }
         }
 
-        // Kiểm tra conflict CHO TẤT CẢ nhóm — kể cả nhóm đã theo dõi từ trước
-        // Tránh 2 session cùng monitor 1 nhóm khi cả 2 đều có sẵn trong DB
-        const groupAccountants = await dbm.getGroupAccountants(canonicalId);
-        const otherAccountant = groupAccountants.find(a => a.accountant_id !== userId);
-        if (otherAccountant) {
-          // Sorted by phone ASC → phần tử đầu là primary owner (quyết định ai được giữ nhóm)
-          const primaryOwner = groupAccountants[0];
-          if (primaryOwner.accountant_id !== userId) {
-            console.warn(`[${userId}] ⛔ Nhóm "${groupName}" ưu tiên cho kế toán ${primaryOwner.accountant_id} — từ chối`);
+        // Conflict: chỉ block khi session này CÓ Zalo (selfId set) VÀ nhóm đã có Zalo kế toán khác
+        // Kế toán không có Zalo luôn được thêm nhóm để quản lý web bình thường
+        if (sess.selfId) {
+          const zaloOwner = await dbm.getGroupZaloOwner(canonicalId, userId);
+          if (zaloOwner) {
+            console.warn(`[${userId}] ⛔ Nhóm "${groupName}" đã có Zalo kế toán "${zaloOwner.name}" — từ chối Zalo monitor`);
             sess.onEvent(userId, {
               type: "group_conflict",
               groupId: gId,
               groupName,
-              ownerName: primaryOwner.name || primaryOwner.accountant_id,
+              ownerName: zaloOwner.name || zaloOwner.accountant_id,
             });
-            // Không xóa accountant_groups — họ vẫn xem web được, chỉ không monitor Zalo
             const idx = acceptedIds.indexOf(gId);
             if (idx !== -1) acceptedIds.splice(idx, 1);
             continue;
