@@ -296,17 +296,22 @@ app.post("/api/accountant/members/import-confirm", async (req, res) => {
   if (!groupId || !Array.isArray(rows)) return res.status(400).json({ error: "Thiếu groupId hoặc rows" });
   if (!await checkGroupAccess(req, res, groupId)) return;
   const batchTs = Date.now();
-  let added = 0;
+  let added = 0, merged = 0;
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     if (row.status === "found_exists") continue;
     const uid = row.uid || `~imp_${batchTs}_${i}`;
     try {
       await dbm.upsertMember(groupId, uid, { phone: row.sdt || null, display_name: row.ten || null });
+      // Nếu tìm được uid thật, merge thành viên tạm cùng SĐT (nếu có)
+      if (row.uid && row.sdt) {
+        const did = await dbm.mergeTempMember(groupId, row.uid, row.sdt);
+        if (did) merged++;
+      }
       added++;
     } catch {}
   }
-  res.json({ ok: true, added });
+  res.json({ ok: true, added, merged });
 });
 
 // Giao dịch điểm
@@ -324,6 +329,15 @@ app.post("/api/accountant/adjust-points", async (req, res) => {
     if (displayName) await dbm.upsertMember(groupId, zaloUid, { display_name: displayName });
     const txId = await dbm.adjustPoints(groupId, zaloUid, Number(delta), reason || "Kế toán chỉnh tay");
     res.json({ ok: true, txId });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.delete("/api/accountant/members/:groupId/:zaloUid", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  const { groupId, zaloUid } = req.params;
+  if (!await checkGroupAccess(req, res, groupId)) return;
+  try {
+    const deleted = await dbm.deleteMember(groupId, zaloUid);
+    res.json({ ok: true, deleted });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 app.patch("/api/accountant/transactions/:id", async (req, res) => {

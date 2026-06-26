@@ -582,6 +582,31 @@ export function deleteRemovedMembers(groupId, activeUids) {
   return db.prepare(`DELETE FROM members WHERE group_id=? AND zalo_uid NOT IN (${placeholders})`)
     .run(groupId, ...activeUids).changes;
 }
+export function deleteMember(groupId, zaloUid) {
+  return db.prepare("DELETE FROM members WHERE group_id=? AND zalo_uid=?")
+    .run(groupId, zaloUid).changes;
+}
+// Merge thành viên tạm (~imp_*) vào thành viên thật khi tìm được SĐT khớp
+export function mergeTempMember(groupId, realUid, phone) {
+  if (!phone) return false;
+  const temp = db.prepare("SELECT * FROM members WHERE group_id=? AND phone=? AND zalo_uid LIKE '~imp_%'")
+    .get(groupId, phone);
+  if (!temp) return false;
+  db.transaction(() => {
+    // Cộng điểm từ temp vào thành viên thật
+    db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
+      .run(temp.points || 0, now(), groupId, realUid);
+    // Chuyển lịch sử giao dịch
+    db.prepare("UPDATE point_transactions SET from_member=? WHERE group_id=? AND from_member=?")
+      .run(realUid, groupId, temp.zalo_uid);
+    db.prepare("UPDATE point_transactions SET to_member=? WHERE group_id=? AND to_member=?")
+      .run(realUid, groupId, temp.zalo_uid);
+    // Xóa thành viên tạm
+    db.prepare("DELETE FROM members WHERE group_id=? AND zalo_uid=?")
+      .run(groupId, temp.zalo_uid);
+  })();
+  return true;
+}
 // Trả về zalo_uid của kế toán có selfId nhỏ nhất trong nhóm → đó là primary session
 // Dùng LENGTH + text sort để đảm bảo đúng thứ tự số nguyên mà không cần CAST (tránh overflow)
 export function getPrimaryAccountantSelfIdForGroup(groupId) {

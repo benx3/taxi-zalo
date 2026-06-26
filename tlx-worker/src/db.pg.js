@@ -467,6 +467,24 @@ export async function deleteRemovedMembers(groupId, activeUids) {
   );
   return r.rowCount;
 }
+export async function deleteMember(groupId, zaloUid) {
+  const r = await q("DELETE FROM members WHERE group_id=$1 AND zalo_uid=$2", [groupId, zaloUid]);
+  return r.rowCount;
+}
+export async function mergeTempMember(groupId, realUid, phone) {
+  if (!phone) return false;
+  const t = await q("SELECT * FROM members WHERE group_id=$1 AND phone=$2 AND zalo_uid LIKE '~imp_%'", [groupId, phone]);
+  const temp = t.rows[0];
+  if (!temp) return false;
+  await q("UPDATE members SET points=ROUND(COALESCE(points,0)+$1,10), updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
+    [temp.points || 0, now(), groupId, realUid]);
+  await q("UPDATE point_transactions SET from_member=$1 WHERE group_id=$2 AND from_member=$3",
+    [realUid, groupId, temp.zalo_uid]);
+  await q("UPDATE point_transactions SET to_member=$1 WHERE group_id=$2 AND to_member=$3",
+    [realUid, groupId, temp.zalo_uid]);
+  await q("DELETE FROM members WHERE group_id=$1 AND zalo_uid=$2", [groupId, temp.zalo_uid]);
+  return true;
+}
 export async function getPrimaryAccountantSelfIdForGroup(groupId) {
   const r = await q(`
     SELECT zs.zalo_uid FROM accountant_groups ag

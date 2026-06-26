@@ -296,8 +296,9 @@ export default function MembersTab({ groupId }) {
                   <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {m.alias || m.display_name || m.zalo_uid}
                     {m.alias && <span style={{ fontSize: 11, color: "var(--ink-dim)", fontWeight: 400, marginLeft: 5 }}>({m.display_name})</span>}
+                    {(m.zalo_uid || "").startsWith("~imp_") && <span style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,.15)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 4, padding: "1px 5px", marginLeft: 6 }}>TẠM</span>}
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--ink-dim)", marginTop: 1 }}>#{(m.zalo_uid || "").slice(-6)}</div>
+                  <div style={{ fontSize: 11, color: "var(--ink-dim)", marginTop: 1 }}>#{(m.zalo_uid || "").slice(-6)}{m.phone ? ` · ${m.phone}` : ""}</div>
                 </button>
                 <div style={{ fontWeight: 800, fontSize: 15, color: pointColor(m.points), textAlign: "right", paddingRight: 8 }}>
                   {fmtPts(m.points)}
@@ -517,6 +518,20 @@ function MemberDetail({ member, groupId, onBack }) {
   const [aliasVal, setAliasVal] = useState(member.alias || "");
   const [aliasSaving, setAliasSaving] = useState(false);
   const [aliasErr, setAliasErr] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const isTemp = (m.zalo_uid || "").startsWith("~imp_");
+
+  const doDelete = async () => {
+    setDeleting(true);
+    try {
+      await api.deleteMember(groupId, m.zalo_uid);
+      onBack();
+    } catch (e) {
+      alert("Lỗi xóa: " + e.message);
+      setDeleting(false); setConfirmDel(false);
+    }
+  };
 
   const reload = () => {
     setLoadingTx(true);
@@ -552,7 +567,7 @@ function MemberDetail({ member, groupId, onBack }) {
         <div style={{ fontWeight: 800, fontSize: 22, color: pointColor(m.points), flexShrink: 0 }}>{fmtPts(m.points)}</div>
       </div>
 
-      {/* Biệt danh + Chỉnh điểm */}
+      {/* Biệt danh + Chỉnh điểm + Xóa */}
       <div style={{ padding: "12px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button onClick={() => setShowAdjust(true)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "10px 18px", borderRadius: 10, border: "1px solid var(--accent-dim)", background: "rgba(52,211,153,.1)", color: "var(--accent)", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
           <Edit2 size={14} /> Chỉnh điểm
@@ -560,6 +575,18 @@ function MemberDetail({ member, groupId, onBack }) {
         <button onClick={() => setEditAlias(v => !v)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "10px 18px", borderRadius: 10, border: "1px solid var(--line)", background: editAlias ? "rgba(96,165,250,.1)" : "transparent", color: "#60a5fa", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
           <Edit2 size={14} /> {m.alias ? "Sửa biệt danh" : "Đặt biệt danh"}
         </button>
+        {!confirmDel
+          ? <button onClick={() => setConfirmDel(true)} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 7, padding: "10px 18px", borderRadius: 10, border: "1px solid rgba(248,113,113,.3)", background: "rgba(248,113,113,.08)", color: "#f87171", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+              <Trash2 size={14} /> Xóa{isTemp ? " (thành viên tạm)" : ""}
+            </button>
+          : <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 13, color: "#f87171", fontWeight: 600 }}>Xóa thành viên này?</span>
+              <button onClick={doDelete} disabled={deleting} style={{ padding: "8px 14px", borderRadius: 9, border: "none", background: "#ef4444", color: "#fff", fontWeight: 700, fontSize: 13, cursor: deleting ? "default" : "pointer" }}>
+                {deleting ? "…" : "Xác nhận"}
+              </button>
+              <button onClick={() => setConfirmDel(false)} style={{ padding: "8px 10px", borderRadius: 9, border: "1px solid var(--line)", background: "transparent", color: "var(--ink-dim)", cursor: "pointer" }}><X size={14} /></button>
+            </div>
+        }
       </div>
       {editAlias && (
         <div style={{ margin: "0 16px 12px", padding: "12px 14px", borderRadius: 10, background: "rgba(96,165,250,.07)", border: "1px solid rgba(96,165,250,.25)" }}>
