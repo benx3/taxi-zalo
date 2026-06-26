@@ -569,7 +569,6 @@ function TripCard({trip,state,onTake,onCancel}){
         <Tag color={meta.color} icon={Icon}>{trip.type}</Tag>{trip.time&&<Tag><Clock size={12}/> {trip.time.label}</Tag>}<Tag>{trip.seats}</Tag>
         {trip.car&&<Tag><Car size={12}/> {trip.car}</Tag>}{trip.free&&<Tag color="#34d399"><Sparkles size={11}/> free</Tag>}{trip.bonus&&<Tag color="#a78bfa">+{trip.bonus}</Tag>}{trip.isVoice&&<Tag color="#a78bfa"><Mic size={11}/> voice</Tag>}
         <span style={{marginLeft:"auto",display:"inline-flex",alignItems:"center",gap:8}}>
-          {trip.estPts>0&&<span style={{display:"inline-flex",alignItems:"center",gap:3,fontWeight:700,fontSize:13,color:"#a78bfa",background:"rgba(167,139,250,.12)",border:"1px solid rgba(167,139,250,.3)",borderRadius:7,padding:"3px 7px"}}>~{trip.estPts}đ</span>}
           {trip.price&&<span style={{display:"inline-flex",alignItems:"center",gap:5,fontWeight:800,fontSize:19,color:"#f87171",fontFamily:"var(--display)"}}><Wallet size={16}/> {trip.price}k</span>}
         </span>
       </div>
