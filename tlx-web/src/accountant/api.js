@@ -1,5 +1,11 @@
-const BASE = import.meta.env?.VITE_API_BASE || "http://localhost:8082";
-export const WS_BASE = import.meta.env?.VITE_WS_BASE || "ws://localhost:8082/ws";
+const _cfgBase = import.meta.env?.VITE_API_BASE || "http://localhost:8082";
+const BASE = (typeof window !== "undefined" && window.location.protocol === "https:" && _cfgBase.startsWith("http:"))
+  ? _cfgBase.replace("http:", "https:")
+  : _cfgBase;
+const _cfgWs = import.meta.env?.VITE_WS_BASE || "ws://localhost:8082/ws";
+export const WS_BASE = (typeof window !== "undefined" && window.location.protocol === "https:" && _cfgWs.startsWith("ws:"))
+  ? _cfgWs.replace("ws:", "wss:")
+  : _cfgWs;
 
 let token = localStorage.getItem("tlx_token") || null;
 export function getToken() { return token; }

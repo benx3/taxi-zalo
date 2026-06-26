@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getToken, WS_BASE } from "./api.js";
 
-const API_BASE = import.meta.env?.VITE_API_BASE || "http://localhost:8082";
+const _apiBase = import.meta.env?.VITE_API_BASE || "http://localhost:8082";
+const API_BASE = (typeof window !== "undefined" && window.location.protocol === "https:" && _apiBase.startsWith("http:"))
+  ? _apiBase.replace("http:", "https:")
+  : _apiBase;
 async function fetchPendingQR() {
   const token = getToken();
   if (!token) return null;

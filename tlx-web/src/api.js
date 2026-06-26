@@ -2,7 +2,11 @@
 // api.js — gọi HTTP API backend (đăng nhập, đăng ký, admin, Zalo QR)
 // ============================================================
 // Địa chỉ backend. Production: đặt VITE_API_BASE khi build (file .env của web).
-const BASE = import.meta.env?.VITE_API_BASE || "http://localhost:8082";
+const _cfgBase = import.meta.env?.VITE_API_BASE || "http://localhost:8082";
+// Khi trang chạy HTTPS mà API vẫn HTTP → tự upgrade để tránh mixed content
+const BASE = (typeof window !== "undefined" && window.location.protocol === "https:" && _cfgBase.startsWith("http:"))
+  ? _cfgBase.replace("http:", "https:")
+  : _cfgBase;
 
 let token = localStorage.getItem("tlx_token") || null;
 export function getToken() { return token; }
@@ -46,4 +50,7 @@ export const api = {
   setAccountantGroup: (accountantId, groupId, groupName, action) => req("/api/admin/accountant-groups", { accountantId, groupId, groupName, action }),
 };
 
-export const WS_BASE = import.meta.env?.VITE_WS_BASE || "ws://localhost:8082/ws";
+const _cfgWs = import.meta.env?.VITE_WS_BASE || "ws://localhost:8082/ws";
+export const WS_BASE = (typeof window !== "undefined" && window.location.protocol === "https:" && _cfgWs.startsWith("ws:"))
+  ? _cfgWs.replace("ws:", "wss:")
+  : _cfgWs;
