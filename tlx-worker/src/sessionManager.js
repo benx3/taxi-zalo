@@ -735,6 +735,7 @@ async function onMessage(sess, msg) {
         // Ước tính điểm theo barem (hiển thị ~ trên TripCard tài xế)
         if (trips[i].price > 0 && !trips[i].free) {
           const est = calcBaremPoints(rulesRow, trips[i].type, trips[i].price);
+          console.log(`[estPts] grp=${dbGroupId} type="${trips[i].type}" price=${trips[i].price} rules=${rulesRow ? "OK" : "null"} est=${est}`);
           if (est > 0) tripOut.estPts = est;
         }
         sess.onEvent(sess.userId, { type: "trip", trip: tripOut });
