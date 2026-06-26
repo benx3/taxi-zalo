@@ -303,9 +303,9 @@ app.post("/api/accountant/members/import-confirm", async (req, res) => {
     const uid = row.uid || `~imp_${batchTs}_${i}`;
     try {
       await dbm.upsertMember(groupId, uid, { phone: row.sdt || null, display_name: row.ten || null });
-      // Nếu tìm được uid thật, merge thành viên tạm cùng SĐT (nếu có)
-      if (row.uid && row.sdt) {
-        const did = await dbm.mergeTempMember(groupId, row.uid, row.sdt);
+      // Nếu tìm được uid thật, xóa thành viên tạm cùng tên (nếu có)
+      if (row.uid && row.ten) {
+        const did = await dbm.mergeTempMember(groupId, row.ten);
         if (did) merged++;
       }
       added++;

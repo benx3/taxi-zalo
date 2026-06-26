@@ -903,10 +903,13 @@ async function importGroupMembers(sess, zaloGroupId, canonicalGroupId = null) {
     for (const m of memberList) {
       const uid = m?.uid || m?.userId || m?.id;
       if (!uid) continue;
+      const displayName = m.dName || m.displayName || m.name || null;
       await dbm.upsertMember(dbGroupId, String(uid), {
-        display_name: m.dName || m.displayName || m.name || null,
+        display_name: displayName,
         avatar: m.avt || m.avatar || m.avatarUrl || null,
       });
+      // Xóa thành viên tạm (~imp_*) cùng tên nếu vừa tìm được người thật
+      if (displayName) await dbm.mergeTempMember(dbGroupId, displayName);
       count++;
       if (count % 10 === 0) await yieldLoop();
     }
