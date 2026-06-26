@@ -24,10 +24,10 @@ const sessions = new Map();
 
 // Cache barem rules theo groupId (TTL 90s) — tránh query DB mỗi tin nhắn
 const _rulesCache = new Map(); // groupId → { row, ts }
-function getBaremRulesCached(groupId) {
+async function getBaremRulesCached(groupId) {
   const entry = _rulesCache.get(groupId);
   if (entry && Date.now() - entry.ts < 90_000) return entry.row;
-  const row = dbm.getRules(groupId);
+  const row = await dbm.getRules(groupId);
   _rulesCache.set(groupId, { row, ts: Date.now() });
   return row;
 }
@@ -724,7 +724,7 @@ async function onMessage(sess, msg) {
             sess.tripMsgCache.delete(sess.tripMsgCache.keys().next().value);
         }
       }
-      const rulesRow = getBaremRulesCached(dbGroupId);
+      const rulesRow = await getBaremRulesCached(dbGroupId);
       for (let i = 0; i < trips.length; i++) {
         const subMsgId = trips.length === 1 ? msgId : `${msgId}_${i}`;
         const tripOut = { ...trips[i], msgId: subMsgId };
@@ -761,7 +761,7 @@ async function handleVoiceTrip(sess, base, rawMsg, voiceUrl) {
   console.log(`[${sess.userId}] 🎤 voice "${text.slice(0, 80)}"`);
   const trips = parseMultipleTrips({ ...base, text });
   if (trips.length === 0) return;
-  const rulesRow = getBaremRulesCached(resolveGroupId(sess, base.groupId));
+  const rulesRow = await getBaremRulesCached(resolveGroupId(sess, base.groupId));
   for (let i = 0; i < trips.length; i++) {
     const subMsgId = trips.length === 1 ? base.msgId : `${base.msgId}_${i}`;
     const tripOut = { ...trips[i], msgId: subMsgId, isVoice: true };

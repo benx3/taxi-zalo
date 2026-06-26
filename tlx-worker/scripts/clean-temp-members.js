@@ -5,8 +5,8 @@
  * Tự nhận SQLite hay PostgreSQL qua biến môi trường DATABASE_URL.
  *
  * Chạy từ thư mục tlx-worker:
- *   node clean-temp-members.js --dry-run   ← chỉ xem, chưa xóa
- *   node clean-temp-members.js             ← xóa thật
+ *   node scripts/clean-temp-members.js --dry-run   ← chỉ xem, chưa xóa
+ *   node scripts/clean-temp-members.js             ← xóa thật
  */
 
 import path from "path";
@@ -32,8 +32,6 @@ const SQL_FIND = `
   ORDER BY tmp.group_id, tmp.display_name
 `;
 
-const SQL_DEL = `DELETE FROM members WHERE group_id=$1 AND zalo_uid=$2`;
-
 // ── PostgreSQL ────────────────────────────────────────────────
 async function runPg() {
   const { default: pg } = await import("pg");
@@ -46,9 +44,8 @@ async function runPg() {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      for (const row of dupes) {
-        await client.query(SQL_DEL, [row.group_id, row.tmp_uid]);
-      }
+      for (const row of dupes)
+        await client.query("DELETE FROM members WHERE group_id=$1 AND zalo_uid=$2", [row.group_id, row.tmp_uid]);
       await client.query("COMMIT");
       console.log(`\n✅ Đã xóa ${dupes.length} thành viên tạm.`);
     } catch (e) {
@@ -68,7 +65,7 @@ async function runSqlite() {
   const DB_PATH = path.resolve(process.cwd(), "data/tlx.db");
   const db = new Database(DB_PATH, { readonly: DRY_RUN });
 
-  const dupes = db.prepare(SQL_FIND.replaceAll("$1", "?").replaceAll("$2", "?")).all();
+  const dupes = db.prepare(SQL_FIND).all();
   printDupes(dupes);
 
   if (!DRY_RUN && dupes.length > 0) {
@@ -87,9 +84,8 @@ function printDupes(dupes) {
     return;
   }
   console.log(`Tìm thấy ${dupes.length} thành viên tạm${DRY_RUN ? " (DRY RUN — chưa xóa)" : " — đang xóa..."}:\n`);
-  for (const row of dupes) {
+  for (const row of dupes)
     console.log(`  Nhóm ${row.group_id} | "${row.display_name}" | tạm: ${row.tmp_uid} → thật: ${row.real_uid}`);
-  }
   if (DRY_RUN) console.log(`\n→ Chạy lại không có --dry-run để xóa thật.`);
 }
 
