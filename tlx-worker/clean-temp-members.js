@@ -27,9 +27,9 @@ const dupes = db.prepare(`
   FROM members tmp
   JOIN members real
     ON real.group_id     = tmp.group_id
-   AND real.display_name = tmp.display_name
-   AND real.zalo_uid NOT LIKE '~imp_%'
-  WHERE tmp.zalo_uid LIKE '~imp_%'
+   AND TRIM(real.display_name) = TRIM(tmp.display_name)
+   AND real.zalo_uid NOT LIKE '%imp_%'
+  WHERE tmp.zalo_uid LIKE '%imp_%'
   ORDER BY tmp.group_id, tmp.display_name
 `).all();
 
