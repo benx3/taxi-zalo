@@ -575,9 +575,17 @@ async function onMessage(sess, msg) {
                 confirmTime: time, confirmPoster: senderName, confirmText: text,
                 multiTrips: cachedClaim.allTrips || null,
               });
-              await dbm.addBaremPending(dbGroupId, cachedClaim.tripPosterId, cachedClaim.takerId, pts, msgId, convo);
-              const multiNote = cachedClaim.allTrips ? ` [${cachedClaim.allTrips.length} cuốc — chờ KT xác nhận]` : "";
-              console.log(`[${sess.userId}] ⏳ Barem pending: ${pts}đ${multiNote} — chờ kế toán duyệt`);
+              if (cachedClaim.allTrips) {
+                // Tin có nhiều cuốc → không biết tài xế nhận cuốc nào → pending cho KT duyệt
+                await dbm.addBaremPending(dbGroupId, cachedClaim.tripPosterId, cachedClaim.takerId, pts, msgId, convo);
+                console.log(`[${sess.userId}] ⏳ Barem pending [${cachedClaim.allTrips.length} cuốc]: ${pts}đ — chờ kế toán duyệt`);
+              } else {
+                // Single trip → tự động áp dụng ngay
+                const reason = confirmPts > 0 ? `Chốt ${pts}đ (thỏa thuận)` : `Barem ${cachedClaim.tripType} ${cachedClaim.tripPrice}k`;
+                await dbm.adjustPoints(dbGroupId, cachedClaim.tripPosterId, +pts, reason, 'barem', msgId, null, null, convo);
+                await dbm.adjustPoints(dbGroupId, cachedClaim.takerId,      -pts, reason, 'barem', msgId, null, null, convo);
+                console.log(`[${sess.userId}] ✅ Barem auto: ${pts}đ | ${ptsSrc}`);
+              }
             } else {
               console.warn(`[${sess.userId}] ⚠️  Barem pts=0 — chưa có rule cho ${cachedClaim.tripType} ${cachedClaim.tripPrice}k`);
             }
