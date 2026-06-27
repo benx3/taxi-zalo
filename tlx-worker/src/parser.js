@@ -139,10 +139,10 @@ export function parseType(t) {
     return "Bao xe";
   }
   // Từ điển nhận diện chuyến sân bay
-  const AIRPORT_RE = /sân\s*bay|sân\s*qu[oô]c\s*t[eế]|sân\s*qu[oô]c\s*n[oô]i|bay\s*qu[oô]c\s*t[eế]|bay\s*qu[oô]c\s*n[oô]i|n[oô]i\s*b[àa]i|noi\s*bai|\bnb\b|\bsb\b|\bt1\b|\bt2\b|s[aả]nh|h[aạ]\s*s[aâ]n|h[aạ]\s*c[aá]nh|ch[uư][aâ]n\s*b[iị]\s*h[aạ]|đ[aá]p\s*xu[oô]ng/;
+  const AIRPORT_RE = /sân\s*bay|sân\s*qu[oô]c\s*t[eế]|sân\s*qu[oô]c\s*n[oô]i|bay\s*qu[oô]c\s*t[eế]|bay\s*qu[oô]c\s*n[oô]i|n[oô]i\s*b[àa]i|noi\s*bai|\bnb\b|\bsb\b|\bt1\b|\bt2\b|s[aả]nh|h[aạ]\s*s[aâ]n|h[aạ]\s*c[aá]nh|c[aấ]t\s*c[aá]nh|ch[uư][aâ]n\s*b[iị]\s*h[aạ]|đ[aá]p\s*xu[oô]ng/;
   if (AIRPORT_RE.test(l)) {
     if (/2\s*chi[eề]u|\b2c\b/.test(l)) return "Sân bay 2 chiều";
-    if (/ti[eễ]n|đưa\s*đi|dua\s*di/.test(l)) return "Sân bay tiễn";
+    if (/ti[eễ]n|đưa\s*đi|dua\s*di|c[aấ]t\s*c[aá]nh/.test(l)) return "Sân bay tiễn";
     if (/\bđón\b|\bdon\b|ra\s*đón|ra\s*don|h[aạ]\s*s[aâ]n|h[aạ]\s*c[aá]nh|đ[aá]p\s*xu[oô]ng/.test(l)) return "Sân bay đón";
     return "Sân bay";
   }
