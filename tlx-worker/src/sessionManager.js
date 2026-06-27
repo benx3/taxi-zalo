@@ -801,8 +801,8 @@ function detectBaremAction(text) {
   const t = noMarkLower(text);
   // "lịch hủy" / "hủy lịch" / "lich huy" / "huy lich"
   if (/lich\s*hu[y]?|hu[y]?\s*lich/.test(t)) return { type: 'cancel' };
-  // "lịch free" / "lich free"
-  if (/lich\s*free/.test(t)) return { type: 'free' };
+  // "lịch free" / standalone "free/freee/fre" — báo lịch miễn phí sau khi đã chốt
+  if (/lich\s*fre+e*|\bfre+e*\b/.test(t)) return { type: 'free' };
   // "lịch N" / "lịch +N" / "lịch -+N" — N là số điểm thỏa thuận mới
   const adj = t.match(/lich[\s:]*[-+]*\s*(\d+(?:[.,]\d+)?)\s*(?:d(?:iem)?)?(?=[\s,.]|$)/);
   if (adj) {
