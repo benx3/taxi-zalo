@@ -109,34 +109,55 @@ Ship hàng Cầu Giấy --- Bắc Từ Liêm 150k
 
 ---
 
-## 5. CÁCH NHẬN CUỐC (tài xế trả lời)
+## 5. CÁCH NHẬN CUỐC (tài xế reply vào tin đăng)
 
-Trả lời tin đăng cuốc bằng:
+### 5.1 Nhận bình thường
+
+Reply vào tin đăng cuốc bằng một trong các từ ngắn sau:
+
 ```
-ok
-oke
-oki
-ib
+ok      oke      oki      ib
 ```
 
-> **Quan trọng:** Trả lời ngắn gọn, **không kèm giá tiền** (ví dụ `ok 300k` sẽ bị bỏ qua vì hệ thống nhầm là cuốc mới).
+> **Lưu ý:** Không kèm giá tiền khi nhận. `ok 300k` bị hệ thống hiểu là cuốc mới, không phải nhận cuốc.
+
+---
+
+### 5.2 Nhận kèm thoả thuận điểm
+
+Nếu tài xế và chủ cuốc đã thoả thuận điểm khác barem, tài xế ghi điểm ngay trong tin nhận:
+
+| Cú pháp | Ví dụ |
+|---|---|
+| ok + số + đơn vị | `ok 1đ` · `oke 2d` · `okie 1.5đ` |
+| ok + số + từ đầy đủ | `ok 1 điểm` · `oke 0,5 diem` |
+| ok + ký hiệu +-/−+ | `ok +-1.5` · `oke -+2d` · `okie +-1điểm` |
+
+```
+ok 1đ
+oke 1.5đ
+okie +-1d
+ok 1 điểm
+ib -+0,5đ
+```
+
+> Điểm thoả thuận trong tin nhận được **ưu tiên cao hơn barem**, nhưng thấp hơn điểm ghi trong tin xác nhận của chủ cuốc.
 
 ---
 
 ## 6. CÁCH XÁC NHẬN CUỐC (chủ cuốc chốt tài xế)
 
-Chủ cuốc reply vào tin nhận cuốc của tài xế:
+Chủ cuốc **reply vào tin nhận cuốc của tài xế** bằng:
+
 ```
-ok ib
-ok.ib
-okib
+ok ib      ok.ib      okib
 ```
 
 Lúc này hệ thống ghi nhận giao dịch điểm và đưa vào **chờ kế toán duyệt**.
 
-### Thoả thuận điểm khi xác nhận
+### 6.1 Thoả thuận điểm khi xác nhận
 
-Nếu muốn tính điểm khác barem mặc định, ghi kèm điểm trong tin xác nhận:
+Chủ cuốc có thể ghi điểm kèm trong tin `ok ib` để ghi đè barem hoặc điểm tài xế đề xuất:
 
 ```
 ok ib 2đ
@@ -145,9 +166,20 @@ ok ib +-2điểm
 ok ib -+1.5đ
 ```
 
+### 6.2 Thứ tự ưu tiên điểm
+
+Khi tính điểm, hệ thống theo thứ tự sau (cao → thấp):
+
+| Thứ tự | Nguồn điểm | Ví dụ |
+|---|---|---|
+| **1 — cao nhất** | Điểm trong tin xác nhận `ok ib` của chủ cuốc | `ok ib 2đ` |
+| **2** | Điểm thoả thuận trong tin nhận của tài xế | `ok 1.5đ` |
+| **3** | Điểm ghi sẵn trong tin đăng cuốc | `Mỹ Đình --- HN 350k 1đ` |
+| **4 — thấp nhất** | Barem tự động theo loại cuốc + giá | (không ghi gì) |
+
 ---
 
-## 7. ĐIỂM EXPLICIT TRONG TIN ĐĂNG
+## 7. ĐIỂM Ưu tiên TRONG TIN ĐĂNG
 
 Nếu chủ cuốc muốn gắn điểm cố định ngay từ tin đăng (không theo barem):
 
