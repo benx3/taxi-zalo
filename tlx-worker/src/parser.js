@@ -10,7 +10,7 @@ export function isClaimMessage(text) {
   const t = text.trim();
   // Strip leading @mention so "@Tên đầy đủ ok" still counts as a claim
   const core = t.replace(/^@.+?\s+(?=(?:ok|oke|oki|okie|okib|ib)(?:\W|$))/i, "").trim();
-  const hasPrice = /\d{2,4}\s*k|\dtr|\d[\d.]{2,}\s*đ/i.test(t);
+  const hasPrice = /\d{2,4}\s*k|\dtr|\d{1,3}(?:[.,]\d{3})+\s*đ/i.test(t);
   return !hasPrice && core.length <= 25 && CLAIM_RE.test(core);
 }
 
@@ -29,7 +29,7 @@ export function isNoiseMessage(text) {
 }
 function hasRouteHint(t) {
   const hasArrow = /={0,3}>{1,}|-{2,}>|→|về |ve |lên |len |đi |di /i.test(t);
-  const hasPrice = /\d{2,4}\s*k|\dtr|\d[\d.]{2,}\s*đ/i.test(t);
+  const hasPrice = /\d{2,4}\s*k|\dtr|\d{1,3}(?:[.,]\d{3})+\s*đ/i.test(t);
   const hasTime = /\d{1,2}\s*h|\d{1,2}\s*p\b/i.test(t);
   return (hasArrow || hasTime) && hasPrice;
 }
