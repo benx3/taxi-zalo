@@ -57,8 +57,14 @@ export function parseBonus(t) {
   return null;
 }
 
-// ----- GIÁ: hỗ trợ 200k / 1tr / 1tr300 / 1tr300k / 200.000đ / 200000 -----
+// ----- GIÁ: hỗ trợ 200k / 1tr / 1tr300 / 1tr300k / 1.5tr / 200.000đ / 200000 -----
 export function parsePrice(t) {
+  // 1.5tr, 1,5tr → 1500 (phải check trước pattern tr nguyên để tránh chụp nhầm chữ số lẻ)
+  const trDec = t.match(/(\d+)[.,](\d+)\s*(?:tr|triệu)\b/i);
+  if (trDec) {
+    const frac = trDec[2];
+    return Math.round((parseInt(trDec[1]) + parseInt(frac) / Math.pow(10, frac.length)) * 1000);
+  }
   // 1tr300k, 1tr3, 1 triệu 300
   const tr = t.match(/(\d)\s*(?:tr|triệu)\s*(\d{0,3})/i);
   if (tr) return parseInt(tr[1]) * 1000 + (tr[2] ? parseInt(tr[2].padEnd(3, "0")) : 0);
