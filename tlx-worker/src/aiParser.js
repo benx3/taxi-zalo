@@ -210,7 +210,7 @@ export function aiToTrip(ai, raw) {
     },
     car: ai.car || null,
     seats: ai.seats || "Không rõ",
-    type: ai.type || "Ghép 1",
+    type: ai.type || "Không rõ",
     route: (ai.from || ai.to) ? { from: ai.from || "?", to: ai.to || "?" } : null,
     free: !!ai.free,
     isRoundTrip: !!ai.isRoundTrip,

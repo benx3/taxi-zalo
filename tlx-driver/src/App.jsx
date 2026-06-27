@@ -21,6 +21,7 @@ const TYPE_META = {
   "Sân bay đón":     {icon:Plane,  color:"#06b6d4"},
   "Sân bay tiễn":    {icon:Plane,  color:"#22d3ee"},
   "Sân bay 2 chiều": {icon:Plane,  color:"#818cf8"},
+  "Không rõ":        {icon:Radio,  color:"#94a3b8"},
 };
 const TYPE_FILTERS = ["Tất cả","Ghép 1","Ghép 2","Bao xe","Hàng","Sân bay"];
 const TIME_FILTERS = [{key:"all",label:"Mọi giờ"},{key:"soon",label:"Sắp tới (≤8h)"},{key:"today",label:"Hôm nay"},{key:"tomorrow",label:"Ngày mai"}];
