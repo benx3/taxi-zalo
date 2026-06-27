@@ -23,7 +23,7 @@ const TYPE_META = {
   "Sân bay 2 chiều": {icon:Plane,  color:"#818cf8"},
   "Không rõ":        {icon:Radio,  color:"#94a3b8"},
 };
-const TYPE_FILTERS = ["Tất cả","Ghép 1","Ghép 2","Bao xe","Hàng","Sân bay"];
+const TYPE_FILTERS = ["Tất cả","Ghép 1","Ghép 2","Bao xe","Hàng","Sân bay","Không rõ"];
 const TIME_FILTERS = [{key:"all",label:"Mọi giờ"},{key:"soon",label:"Sắp tới (≤8h)"},{key:"today",label:"Hôm nay"},{key:"tomorrow",label:"Ngày mai"}];
 const CAR_FILTERS = ["Tất cả xe","Sedan/4c","Sedan/5c","Xe 7c+","Xe 16c","Xe 29c"];
 
