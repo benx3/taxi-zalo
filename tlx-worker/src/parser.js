@@ -34,10 +34,10 @@ function hasRouteHint(t) {
   return (hasArrow || hasTime) && hasPrice;
 }
 
-// ----- ĐIỂM EXPLICIT: "1đ","1d","1điểm","1diem","0,5đ","0.5 d","0,5" cuối câu -----
+// ----- ĐIỂM EXPLICIT: "1đ","1d","1điểm","1diem","1 diem","1 đ","1 d","0,5đ" -----
 export function parseBonus(t) {
-  // Có đơn vị rõ: "1đ", "0,5 đ", "1điểm", "1 điểm", "1d", "1diem", "0.5diem"
-  const m = t.match(/(\d+(?:[,\.]\d+)?)\s*(điểm|diem|đ|d)(?=\s|$)/i);
+  // Hỗ trợ: xd / xđ / xdiem / xđiểm / x d / x đ / x diem / x điểm (x = số, kể cả thập phân)
+  const m = t.match(/(\d+(?:[,\.]\d+)?)\s*(điểm|diem|đ|d)(?!\w)/i);
   if (m) {
     const val = parseFloat(m[1].replace(",", "."));
     if (val > 0 && val <= 20) return val;
