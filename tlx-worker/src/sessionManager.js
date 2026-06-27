@@ -539,6 +539,7 @@ async function onMessage(sess, msg) {
             claimText: text, claimTime: time,
             explicitPoints: claimNegotiatedPts || cachedTrip.explicitPoints || 0,
             pointSource: claimNegotiatedPts > 0 ? "claim" : (cachedTrip.explicitPoints > 0 ? "trip" : "barem"),
+            tripFree: !!cachedTrip.free,
             allTrips: cachedTrip.allTrips || null,
           };
           sess.claimCache.set(msgId, claimData);
@@ -562,6 +563,12 @@ async function onMessage(sess, msg) {
           sess.claimCache.delete(qCliId2);
           if (qGlobId2) sess.claimCache.delete(qGlobId2);
           Promise.resolve((async () => {
+            // Kiểm tra free: chủ lịch ghi "free" trong tin đăng hoặc trong tin "ok ib free"
+            const confirmFree = /free+|fr+ee/i.test(text);
+            if (cachedClaim.tripFree || confirmFree) {
+              console.log(`[${sess.userId}] 🆓 Barem free: cuốc miễn phí, bỏ qua điểm`);
+              return;
+            }
             const rulesRow = await dbm.getRules(dbGroupId);
             const baremPts = calcBaremPoints(rulesRow, cachedClaim.tripType, cachedClaim.tripPrice);
             const confirmPts = parseBonus(text) || 0; // điểm trong tin "ok.ib 2đ" của poster
@@ -724,6 +731,7 @@ async function onMessage(sess, msg) {
             type: primary.type, price: primary.price,
             senderId: primary.senderId, senderName, text, time,
             explicitPoints: primary.explicitPoints || 0,
+            free: !!primary.free,
             // Tin nhiều cuốc: lưu toàn bộ để kế toán xem và điều chỉnh
             allTrips: pricedTrips.length > 1
               ? pricedTrips.map(t => ({ type: t.type, price: t.price, explicitPoints: t.explicitPoints || 0 }))
