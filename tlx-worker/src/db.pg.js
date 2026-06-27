@@ -544,6 +544,22 @@ export async function deleteTransaction(id) {
   await q("DELETE FROM point_transactions WHERE id=$1", [id]);
 }
 
+// ---------- Barem: tạo giao dịch chờ kế toán duyệt ----------
+export async function addBaremPending(groupId, posterId, takerId, pts, tripMsgId, rawText) {
+  if (tripMsgId) {
+    const exists = await q("SELECT id FROM point_transactions WHERE group_id=$1 AND trip_msg_id=$2 AND type='barem'", [groupId, tripMsgId]);
+    if (exists.rows[0]) return exists.rows[0].id;
+  }
+  await upsertMember(groupId, posterId);
+  if (takerId) await upsertMember(groupId, takerId);
+  const txId = uid();
+  await q(`INSERT INTO point_transactions
+    (id,group_id,trip_msg_id,from_member,to_member,points,type,status,raw_text,created_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [txId, groupId, tripMsgId || null, takerId || null, posterId, pts, "barem", "pending", rawText || null, now()]);
+  return txId;
+}
+
 // ---------- Kế toán: giao dịch chờ duyệt ----------
 export async function createPendingTransfer(groupId, fromUid, toUid, points, rawText, msgId = null) {
   if (msgId) {

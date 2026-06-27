@@ -34,12 +34,18 @@ function hasRouteHint(t) {
   return (hasArrow || hasTime) && hasPrice;
 }
 
-// ----- ĐIỂM EXPLICIT: "1đ","1d","1điểm","1diem","1 diem","1 đ","1 d","0,5đ" -----
+// ----- ĐIỂM EXPLICIT: "1đ","1d","1điểm","+-1.5","-+2d","1 diem","0,5đ" -----
 export function parseBonus(t) {
-  // Hỗ trợ: xd / xđ / xdiem / xđiểm / x d / x đ / x diem / x điểm (x = số, kể cả thập phân)
-  const m = t.match(/(\d+(?:[,\.]\d+)?)\s*(điểm|diem|đ|d)(?!\w)/i);
+  // Có đơn vị (tuỳ chọn tiền tố +-/-+): "1đ","+-1.5d","-+2 điểm","1 diem"
+  const m = t.match(/(?:[+\-]{2})?\s*(\d+(?:[,\.]\d+)?)\s*(điểm|diem|đ|d)(?!\w)/i);
   if (m) {
     const val = parseFloat(m[1].replace(",", "."));
+    if (val > 0 && val <= 20) return val;
+  }
+  // Tiền tố +- hoặc -+ không kèm đơn vị: "ib+-1.5", "ok -+2"
+  const pm = t.match(/[+\-]{2}\s*(\d+(?:[,\.]\d+)?)(?!\w)/);
+  if (pm) {
+    const val = parseFloat(pm[1].replace(",", "."));
     if (val > 0 && val <= 20) return val;
   }
   // Số thập phân cuối câu không có đơn vị: "500k tg. 0,5"

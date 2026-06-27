@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { api } from "./api.js";
 import {
   Users, Search, Plus, ChevronRight, TrendingUp, TrendingDown,
-  X, Check, Clock, Edit2, Trash2, AlertTriangle, RefreshCw, Download, Upload
+  X, Check, Clock, Edit2, Trash2, AlertTriangle, RefreshCw, Download, Upload, Ban
 } from "lucide-react";
 
 const PAGE_SIZE = 25;
@@ -610,24 +610,39 @@ function MemberDetail({ member, groupId, onBack }) {
         {loadingTx && <div style={{ color: "var(--ink-dim)", fontSize: 13, textAlign: "center", padding: 20 }}>Đang tải…</div>}
         {!loadingTx && txs.length === 0 && <div style={{ color: "var(--ink-dim)", fontSize: 13, textAlign: "center", padding: 20 }}>Chưa có giao dịch nào</div>}
         {txs.map(tx => {
+          const isPending = (tx.status || "approved") === "pending";
           const delta = tx.to_member === member.zalo_uid ? +tx.points : -tx.points;
           return (
-            <div key={tx.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+            <div key={tx.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--line)", opacity: tx.status === "rejected" ? 0.55 : 1 }}>
               <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                <div style={{ width: 32, height: 32, borderRadius: 99, background: delta >= 0 ? "rgba(52,211,153,.15)" : "rgba(248,113,113,.15)", display: "grid", placeItems: "center", flexShrink: 0, marginTop: 1 }}>
-                  {delta >= 0 ? <TrendingUp size={15} color="#34d399" /> : <TrendingDown size={15} color="#f87171" />}
+                <div style={{ width: 32, height: 32, borderRadius: 99, background: isPending ? "rgba(245,158,11,.15)" : delta >= 0 ? "rgba(52,211,153,.15)" : "rgba(248,113,113,.15)", display: "grid", placeItems: "center", flexShrink: 0, marginTop: 1 }}>
+                  {isPending ? <Clock size={15} color="#f59e0b" /> : delta >= 0 ? <TrendingUp size={15} color="#34d399" /> : <TrendingDown size={15} color="#f87171" />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.4 }}>{tx.reason || (tx.type === "auto" ? "Tự động" : "Thủ công")}</div>
-                  <div style={{ fontSize: 11, color: "var(--ink-dim)", marginTop: 2, display: "flex", gap: 8 }}>
+                  <div style={{ fontSize: 11, color: "var(--ink-dim)", marginTop: 2, display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <span><Clock size={10} /> {fmtTime(tx.created_at)}</span>
                     {tx.type === "barem" && <span style={{ color: "#a78bfa" }}>barem</span>}
                     {tx.type === "san" && <span style={{ color: "#60a5fa" }}>san điểm</span>}
+                    {isPending && <span style={{ color: "#f59e0b", fontWeight: 700 }}>⏳ chờ duyệt</span>}
+                    {tx.status === "rejected" && <span style={{ color: "#f87171", fontWeight: 700 }}>✗ từ chối</span>}
                   </div>
                   {tx.raw_text && <ConvoThread raw={tx.raw_text} />}
+                  {isPending && (
+                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                      <button onClick={async () => { await api.approveTransfer(tx.id); reload(); }}
+                        style={{ background: "rgba(52,211,153,.15)", border: "none", borderRadius: 7, padding: "4px 10px", cursor: "pointer", color: "#34d399", display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700 }}>
+                        <Check size={11} /> Duyệt
+                      </button>
+                      <button onClick={async () => { await api.rejectTransfer(tx.id); reload(); }}
+                        style={{ background: "rgba(248,113,113,.1)", border: "none", borderRadius: 7, padding: "4px 10px", cursor: "pointer", color: "#f87171", display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700 }}>
+                        <Ban size={11} /> Từ chối
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div style={{ fontWeight: 800, fontSize: 15, color: delta >= 0 ? "#34d399" : "#f87171", flexShrink: 0 }}>
-                  {delta >= 0 ? "+" : ""}{parseFloat(delta.toFixed(2))}đ
+                <div style={{ fontWeight: 800, fontSize: 15, color: isPending ? "#f59e0b" : delta >= 0 ? "#34d399" : "#f87171", flexShrink: 0 }}>
+                  {isPending ? `~${parseFloat(Math.abs(delta).toFixed(2))}đ` : `${delta >= 0 ? "+" : ""}${parseFloat(delta.toFixed(2))}đ`}
                 </div>
               </div>
             </div>

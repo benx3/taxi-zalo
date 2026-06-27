@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { api } from "./api.js";
-import { Edit2, Trash2, X, Clock, AlertTriangle, Search } from "lucide-react";
+import { Edit2, Trash2, X, Clock, AlertTriangle, Search, Check, Ban } from "lucide-react";
 
 const PAGE_SIZE = 20;
 
@@ -75,7 +75,9 @@ export default function TransactionsTab({ groupId }) {
         {paged.map(tx => (
           <TxRow key={tx.id} tx={tx}
             onEdit={() => setEditing(tx)}
-            onDelete={() => setDeleting(tx)} />
+            onDelete={() => setDeleting(tx)}
+            onApprove={async () => { await api.approveTransfer(tx.id); reload(); }}
+            onReject={async () => { await api.rejectTransfer(tx.id); reload(); }} />
         ))}
       </div>
 
@@ -164,7 +166,7 @@ function ConvoThread({ raw }) {
   return null;
 }
 
-function TxRow({ tx, onEdit, onDelete }) {
+function TxRow({ tx, onEdit, onDelete, onApprove, onReject }) {
   const pts = Number(tx.points);
   const ptsStr = pts % 1 === 0 ? pts.toFixed(0) : pts.toFixed(2);
   const receiver = tx.to_member_name || tx.to_member;
@@ -208,7 +210,16 @@ function TxRow({ tx, onEdit, onDelete }) {
         </span>
       </div>
 
-      {!isPending && (
+      {isPending ? (
+        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+          <button onClick={onApprove} style={{ background: "rgba(52,211,153,.15)", border: "none", borderRadius: 7, padding: "5px 12px", cursor: "pointer", color: "#34d399", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700 }}>
+            <Check size={12} /> Duyệt
+          </button>
+          <button onClick={onReject} style={{ background: "rgba(248,113,113,.1)", border: "none", borderRadius: 7, padding: "5px 12px", cursor: "pointer", color: "#f87171", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700 }}>
+            <Ban size={12} /> Từ chối
+          </button>
+        </div>
+      ) : (
         <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
           <button onClick={onEdit} style={{ background: "rgba(96,165,250,.1)", border: "none", borderRadius: 7, padding: "5px 9px", cursor: "pointer", color: "#60a5fa", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700 }}>
             <Edit2 size={12} /> Sửa

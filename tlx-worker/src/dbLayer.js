@@ -55,6 +55,7 @@ export const {
   getPrimaryAccountantSelfIdForGroup, getMembersByDisplayName,
   listRawMessages, saveRawMessage, hasRawMessage,
   adjustPoints, getTransactionsByTripMsgId, listTransactions, updateTransaction, deleteTransaction,
+  addBaremPending,
   createPendingTransfer, listPendingTransfers, approvePendingTransfer, rejectPendingTransfer,
   lockAccountantGroups, isGroupsLocked,
   getRules, saveRules,

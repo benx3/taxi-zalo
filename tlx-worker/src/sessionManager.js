@@ -572,9 +572,8 @@ async function onMessage(sess, msg) {
                 claimTime: cachedClaim.claimTime, claimer: cachedClaim.takerName, claimText: cachedClaim.claimText,
                 confirmTime: time, confirmPoster: senderName, confirmText: text,
               });
-              await dbm.adjustPoints(dbGroupId, cachedClaim.tripPosterId,  pts, "Đăng cuốc thành công", "barem", msgId, null, cachedClaim.tripPosterId, convo);
-              await dbm.adjustPoints(dbGroupId, cachedClaim.takerId,      -pts, "Nhận cuốc xe",         "barem", msgId, cachedClaim.takerId, null, convo);
-              console.log(`[${sess.userId}] ✅ Barem applied: +${pts}đ → ${cachedClaim.tripPosterId}, -${pts}đ → ${cachedClaim.takerId}`);
+              await dbm.addBaremPending(dbGroupId, cachedClaim.tripPosterId, cachedClaim.takerId, pts, msgId, convo);
+              console.log(`[${sess.userId}] ⏳ Barem pending: ${pts}đ — chờ kế toán duyệt`);
             } else {
               console.warn(`[${sess.userId}] ⚠️  Barem pts=0 — chưa có rule cho ${cachedClaim.tripType} ${cachedClaim.tripPrice}k`);
             }

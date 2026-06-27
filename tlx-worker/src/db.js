@@ -664,6 +664,22 @@ export function deleteTransaction(id) {
   db.prepare("DELETE FROM point_transactions WHERE id=?").run(id);
 }
 
+// ---------- Barem: tạo giao dịch chờ kế toán duyệt (không cộng điểm ngay) ----------
+export function addBaremPending(groupId, posterId, takerId, pts, tripMsgId, rawText) {
+  if (tripMsgId) {
+    const exists = db.prepare("SELECT id FROM point_transactions WHERE group_id=? AND trip_msg_id=? AND type='barem'").get(groupId, tripMsgId);
+    if (exists) return exists.id;
+  }
+  upsertMember(groupId, posterId);
+  if (takerId) upsertMember(groupId, takerId);
+  const txId = uid();
+  db.prepare(`INSERT INTO point_transactions
+    (id,group_id,trip_msg_id,from_member,to_member,points,type,status,raw_text,created_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?)`)
+    .run(txId, groupId, tripMsgId || null, takerId || null, posterId, pts, "barem", "pending", rawText || null, now());
+  return txId;
+}
+
 // ---------- Kế toán: giao dịch chờ duyệt (san điểm) ----------
 export function createPendingTransfer(groupId, fromUid, toUid, points, rawText, msgId = null) {
   // Dedup: nếu msgId đã tồn tại trong nhóm này → bỏ qua (2 Zalo account cùng theo dõi nhóm)
