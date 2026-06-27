@@ -538,6 +538,7 @@ async function onMessage(sess, msg) {
             claimText: text, claimTime: time,
             explicitPoints: claimNegotiatedPts || cachedTrip.explicitPoints || 0,
             pointSource: claimNegotiatedPts > 0 ? "claim" : (cachedTrip.explicitPoints > 0 ? "trip" : "barem"),
+            allTrips: cachedTrip.allTrips || null,
           };
           sess.claimCache.set(msgId, claimData);
           if (msg.data.cliMsgId) sess.claimCache.set(String(msg.data.cliMsgId), claimData);
@@ -571,9 +572,11 @@ async function onMessage(sess, msg) {
                 tripTime: cachedClaim.tripTime, tripPoster: cachedClaim.tripPosterName, tripText: cachedClaim.tripText,
                 claimTime: cachedClaim.claimTime, claimer: cachedClaim.takerName, claimText: cachedClaim.claimText,
                 confirmTime: time, confirmPoster: senderName, confirmText: text,
+                multiTrips: cachedClaim.allTrips || null,
               });
               await dbm.addBaremPending(dbGroupId, cachedClaim.tripPosterId, cachedClaim.takerId, pts, msgId, convo);
-              console.log(`[${sess.userId}] ⏳ Barem pending: ${pts}đ — chờ kế toán duyệt`);
+              const multiNote = cachedClaim.allTrips ? ` [${cachedClaim.allTrips.length} cuốc — chờ KT xác nhận]` : "";
+              console.log(`[${sess.userId}] ⏳ Barem pending: ${pts}đ${multiNote} — chờ kế toán duyệt`);
             } else {
               console.warn(`[${sess.userId}] ⚠️  Barem pts=0 — chưa có rule cho ${cachedClaim.tripType} ${cachedClaim.tripPrice}k`);
             }
@@ -705,10 +708,18 @@ async function onMessage(sess, msg) {
       cacheRawMsg(sess, msgId, msg);
       // Kế toán: lưu cuốc vào tripMsgCache để (C) phát hiện claim sau
       if (sess.isAccountant) {
-        for (const trip of trips) {
-          if (!trip.price) continue;
-          const tripData = { type: trip.type, price: trip.price, senderId: trip.senderId, senderName, text, time, explicitPoints: trip.explicitPoints || 0 };
-          // Lưu bằng cả msgId (server) và cliMsgId (client) để quote lookup khớp
+        const pricedTrips = trips.filter(t => t.price);
+        if (pricedTrips.length > 0) {
+          const primary = pricedTrips[0];
+          const tripData = {
+            type: primary.type, price: primary.price,
+            senderId: primary.senderId, senderName, text, time,
+            explicitPoints: primary.explicitPoints || 0,
+            // Tin nhiều cuốc: lưu toàn bộ để kế toán xem và điều chỉnh
+            allTrips: pricedTrips.length > 1
+              ? pricedTrips.map(t => ({ type: t.type, price: t.price, explicitPoints: t.explicitPoints || 0 }))
+              : null,
+          };
           sess.tripMsgCache.set(msgId, tripData);
           if (msg.data.cliMsgId) sess.tripMsgCache.set(String(msg.data.cliMsgId), tripData);
           while (sess.tripMsgCache.size > 100)

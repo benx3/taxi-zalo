@@ -114,13 +114,19 @@ export default function PendingTab({ groupId, liveItems, onProcessed }) {
           const chatText   = item.reason || item.rawText || "";
           const createdAt  = item.created_at || Date.now();
 
+          const isBarem = item.type === "barem";
+          let convo = null;
+          if (isBarem && item.raw_text) {
+            try { convo = JSON.parse(item.raw_text); } catch {}
+          }
+
           return (
             <div key={id} style={{ background: "var(--card)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 14, padding: "14px 16px", marginBottom: 12 }}>
 
               {/* Tiêu đề: badge + thời gian */}
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: "rgba(245,158,11,.15)", color: "#f59e0b", fontWeight: 700 }}>
-                  San điểm
+                <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: isBarem ? "rgba(96,165,250,.15)" : "rgba(245,158,11,.15)", color: isBarem ? "#60a5fa" : "#f59e0b", fontWeight: 700 }}>
+                  {isBarem ? "Barem" : "San điểm"}
                 </span>
                 <span style={{ fontSize: 11, color: "var(--ink-dim)", display: "flex", alignItems: "center", gap: 3 }}>
                   <Clock size={10} /> {fmtTime(createdAt)}
@@ -128,11 +134,40 @@ export default function PendingTab({ groupId, liveItems, onProcessed }) {
               </div>
 
               {/* Nội dung chat gốc */}
-              {chatText && (
+              {convo ? (
+                <>
+                  {convo.multiTrips && (
+                    <div style={{ background: "rgba(245,158,11,.1)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 8, padding: "8px 11px", marginBottom: 8, fontSize: 12 }}>
+                      <span style={{ color: "#f59e0b", fontWeight: 700 }}>⚠️ Tin có {convo.multiTrips.length} cuốc — kiểm tra và điều chỉnh điểm trước khi duyệt</span>
+                      <div style={{ marginTop: 5, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {convo.multiTrips.map((t, i) => (
+                          <span key={i} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: "rgba(255,255,255,.07)", color: "var(--ink)" }}>
+                            {t.type} · {t.price}k
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ background: "rgba(0,0,0,.25)", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", marginBottom: 10, lineHeight: 1.5 }}>
+                    {[
+                      convo.tripPoster    && { time: convo.tripTime,    name: convo.tripPoster,    text: convo.tripText,    color: null },
+                      convo.claimer       && { time: convo.claimTime,   name: convo.claimer,       text: convo.claimText,   color: "#60a5fa" },
+                      convo.confirmPoster && { time: convo.confirmTime, name: convo.confirmPoster, text: convo.confirmText, color: "#34d399" },
+                    ].filter(Boolean).map((row, i) => (
+                      <div key={i} style={{ display: "flex", gap: 5, marginBottom: 2 }}>
+                        <span style={{ fontSize: 10, color: "var(--ink-dim)", whiteSpace: "nowrap", paddingTop: 1 }}>{row.time || ""}</span>
+                        <span style={{ fontSize: 11, color: row.color || "var(--ink-dim)" }}>
+                          <b style={{ color: "var(--ink)", marginRight: 3 }}>{row.name}:</b>{row.text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : chatText ? (
                 <div style={{ background: "rgba(0,0,0,.25)", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 11px", marginBottom: 12, fontSize: 12, color: "var(--ink-dim)", lineHeight: 1.55, wordBreak: "break-word" }}>
                   {chatText}
                 </div>
-              )}
+              ) : null}
 
               {/* Người chuyển → Người nhận */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 10, marginBottom: 12 }}>
@@ -177,7 +212,7 @@ export default function PendingTab({ groupId, liveItems, onProcessed }) {
                 </button>
                 <button onClick={() => handle(id, "approve", fromPoints, pts)} disabled={busy}
                   style={{ flex: 2, padding: "10px", borderRadius: 10, border: "none", cursor: busy ? "default" : "pointer", fontWeight: 800, fontSize: 13, background: "rgba(52,211,153,.15)", color: "#34d399", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, opacity: busy ? .5 : 1 }}>
-                  <CheckCircle2 size={14} /> Duyệt san điểm
+                  <CheckCircle2 size={14} /> {isBarem ? "Duyệt điểm barem" : "Duyệt san điểm"}
                 </button>
               </div>
 
