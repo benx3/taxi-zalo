@@ -37,7 +37,7 @@ function hasRouteHint(t) {
 // ----- ĐIỂM EXPLICIT: "1đ","1d","1điểm","+-1.5","-+2d","1 diem","0,5đ" -----
 export function parseBonus(t) {
   // Có đơn vị (tuỳ chọn tiền tố +-/-+): "1đ","+-1.5d","-+2 điểm","1 diem"
-  const m = t.match(/(?:[+\-]{2})?\s*(\d+(?:[,\.]\d+)?)\s*(điểm|diem|đ|d)(?!\w)/i);
+  const m = t.match(/(?:[+\-]{2})?\s*(\d+(?:[,\.]\d+)?)\s*(điểm|diem|đ|d)(?![\wÀ-ɏḀ-ỿ])/i);
   if (m) {
     const val = parseFloat(m[1].replace(",", "."));
     if (val > 0 && val <= 20) return val;
