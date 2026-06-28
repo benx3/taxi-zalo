@@ -128,14 +128,20 @@ export default function MembersTab({ groupId }) {
     }
   };
 
+  const yestDate = new Date();
+  yestDate.setDate(yestDate.getDate() - 1);
+  const yestLabel = `${String(yestDate.getDate()).padStart(2,"0")}/${String(yestDate.getMonth()+1).padStart(2,"0")}`;
+  const yestLabelFull = `${String(yestDate.getDate()).padStart(2,"0")}/${String(yestDate.getMonth()+1).padStart(2,"0")}/${yestDate.getFullYear()}`;
+
   const exportExcel = () => {
     const rows = sorted.map((m, i) => ({
       "STT": i + 1,
       "Tên Zalo": m.display_name || m.zalo_uid || "",
-      "Điểm": Number(m.points) || 0,
+      "Hiện tại": Number(m.points) || 0,
+      [`Điểm ${yestLabelFull}`]: m.points_yesterday != null ? Number(m.points_yesterday) : "",
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = [{ wch: 6 }, { wch: 36 }, { wch: 10 }];
+    ws["!cols"] = [{ wch: 6 }, { wch: 36 }, { wch: 10 }, { wch: 14 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Thành viên");
     const date = new Date().toISOString().slice(0, 10);
@@ -277,9 +283,9 @@ export default function MembersTab({ groupId }) {
             </button>
             <button onClick={() => setSortBy(s => s === "points_desc" ? "points_asc" : "points_desc")}
               style={{ background: "none", border: "none", cursor: "pointer", padding: "0 4px 0 0", textAlign: "right", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: sortBy.startsWith("points") ? "var(--accent)" : "var(--ink-dim)", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>
-              {sortBy === "points_asc" ? "↑" : sortBy === "points_desc" ? "↓" : ""} Điểm
+              {sortBy === "points_asc" ? "↑" : sortBy === "points_desc" ? "↓" : ""} Hiện tại
             </button>
-            <span style={{ textAlign: "right", paddingRight: 4, fontSize: 10, opacity: .7 }}>Hôm qua</span>
+            <span style={{ textAlign: "right", paddingRight: 4, fontSize: 10, opacity: .7 }}>{yestLabel}</span>
             <span />
           </div>
 
