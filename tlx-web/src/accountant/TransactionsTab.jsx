@@ -24,11 +24,18 @@ export default function TransactionsTab({ groupId }) {
   const [deleting, setDeleting] = useState(null);
   const [page, setPage] = useState(1);
   const [q, setQ] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
-  const reload = () => {
+  const reload = (from, to) => {
     if (!groupId) return;
     setLoading(true);
-    api.listTransactions(groupId, null, 500).then(data => { setTxs(data); setPage(1); setQ(""); }).catch(() => {}).finally(() => setLoading(false));
+    const fromTs = from ? new Date(from).getTime() : undefined;
+    const toTs   = to   ? new Date(to).getTime()   : undefined;
+    api.listTransactions(groupId, null, fromTs || toTs ? 2000 : 500, fromTs, toTs)
+      .then(data => { setTxs(data); setPage(1); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   };
   useEffect(() => { reload(); }, [groupId]);
 
@@ -50,10 +57,12 @@ export default function TransactionsTab({ groupId }) {
       <div style={{ padding: "12px 16px 8px", display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontWeight: 700, fontSize: 14, flex: 1 }}>
           Giao dịch{q.trim() ? ` — ${filtered.length}/${txs.length}` : ` — ${txs.length} bản ghi`}
+          {(dateFrom || dateTo) && <span style={{ fontSize: 11, color: "#f59e0b", fontWeight: 600, marginLeft: 6 }}>● đang lọc ngày</span>}
         </span>
-        <button onClick={reload} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)", fontSize: 12 }}>↻ Tải lại</button>
+        <button onClick={() => reload(dateFrom, dateTo)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)", fontSize: 12 }}>↻ Tải lại</button>
       </div>
-      <div style={{ padding: "0 16px 10px", position: "relative" }}>
+      {/* Tìm theo tên */}
+      <div style={{ padding: "0 16px 8px", position: "relative" }}>
         <Search size={14} style={{ position: "absolute", left: 26, top: "50%", transform: "translateY(-50%)", color: "var(--ink-dim)", pointerEvents: "none" }} />
         <input
           value={q}
@@ -63,6 +72,25 @@ export default function TransactionsTab({ groupId }) {
         />
         {q && (
           <button onClick={() => { setQ(""); setPage(1); }} style={{ position: "absolute", right: 24, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)", fontSize: 16, lineHeight: 1 }}>×</button>
+        )}
+      </div>
+      {/* Lọc theo khoảng thời gian */}
+      <div style={{ padding: "0 16px 10px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, color: "var(--ink-dim)", whiteSpace: "nowrap" }}>Từ</span>
+        <input type="datetime-local" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+          style={{ flex: 1, minWidth: 160, padding: "7px 10px", borderRadius: 9, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", fontSize: 12, outline: "none", colorScheme: "dark" }} />
+        <span style={{ fontSize: 12, color: "var(--ink-dim)", whiteSpace: "nowrap" }}>đến</span>
+        <input type="datetime-local" value={dateTo} onChange={e => setDateTo(e.target.value)}
+          style={{ flex: 1, minWidth: 160, padding: "7px 10px", borderRadius: 9, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", fontSize: 12, outline: "none", colorScheme: "dark" }} />
+        <button onClick={() => reload(dateFrom, dateTo)}
+          style={{ padding: "7px 14px", borderRadius: 9, border: "none", background: "rgba(52,211,153,.2)", color: "#34d399", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+          Lọc
+        </button>
+        {(dateFrom || dateTo) && (
+          <button onClick={() => { setDateFrom(""); setDateTo(""); reload(); }}
+            style={{ padding: "7px 10px", borderRadius: 9, border: "none", background: "rgba(248,113,113,.1)", color: "#f87171", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+            Xóa lọc
+          </button>
         )}
       </div>
 

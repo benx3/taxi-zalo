@@ -269,25 +269,27 @@ export default function MembersTab({ groupId }) {
         {sorted.length > 0 && (
         <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
           {/* Header bảng */}
-          <div style={{ display: "grid", gridTemplateColumns: "36px 40px 1fr 72px 38px", padding: "6px 4px 6px 12px", borderBottom: "1px solid var(--line)", fontSize: 11, fontWeight: 700, color: "var(--ink-dim)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "36px 40px 1fr 72px 72px 38px", padding: "6px 4px 6px 12px", borderBottom: "1px solid var(--line)", fontSize: 11, fontWeight: 700, color: "var(--ink-dim)", textTransform: "uppercase", letterSpacing: ".06em" }}>
             <span>#</span><span />
             <button onClick={() => setSortBy(s => s === "name_asc" ? "name_desc" : "name_asc")}
               style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: sortBy.startsWith("name") ? "var(--accent)" : "var(--ink-dim)", display: "flex", alignItems: "center", gap: 3 }}>
               Tên {sortBy === "name_asc" ? "↑" : sortBy === "name_desc" ? "↓" : ""}
             </button>
             <button onClick={() => setSortBy(s => s === "points_desc" ? "points_asc" : "points_desc")}
-              style={{ background: "none", border: "none", cursor: "pointer", padding: "0 8px 0 0", textAlign: "right", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: sortBy.startsWith("points") ? "var(--accent)" : "var(--ink-dim)", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>
+              style={{ background: "none", border: "none", cursor: "pointer", padding: "0 4px 0 0", textAlign: "right", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: sortBy.startsWith("points") ? "var(--accent)" : "var(--ink-dim)", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>
               {sortBy === "points_asc" ? "↑" : sortBy === "points_desc" ? "↓" : ""} Điểm
             </button>
+            <span style={{ textAlign: "right", paddingRight: 4, fontSize: 10, opacity: .7 }}>Hôm qua</span>
             <span />
           </div>
 
         {paged.map((m, i) => {
           const rank = (page - 1) * PAGE_SIZE + i + 1;
           const isEditing = inlineEdit?.id === m.id;
+          const yest = m.points_yesterday != null ? Number(m.points_yesterday) : null;
           return (
             <React.Fragment key={m.id}>
-              <div style={{ display: "grid", gridTemplateColumns: "36px 40px 1fr 72px 38px", alignItems: "center", borderBottom: "1px solid var(--line)", background: isEditing ? "rgba(52,211,153,.05)" : "transparent" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "36px 40px 1fr 72px 72px 38px", alignItems: "center", borderBottom: "1px solid var(--line)", background: isEditing ? "rgba(52,211,153,.05)" : "transparent" }}>
                 <span style={{ padding: "0 0 0 12px", fontSize: 12, color: "var(--ink-dim)", fontWeight: 600 }}>{rank}</span>
                 <div style={{ display: "flex", alignItems: "center", padding: "8px 0 8px 0" }}>
                   <ZaloAvatar uid={m.zalo_uid} name={m.display_name} src={m.avatar} size={32} />
@@ -302,6 +304,9 @@ export default function MembersTab({ groupId }) {
                 </button>
                 <div style={{ fontWeight: 800, fontSize: 15, color: pointColor(m.points), textAlign: "right", paddingRight: 8 }}>
                   {fmtPts(m.points)}
+                </div>
+                <div style={{ textAlign: "right", paddingRight: 8, fontSize: 13, fontWeight: 700, color: yest != null ? pointColor(yest) : "var(--ink-dim)" }}>
+                  {yest != null ? fmtPts(yest) : "—"}
                 </div>
                 <button onClick={(e) => startEdit(e, m)} title="Chỉnh điểm nhanh"
                   style={{ alignSelf: "stretch", display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", borderLeft: "1px solid var(--line)", cursor: "pointer", color: isEditing ? "var(--accent)" : "var(--ink-dim)" }}>
@@ -509,6 +514,8 @@ function ConvoThread({ raw }) {
   return null;
 }
 
+const TX_PAGE_SIZE = 20;
+
 function MemberDetail({ member, groupId, onBack }) {
   const [m, setM] = useState(member);
   const [txs, setTxs] = useState([]);
@@ -520,6 +527,8 @@ function MemberDetail({ member, groupId, onBack }) {
   const [aliasErr, setAliasErr] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [txPage, setTxPage] = useState(1);
+  const [editingTx, setEditingTx] = useState(null);
   const isTemp = (m.zalo_uid || "").startsWith("~imp_");
 
   const doDelete = async () => {
@@ -537,7 +546,7 @@ function MemberDetail({ member, groupId, onBack }) {
     setLoadingTx(true);
     Promise.all([
       api.listMembers(groupId).then(list => { const found = list.find(x => x.zalo_uid === member.zalo_uid); if (found) { setM(found); setAliasVal(found.alias || ""); } }),
-      api.listTransactions(groupId, member.zalo_uid, 50).then(setTxs),
+      api.listTransactions(groupId, member.zalo_uid, 500).then(data => { setTxs(data); setTxPage(1); }),
     ]).catch(() => {}).finally(() => setLoadingTx(false));
   };
   useEffect(() => { reload(); }, []);
@@ -606,10 +615,13 @@ function MemberDetail({ member, groupId, onBack }) {
 
       {/* Lịch sử giao dịch */}
       <div style={{ padding: "0 16px" }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink-dim)", marginBottom: 10 }}>LỊCH SỬ GIAO DỊCH</div>
+        <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink-dim)", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+          LỊCH SỬ GIAO DỊCH
+          <span style={{ fontWeight: 400, fontSize: 11 }}>({txs.length} bản ghi)</span>
+        </div>
         {loadingTx && <div style={{ color: "var(--ink-dim)", fontSize: 13, textAlign: "center", padding: 20 }}>Đang tải…</div>}
         {!loadingTx && txs.length === 0 && <div style={{ color: "var(--ink-dim)", fontSize: 13, textAlign: "center", padding: 20 }}>Chưa có giao dịch nào</div>}
-        {txs.map(tx => {
+        {txs.slice((txPage - 1) * TX_PAGE_SIZE, txPage * TX_PAGE_SIZE).map(tx => {
           const isPending = (tx.status || "approved") === "pending";
           const delta = tx.to_member === member.zalo_uid ? +tx.points : -tx.points;
           return (
@@ -628,7 +640,7 @@ function MemberDetail({ member, groupId, onBack }) {
                     {tx.status === "rejected" && <span style={{ color: "#f87171", fontWeight: 700 }}>✗ từ chối</span>}
                   </div>
                   {tx.raw_text && <ConvoThread raw={tx.raw_text} />}
-                  {isPending && (
+                  {isPending ? (
                     <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                       <button onClick={async () => { await api.approveTransfer(tx.id); reload(); }}
                         style={{ background: "rgba(52,211,153,.15)", border: "none", borderRadius: 7, padding: "4px 10px", cursor: "pointer", color: "#34d399", display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700 }}>
@@ -639,6 +651,11 @@ function MemberDetail({ member, groupId, onBack }) {
                         <Ban size={11} /> Từ chối
                       </button>
                     </div>
+                  ) : (
+                    <button onClick={() => setEditingTx(tx)}
+                      style={{ marginTop: 5, background: "rgba(96,165,250,.1)", border: "none", borderRadius: 7, padding: "4px 10px", cursor: "pointer", color: "#60a5fa", display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700 }}>
+                      <Edit2 size={10} /> Sửa điểm
+                    </button>
                   )}
                 </div>
                 <div style={{ fontWeight: 800, fontSize: 15, color: isPending ? "#f59e0b" : delta >= 0 ? "#34d399" : "#f87171", flexShrink: 0 }}>
@@ -648,11 +665,77 @@ function MemberDetail({ member, groupId, onBack }) {
             </div>
           );
         })}
+
+        {/* Phân trang giao dịch */}
+        {txs.length > TX_PAGE_SIZE && (() => {
+          const totalTxPages = Math.ceil(txs.length / TX_PAGE_SIZE);
+          return (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, padding: "14px 0", flexWrap: "wrap" }}>
+              <button onClick={() => setTxPage(p => Math.max(1, p - 1))} disabled={txPage === 1}
+                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent", color: txPage === 1 ? "var(--ink-dim)" : "var(--ink)", cursor: txPage === 1 ? "default" : "pointer", fontSize: 13 }}>‹</button>
+              {buildPageList(txPage, totalTxPages).map((p, idx) =>
+                p === "…"
+                  ? <span key={`e${idx}`} style={{ width: 28, textAlign: "center", color: "var(--ink-dim)", fontSize: 13 }}>…</span>
+                  : <button key={p} onClick={() => setTxPage(p)}
+                      style={{ width: 34, height: 34, borderRadius: 8, border: "1px solid", borderColor: p === txPage ? "var(--accent)" : "var(--line)", background: p === txPage ? "rgba(52,211,153,.15)" : "transparent", color: p === txPage ? "var(--accent)" : "var(--ink)", fontWeight: p === txPage ? 800 : 400, fontSize: 13, cursor: "pointer" }}>
+                      {p}
+                    </button>
+              )}
+              <button onClick={() => setTxPage(p => Math.min(totalTxPages, p + 1))} disabled={txPage === totalTxPages}
+                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent", color: txPage === totalTxPages ? "var(--ink-dim)" : "var(--ink)", cursor: txPage === totalTxPages ? "default" : "pointer", fontSize: 13 }}>›</button>
+              <span style={{ fontSize: 11, color: "var(--ink-dim)", marginLeft: 6 }}>Trang {txPage}/{totalTxPages}</span>
+            </div>
+          );
+        })()}
       </div>
 
       {showAdjust && (
         <AdjustPointsModal groupId={groupId} member={m} onClose={() => setShowAdjust(false)} onDone={() => { setShowAdjust(false); reload(); }} />
       )}
+      {editingTx && (
+        <EditTxModal tx={editingTx} onClose={() => setEditingTx(null)} onDone={() => { setEditingTx(null); reload(); }} />
+      )}
+    </div>
+  );
+}
+
+// ===== Modal sửa điểm giao dịch cụ thể =====
+function EditTxModal({ tx, onClose, onDone }) {
+  const [reason, setReason] = useState(tx.reason || "");
+  const [points, setPoints] = useState(String(tx.points));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const submit = async () => {
+    const p = parseFloat(points);
+    if (isNaN(p) || p <= 0) { setErr("Số điểm phải > 0"); return; }
+    setSaving(true); setErr("");
+    try {
+      await api.updateTransaction(tx.id, { reason, points: p });
+      onDone();
+    } catch (e) { setErr(e.message); setSaving(false); }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200, display: "grid", placeItems: "center", background: "rgba(0,0,0,.6)", padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 360, background: "var(--card)", borderRadius: 18, padding: 20, border: "1px solid var(--line)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <Edit2 size={17} color="#60a5fa" />
+          <span style={{ fontWeight: 700, fontSize: 15 }}>Sửa giao dịch</span>
+          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)" }}><X size={18} /></button>
+        </div>
+        <label style={{ display: "block", fontSize: 12, color: "var(--ink-dim)", marginBottom: 4 }}>Số điểm</label>
+        <input type="number" step="0.5" min="0.5" value={points} onChange={e => setPoints(e.target.value)}
+          style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", fontSize: 13, outline: "none", marginBottom: 12 }} />
+        <label style={{ display: "block", fontSize: 12, color: "var(--ink-dim)", marginBottom: 4 }}>Lý do</label>
+        <input value={reason} onChange={e => setReason(e.target.value)}
+          style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", fontSize: 13, outline: "none" }}
+          onKeyDown={e => e.key === "Enter" && submit()} />
+        {err && <div style={{ color: "#f87171", fontSize: 12, marginTop: 8 }}>{err}</div>}
+        <button onClick={submit} disabled={saving} style={{ width: "100%", marginTop: 16, padding: "11px", borderRadius: 12, border: "none", cursor: saving ? "default" : "pointer", fontWeight: 800, fontSize: 14, background: "rgba(96,165,250,.15)", color: "#60a5fa" }}>
+          {saving ? "Đang lưu…" : "Lưu thay đổi"}
+        </button>
+      </div>
     </div>
   );
 }

@@ -245,7 +245,7 @@ app.get("/api/accountant/members", async (req, res) => {
   const { groupId } = req.query;
   if (!groupId) return res.status(400).json({ error: "Thiếu groupId" });
   if (!await checkGroupAccess(req, res, groupId)) return;
-  res.json(await dbm.listMembers(groupId));
+  res.json(await dbm.listMembersWithYesterday(groupId));
 });
 app.post("/api/accountant/members", async (req, res) => {
   const { groupId, zaloUid, phone, display_name } = req.body;
@@ -316,10 +316,15 @@ app.post("/api/accountant/members/import-confirm", async (req, res) => {
 
 // Giao dịch điểm
 app.get("/api/accountant/transactions", async (req, res) => {
-  const { groupId, zaloUid, limit } = req.query;
+  const { groupId, zaloUid, limit, dateFrom, dateTo } = req.query;
   if (!groupId) return res.status(400).json({ error: "Thiếu groupId" });
   if (!await checkGroupAccess(req, res, groupId)) return;
-  res.json(await dbm.listTransactions(groupId, { zaloUid: zaloUid || null, limit: Number(limit) || 100 }));
+  res.json(await dbm.listTransactions(groupId, {
+    zaloUid: zaloUid || null,
+    limit: Number(limit) || 100,
+    dateFrom: dateFrom ? Number(dateFrom) : undefined,
+    dateTo:   dateTo   ? Number(dateTo)   : undefined,
+  }));
 });
 app.post("/api/accountant/adjust-points", async (req, res) => {
   const { groupId, zaloUid, delta, reason, displayName } = req.body;

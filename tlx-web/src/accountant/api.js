@@ -50,10 +50,12 @@ export const api = {
   deleteMember: (groupId, zaloUid) => req(`/api/accountant/members/${encodeURIComponent(groupId)}/${encodeURIComponent(zaloUid)}`, null, "DELETE"),
 
   // Giao dịch điểm
-  listTransactions: (groupId, zaloUid, limit) => {
+  listTransactions: (groupId, zaloUid, limit, dateFrom, dateTo) => {
     let url = `/api/accountant/transactions?groupId=${encodeURIComponent(groupId)}`;
-    if (zaloUid) url += `&zaloUid=${encodeURIComponent(zaloUid)}`;
-    if (limit) url += `&limit=${limit}`;
+    if (zaloUid)   url += `&zaloUid=${encodeURIComponent(zaloUid)}`;
+    if (limit)     url += `&limit=${limit}`;
+    if (dateFrom)  url += `&dateFrom=${dateFrom}`;
+    if (dateTo)    url += `&dateTo=${dateTo}`;
     return req(url, null, "GET");
   },
   adjustPoints: (b) => req("/api/accountant/adjust-points", b),

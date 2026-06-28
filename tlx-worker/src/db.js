@@ -629,16 +629,18 @@ export function getTransactionsByTripMsgId(groupId, tripMsgId) {
     "SELECT * FROM point_transactions WHERE group_id=? AND trip_msg_id=? AND type='barem' ORDER BY created_at DESC LIMIT 10"
   ).all(groupId, tripMsgId);
 }
-export function listTransactions(groupId, { zaloUid, limit = 100 } = {}) {
+export function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo } = {}) {
   const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name
     FROM point_transactions pt
     LEFT JOIN members fm ON fm.group_id=pt.group_id AND fm.zalo_uid=pt.from_member
     LEFT JOIN members tm ON tm.group_id=pt.group_id AND tm.zalo_uid=pt.to_member`;
-  if (zaloUid) {
-    return db.prepare(`${base} WHERE pt.group_id=? AND (pt.from_member=? OR pt.to_member=?) ORDER BY pt.created_at DESC LIMIT ?`)
-      .all(groupId, zaloUid, zaloUid, limit);
-  }
-  return db.prepare(`${base} WHERE pt.group_id=? ORDER BY pt.created_at DESC LIMIT ?`).all(groupId, limit);
+  const conds = ["pt.group_id=?"];
+  const params = [groupId];
+  if (zaloUid) { conds.push("(pt.from_member=? OR pt.to_member=?)"); params.push(zaloUid, zaloUid); }
+  if (dateFrom) { conds.push("pt.created_at >= ?"); params.push(dateFrom); }
+  if (dateTo)   { conds.push("pt.created_at <= ?"); params.push(dateTo); }
+  params.push(limit);
+  return db.prepare(`${base} WHERE ${conds.join(" AND ")} ORDER BY pt.created_at DESC LIMIT ?`).all(...params);
 }
 export function updateTransaction(id, { reason, points }) {
   const tx = db.prepare("SELECT * FROM point_transactions WHERE id=?").get(id);

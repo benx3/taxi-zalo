@@ -512,17 +512,17 @@ export async function getTransactionsByTripMsgId(groupId, tripMsgId) {
   );
   return r.rows;
 }
-export async function listTransactions(groupId, { zaloUid, limit = 100 } = {}) {
+export async function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo } = {}) {
   const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name
     FROM point_transactions pt
     LEFT JOIN members fm ON fm.group_id=pt.group_id AND fm.zalo_uid=pt.from_member
     LEFT JOIN members tm ON tm.group_id=pt.group_id AND tm.zalo_uid=pt.to_member`;
-  if (zaloUid) {
-    const r = await q(`${base} WHERE pt.group_id=$1 AND (pt.from_member=$2 OR pt.to_member=$2) ORDER BY pt.created_at DESC LIMIT $3`,
-      [groupId, zaloUid, limit]);
-    return r.rows;
-  }
-  const r = await q(`${base} WHERE pt.group_id=$1 ORDER BY pt.created_at DESC LIMIT $2`, [groupId, limit]);
+  const conds = ["pt.group_id=$1"];
+  const params = [groupId];
+  if (zaloUid) { conds.push(`(pt.from_member=$${params.push(zaloUid)} OR pt.to_member=$${params.push(zaloUid)})`); }
+  if (dateFrom) { conds.push(`pt.created_at >= $${params.push(dateFrom)}`); }
+  if (dateTo)   { conds.push(`pt.created_at <= $${params.push(dateTo)}`); }
+  const r = await q(`${base} WHERE ${conds.join(" AND ")} ORDER BY pt.created_at DESC LIMIT $${params.push(limit)}`, params);
   return r.rows;
 }
 export async function updateTransaction(id, { reason, points }) {
