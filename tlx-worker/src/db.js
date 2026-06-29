@@ -688,7 +688,7 @@ export function addBaremPending(groupId, posterId, takerId, pts, tripMsgId, rawT
 export function createPendingTransfer(groupId, fromUid, toUid, points, rawText, msgId = null) {
   // Dedup: nếu msgId đã tồn tại trong nhóm này → bỏ qua (2 Zalo account cùng theo dõi nhóm)
   if (msgId) {
-    const exists = db.prepare("SELECT id FROM point_transactions WHERE group_id=? AND trip_msg_id=? AND status='pending'").get(groupId, msgId);
+    const exists = db.prepare("SELECT id FROM point_transactions WHERE group_id=? AND trip_msg_id=? AND to_member=? AND status='pending'").get(groupId, msgId, toUid || null);
     if (exists) return exists.id;
   }
   const txId = uid();

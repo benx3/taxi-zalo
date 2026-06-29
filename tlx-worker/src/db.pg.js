@@ -563,7 +563,7 @@ export async function addBaremPending(groupId, posterId, takerId, pts, tripMsgId
 // ---------- Kế toán: giao dịch chờ duyệt ----------
 export async function createPendingTransfer(groupId, fromUid, toUid, points, rawText, msgId = null) {
   if (msgId) {
-    const exists = await q("SELECT id FROM point_transactions WHERE group_id=$1 AND trip_msg_id=$2 AND status='pending'", [groupId, msgId]);
+    const exists = await q("SELECT id FROM point_transactions WHERE group_id=$1 AND trip_msg_id=$2 AND to_member=$3 AND status='pending'", [groupId, msgId, toUid || null]);
     if (exists.rows[0]) return exists.rows[0].id;
   }
   const txId = uid();
