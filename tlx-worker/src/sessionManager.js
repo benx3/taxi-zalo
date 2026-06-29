@@ -572,8 +572,8 @@ async function onMessage(sess, msg) {
             const rulesRow = await dbm.getRules(dbGroupId);
             const baremPts = calcBaremPoints(rulesRow, cachedClaim.tripType, cachedClaim.tripPrice);
             const confirmPts = parseBonus(text) || 0; // điểm trong tin "ok.ib 2đ" của poster
-            const pts = confirmPts > 0 ? confirmPts : (cachedClaim.explicitPoints > 0 ? cachedClaim.explicitPoints : baremPts);
-            const ptsSrc = confirmPts > 0 ? "(thỏa thuận trong tin xác nhận)" : cachedClaim.pointSource === "claim" ? "(thỏa thuận trong tin ok)" : cachedClaim.pointSource === "trip" ? "(explicit từ tin đăng)" : `rules=${rulesRow ? "ok" : "null"}`;
+            const pts = cachedClaim.tripFree ? 0 : (confirmPts > 0 ? confirmPts : (cachedClaim.explicitPoints > 0 ? cachedClaim.explicitPoints : baremPts));
+            const ptsSrc = cachedClaim.tripFree ? "(free)" : confirmPts > 0 ? "(thỏa thuận trong tin xác nhận)" : cachedClaim.pointSource === "claim" ? "(thỏa thuận trong tin ok)" : cachedClaim.pointSource === "trip" ? "(explicit từ tin đăng)" : `rules=${rulesRow ? "ok" : "null"}`;
             console.log(`[${sess.userId}] 📊 Barem confirm: type=${cachedClaim.tripType} price=${cachedClaim.tripPrice}k pts=${pts} ${ptsSrc}`);
             if (pts > 0) {
               const convo = JSON.stringify({
