@@ -541,9 +541,11 @@ async function onMessage(sess, msg) {
             pointSource: claimNegotiatedPts > 0 ? "claim" : (cachedTrip.explicitPoints > 0 ? "trip" : "barem"),
             tripFree: !!cachedTrip.free,
             allTrips: cachedTrip.allTrips || null,
+            tripMsgId: qCliId || qGlobId || null,
           };
           sess.claimCache.set(msgId, claimData);
           if (msg.data.cliMsgId) sess.claimCache.set(String(msg.data.cliMsgId), claimData);
+          cacheRawMsg(sess, msgId, msg);
           while (sess.claimCache.size > 100)
             sess.claimCache.delete(sess.claimCache.keys().next().value);
         }
@@ -562,6 +564,7 @@ async function onMessage(sess, msg) {
         if (cachedClaim && senderId === cachedClaim.tripPosterId) {
           sess.claimCache.delete(qCliId2);
           if (qGlobId2) sess.claimCache.delete(qGlobId2);
+          cacheRawMsg(sess, msgId, msg);
           Promise.resolve((async () => {
             const confirmFree = /\bfre+\b/i.test(text);
             const rulesRow = await dbm.getRules(dbGroupId);
@@ -596,8 +599,9 @@ async function onMessage(sess, msg) {
               console.log(`[${sess.userId}] ⏳ Barem pending [${cachedClaim.allTrips.length} cuốc]: ${pts}đ — chờ kế toán duyệt`);
             } else {
               const reason = pts === 0 ? 'Lịch free' : (confirmPts > 0 ? `Chốt ${pts}đ (thỏa thuận)` : `Barem ${cachedClaim.tripType} ${cachedClaim.tripPrice}k`);
-              await dbm.adjustPoints(dbGroupId, cachedClaim.tripPosterId, +pts, reason, 'barem', msgId, null, null, convo);
-              await dbm.adjustPoints(dbGroupId, cachedClaim.takerId,      -pts, reason, 'barem', msgId, null, null, convo);
+              const txMsgId = cachedClaim.tripMsgId || msgId;
+              await dbm.adjustPoints(dbGroupId, cachedClaim.tripPosterId, +pts, reason, 'barem', txMsgId, null, null, convo);
+              await dbm.adjustPoints(dbGroupId, cachedClaim.takerId,      -pts, reason, 'barem', txMsgId, null, null, convo);
               console.log(`[${sess.userId}] ✅ Barem auto: ${pts}đ | ${ptsSrc}`);
             }
           })()).catch(e => console.error(`[${sess.userId}] barem apply:`, e?.message || e));
@@ -622,6 +626,22 @@ async function onMessage(sess, msg) {
             let txs = [];
             if (qGlobId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qGlobId));
             if (!txs.length && qCliId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qCliId));
+            // Walk reply chain via rawMsgById nếu không tìm thấy trực tiếp
+            if (!txs.length) {
+              const visited = new Set([qGlobId, qCliId].filter(Boolean));
+              let cur = sess.rawMsgById.get(qGlobId) || sess.rawMsgById.get(qCliId);
+              for (let hop = 0; hop < 5 && cur && !txs.length; hop++) {
+                const pg = cur.data?.quote?.globalMsgId != null ? String(cur.data.quote.globalMsgId) : "";
+                const pc = cur.data?.quote?.cliMsgId   != null ? String(cur.data.quote.cliMsgId)   : "";
+                for (const id of [pg, pc]) {
+                  if (!id || visited.has(id)) continue;
+                  visited.add(id);
+                  const found = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, id));
+                  if (found.length) { txs = found; break; }
+                }
+                if (!txs.length) cur = sess.rawMsgById.get(pg) || sess.rawMsgById.get(pc);
+              }
+            }
             if (!txs.length) {
               console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy tx cho quoted glob=${qGlobId} cli=${qCliId}`);
               return;
