@@ -108,6 +108,7 @@ function attach(userId, api, onEvent) {
     groupNameById: new Map(),
     claims: new Map(),          // `${groupId}:${ownerId}` -> {savedId, msgId, text}
     rawMsgById: new Map(),      // msgId -> object message gốc (để reply đúng tin)
+    quoteChain: new Map(),      // msgId → parentMsgId (truy vết reply chain cho Section E)
     sentOks: new Map(),         // msgId cuốc -> {groupId, sent, savedId} (để thu hồi khi huỷ)
     tripMsgCache: new Map(),    // msgId → {type, price, senderId} — cuốc gần đây (barem tracking)
     claimCache: new Map(),      // claimMsgId → {tripPosterId, takerId, takerName, tripType, tripPrice}
@@ -338,8 +339,15 @@ async function onMessage(sess, msg) {
     const senderName = msg.data?.dName || "Không rõ";
     const msgId = String(msg.data?.msgId || msg.data?.cliMsgId || Date.now());
     const groupName = sess.groupNameById.get(groupId) || msg.data?.groupName || groupId;
-    // Cache mọi tin có quote để Section E chain-walk truy ngược chuỗi reply
-    if (msg.data?.quote) cacheRawMsg(sess, msgId, msg);
+    // Cache quan hệ cha-con để Section E chain-walk truy ngược chuỗi reply
+    const _qraw = msg.data?.quote;
+    if (_qraw) {
+      const _pid = _qraw.globalMsgId != null ? String(_qraw.globalMsgId) : (_qraw.cliMsgId != null ? String(_qraw.cliMsgId) : null);
+      if (_pid) {
+        sess.quoteChain.set(msgId, _pid);
+        if (sess.quoteChain.size > 10000) sess.quoteChain.delete(sess.quoteChain.keys().next().value);
+      }
+    }
     const time = new Date().toLocaleTimeString("vi-VN", { hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
 
     // DEBUG: log tin media để xác định cấu trúc voice thật của zca-js
@@ -628,20 +636,16 @@ async function onMessage(sess, msg) {
             let txs = [];
             if (qGlobId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qGlobId));
             if (!txs.length && qCliId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qCliId));
-            // Walk reply chain via rawMsgById nếu không tìm thấy trực tiếp
+            // Walk quoteChain ngược về tin gốc nếu không tìm thấy trực tiếp
             if (!txs.length) {
               const visited = new Set([qGlobId, qCliId].filter(Boolean));
-              let cur = sess.rawMsgById.get(qGlobId) || sess.rawMsgById.get(qCliId);
-              for (let hop = 0; hop < 5 && cur && !txs.length; hop++) {
-                const pg = cur.data?.quote?.globalMsgId != null ? String(cur.data.quote.globalMsgId) : "";
-                const pc = cur.data?.quote?.cliMsgId   != null ? String(cur.data.quote.cliMsgId)   : "";
-                for (const id of [pg, pc]) {
-                  if (!id || visited.has(id)) continue;
-                  visited.add(id);
-                  const found = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, id));
-                  if (found.length) { txs = found; break; }
-                }
-                if (!txs.length) cur = sess.rawMsgById.get(pg) || sess.rawMsgById.get(pc);
+              let cur = (qGlobId && sess.quoteChain.get(qGlobId)) || (qCliId && sess.quoteChain.get(qCliId));
+              for (let hop = 0; hop < 8 && cur && !txs.length; hop++) {
+                if (visited.has(cur)) break;
+                visited.add(cur);
+                const found = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, cur));
+                if (found.length) { txs = found; break; }
+                cur = sess.quoteChain.get(cur);
               }
             }
             if (!txs.length) {
