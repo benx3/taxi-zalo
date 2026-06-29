@@ -269,7 +269,7 @@ function EditTxModal({ tx, onClose, onDone }) {
 
   const submit = async () => {
     const p = parseFloat(points);
-    if (isNaN(p) || p < 0) { setErr("Số điểm không hợp lệ (nhập 0 để miễn phí)"); return; }
+    if (isNaN(p)) { setErr("Nhập số điểm hợp lệ"); return; }
     setSaving(true); setErr("");
     try {
       await api.updateTransaction(tx.id, { reason, points: p });
@@ -286,7 +286,7 @@ function EditTxModal({ tx, onClose, onDone }) {
           <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)" }}><X size={18} /></button>
         </div>
         <label style={{ display: "block", fontSize: 12, color: "var(--ink-dim)", marginBottom: 4 }}>Số điểm</label>
-        <input type="number" step="0.5" min="0" value={points} onChange={e => setPoints(e.target.value)}
+        <input type="number" step="0.5" value={points} onChange={e => setPoints(e.target.value)}
           style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", fontSize: 13, outline: "none", marginBottom: 12 }} />
         <label style={{ display: "block", fontSize: 12, color: "var(--ink-dim)", marginBottom: 4 }}>Lý do</label>
         <input value={reason} onChange={e => setReason(e.target.value)}
