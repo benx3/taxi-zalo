@@ -465,7 +465,7 @@ async function onMessage(sess, msg) {
           // A.0a: Tất cả mentions đều là KT → tài xế trả/bán điểm cho KT
           const allToKT = mentions.every(mn => ktUids.has(String(mn.uid)));
           if (allToKT) {
-            const amountRe = /(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ|d)(?!\w)/gi;
+            const amountRe = /(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ|₫|d)(?!\w)/gi;
             let m; const amounts = [];
             while ((m = amountRe.exec(text)) !== null) {
               const val = parseFloat(m[1].replace(",", "."));
@@ -825,7 +825,7 @@ function detectSanDiem(text, mentions, selfUid) {
   if (!recipients.length) return [];
   // Trích tất cả số điểm theo thứ tự xuất hiện
   const amounts = [];
-  const amountRe = /(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ|d)(?!\w)/gi;
+  const amountRe = /(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ|₫|d)(?!\w)/gi;
   let m;
   while ((m = amountRe.exec(text)) !== null) {
     const val = parseFloat(m[1].replace(",", "."));
