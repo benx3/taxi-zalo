@@ -530,8 +530,8 @@ export async function updateTransaction(id, { reason, points }) {
   const tx = r.rows[0]; if (!tx) throw new Error("Không tìm thấy giao dịch");
   const diff = (points !== undefined ? points : tx.points) - tx.points;
   if (points !== undefined && diff !== 0) {
-    if (tx.to_member) await q("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [diff, now(), tx.group_id, tx.to_member]);
-    if (tx.from_member) await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [diff, now(), tx.group_id, tx.from_member]);
+    if (tx.to_member) await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [diff, now(), tx.group_id, tx.to_member]);
+    if (tx.from_member) await q("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [diff, now(), tx.group_id, tx.from_member]);
   }
   await q("UPDATE point_transactions SET reason=COALESCE($1,reason), points=COALESCE($2,points) WHERE id=$3",
     [reason || null, points !== undefined ? points : null, id]);

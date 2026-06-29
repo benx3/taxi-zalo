@@ -670,9 +670,10 @@ async function onMessage(sess, msg) {
               await dbm.adjustPoints(dbGroupId, takerUid,  +originalPts, 'Hủy lịch', 'barem_cancel', msgId, null, null, reversalConvo);
               console.log(`[${sess.userId}] ❌ Barem cancel: ±${originalPts}đ | poster=${posterUid} taker=${takerUid}`);
             } else if (action.type === 'free') {
-              await dbm.adjustPoints(dbGroupId, posterUid, -originalPts, 'Lịch free', 'barem_cancel', msgId, null, null, reversalConvo);
-              await dbm.adjustPoints(dbGroupId, takerUid,  +originalPts, 'Lịch free', 'barem_cancel', msgId, null, null, reversalConvo);
-              console.log(`[${sess.userId}] 🆓 Barem free: ±${originalPts}đ | poster=${posterUid} taker=${takerUid}`);
+              // Cập nhật điểm giao dịch gốc về 0 thay vì tạo reversal mới
+              await dbm.updateTransaction(posterTx.id, { points: 0, reason: 'Lịch free' });
+              await dbm.updateTransaction(takerTx.id,  { points: 0, reason: 'Lịch free' });
+              console.log(`[${sess.userId}] 🆓 Barem free: set 0đ | poster=${posterUid} taker=${takerUid}`);
             } else if (action.type === 'adjust') {
               const diff = action.points - originalPts;
               if (diff === 0) return;

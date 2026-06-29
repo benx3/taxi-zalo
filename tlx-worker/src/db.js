@@ -647,10 +647,12 @@ export function updateTransaction(id, { reason, points }) {
   if (!tx) throw new Error("Không tìm thấy giao dịch");
   const diff = (points !== undefined ? points : tx.points) - tx.points;
   if (points !== undefined && diff !== 0) {
+    // to_member nhận điểm → tăng thêm diff (diff>0=thêm, diff<0=bớt)
     if (tx.to_member) db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
-      .run(-diff, now(), tx.group_id, tx.to_member);
+      .run(diff, now(), tx.group_id, tx.to_member);
+    // from_member mất điểm → giảm thêm diff
     if (tx.from_member) db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
-      .run(diff, now(), tx.group_id, tx.from_member);
+      .run(-diff, now(), tx.group_id, tx.from_member);
   }
   db.prepare("UPDATE point_transactions SET reason=COALESCE(?,reason), points=COALESCE(?,points) WHERE id=?")
     .run(reason || null, points !== undefined ? points : null, id);
