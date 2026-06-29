@@ -338,6 +338,8 @@ async function onMessage(sess, msg) {
     const senderName = msg.data?.dName || "Không rõ";
     const msgId = String(msg.data?.msgId || msg.data?.cliMsgId || Date.now());
     const groupName = sess.groupNameById.get(groupId) || msg.data?.groupName || groupId;
+    // Cache mọi tin có quote để Section E chain-walk truy ngược chuỗi reply
+    if (msg.data?.quote) cacheRawMsg(sess, msgId, msg);
     const time = new Date().toLocaleTimeString("vi-VN", { hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
 
     // DEBUG: log tin media để xác định cấu trúc voice thật của zca-js
@@ -784,10 +786,10 @@ async function onMessage(sess, msg) {
   }
 }
 
-// Lưu rawMsg vào cache (giới hạn 30 tin)
+// Lưu rawMsg vào cache (giới hạn 200 tin)
 function cacheRawMsg(sess, msgId, msg) {
   sess.rawMsgById.set(msgId, msg);
-  if (sess.rawMsgById.size > 30) {
+  if (sess.rawMsgById.size > 200) {
     const firstKey = sess.rawMsgById.keys().next().value;
     sess.rawMsgById.delete(firstKey);
   }
