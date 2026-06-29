@@ -563,38 +563,42 @@ async function onMessage(sess, msg) {
           sess.claimCache.delete(qCliId2);
           if (qGlobId2) sess.claimCache.delete(qGlobId2);
           Promise.resolve((async () => {
-            // Kiểm tra free: chủ lịch ghi "free" trong tin đăng hoặc trong tin "ok ib free"
-            const confirmFree = /free+|fr+ee/i.test(text);
-            if (cachedClaim.tripFree || confirmFree) {
-              console.log(`[${sess.userId}] 🆓 Barem free: cuốc miễn phí, bỏ qua điểm`);
-              return;
-            }
+            const confirmFree = /\bfre+\b/i.test(text);
             const rulesRow = await dbm.getRules(dbGroupId);
             const baremPts = calcBaremPoints(rulesRow, cachedClaim.tripType, cachedClaim.tripPrice);
-            const confirmPts = parseBonus(text) || 0; // điểm trong tin "ok.ib 2đ" của poster
-            const pts = cachedClaim.tripFree ? 0 : (confirmPts > 0 ? confirmPts : (cachedClaim.explicitPoints > 0 ? cachedClaim.explicitPoints : baremPts));
-            const ptsSrc = cachedClaim.tripFree ? "(free)" : confirmPts > 0 ? "(thỏa thuận trong tin xác nhận)" : cachedClaim.pointSource === "claim" ? "(thỏa thuận trong tin ok)" : cachedClaim.pointSource === "trip" ? "(explicit từ tin đăng)" : `rules=${rulesRow ? "ok" : "null"}`;
-            console.log(`[${sess.userId}] 📊 Barem confirm: type=${cachedClaim.tripType} price=${cachedClaim.tripPrice}k pts=${pts} ${ptsSrc}`);
-            if (pts > 0) {
-              const convo = JSON.stringify({
-                tripTime: cachedClaim.tripTime, tripPoster: cachedClaim.tripPosterName, tripText: cachedClaim.tripText,
-                claimTime: cachedClaim.claimTime, claimer: cachedClaim.takerName, claimText: cachedClaim.claimText,
-                confirmTime: time, confirmPoster: senderName, confirmText: text,
-                multiTrips: cachedClaim.allTrips || null,
-              });
-              if (cachedClaim.allTrips) {
-                // Tin có nhiều cuốc → không biết tài xế nhận cuốc nào → pending cho KT duyệt
-                await dbm.addBaremPending(dbGroupId, cachedClaim.tripPosterId, cachedClaim.takerId, pts, msgId, convo);
-                console.log(`[${sess.userId}] ⏳ Barem pending [${cachedClaim.allTrips.length} cuốc]: ${pts}đ — chờ kế toán duyệt`);
-              } else {
-                // Single trip → tự động áp dụng ngay
-                const reason = confirmPts > 0 ? `Chốt ${pts}đ (thỏa thuận)` : `Barem ${cachedClaim.tripType} ${cachedClaim.tripPrice}k`;
-                await dbm.adjustPoints(dbGroupId, cachedClaim.tripPosterId, +pts, reason, 'barem', msgId, null, null, convo);
-                await dbm.adjustPoints(dbGroupId, cachedClaim.takerId,      -pts, reason, 'barem', msgId, null, null, convo);
-                console.log(`[${sess.userId}] ✅ Barem auto: ${pts}đ | ${ptsSrc}`);
-              }
+            const confirmPts = parseBonus(text) || 0;
+            let pts, ptsSrc;
+            if (confirmPts > 0) {
+              pts = confirmPts; ptsSrc = "(thỏa thuận trong tin xác nhận)";
+            } else if (cachedClaim.tripFree || confirmFree) {
+              pts = 0; ptsSrc = "(free)";
+            } else if (cachedClaim.explicitPoints > 0) {
+              pts = cachedClaim.explicitPoints;
+              ptsSrc = cachedClaim.pointSource === "claim" ? "(thỏa thuận trong tin ok)" : "(explicit từ tin đăng)";
             } else {
+              pts = baremPts;
+              ptsSrc = `rules=${rulesRow ? "ok" : "null"}`;
+            }
+            console.log(`[${sess.userId}] 📊 Barem confirm: type=${cachedClaim.tripType} price=${cachedClaim.tripPrice}k pts=${pts} ${ptsSrc}`);
+            // pts=0 mà không phải free → chưa có rule, bỏ qua
+            if (pts === 0 && !cachedClaim.tripFree && !confirmFree) {
               console.warn(`[${sess.userId}] ⚠️  Barem pts=0 — chưa có rule cho ${cachedClaim.tripType} ${cachedClaim.tripPrice}k`);
+              return;
+            }
+            const convo = JSON.stringify({
+              tripTime: cachedClaim.tripTime, tripPoster: cachedClaim.tripPosterName, tripText: cachedClaim.tripText,
+              claimTime: cachedClaim.claimTime, claimer: cachedClaim.takerName, claimText: cachedClaim.claimText,
+              confirmTime: time, confirmPoster: senderName, confirmText: text,
+              multiTrips: cachedClaim.allTrips || null,
+            });
+            if (cachedClaim.allTrips) {
+              await dbm.addBaremPending(dbGroupId, cachedClaim.tripPosterId, cachedClaim.takerId, pts, msgId, convo);
+              console.log(`[${sess.userId}] ⏳ Barem pending [${cachedClaim.allTrips.length} cuốc]: ${pts}đ — chờ kế toán duyệt`);
+            } else {
+              const reason = pts === 0 ? 'Lịch free' : (confirmPts > 0 ? `Chốt ${pts}đ (thỏa thuận)` : `Barem ${cachedClaim.tripType} ${cachedClaim.tripPrice}k`);
+              await dbm.adjustPoints(dbGroupId, cachedClaim.tripPosterId, +pts, reason, 'barem', msgId, null, null, convo);
+              await dbm.adjustPoints(dbGroupId, cachedClaim.takerId,      -pts, reason, 'barem', msgId, null, null, convo);
+              console.log(`[${sess.userId}] ✅ Barem auto: ${pts}đ | ${ptsSrc}`);
             }
           })()).catch(e => console.error(`[${sess.userId}] barem apply:`, e?.message || e));
         }
@@ -609,7 +613,8 @@ async function onMessage(sess, msg) {
       const qd = msg.data?.quote;
       const mentions = msg.data?.mentions || [];
       if (qd && mentions.some(m => String(m.uid) === String(sess.selfId))) {
-        const action = detectBaremAction(text);
+        const parsedBonus = parseBonus(text);
+        const action = detectBaremAction(text) || (parsedBonus > 0 ? { type: 'adjust', points: parsedBonus } : null);
         if (action) {
           const qGlobId = qd.globalMsgId != null ? String(qd.globalMsgId) : "";
           const qCliId  = qd.cliMsgId   != null ? String(qd.cliMsgId)   : "";
