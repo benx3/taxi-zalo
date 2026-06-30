@@ -340,12 +340,19 @@ async function onMessage(sess, msg) {
     const msgId = String(msg.data?.msgId || msg.data?.cliMsgId || Date.now());
     const groupName = sess.groupNameById.get(groupId) || msg.data?.groupName || groupId;
     // Cache quan hệ cha-con để Section E chain-walk truy ngược chuỗi reply
+    // Lưu dưới CẢ 2 key (glob+cli) của bản thân, value = mảng [globId, cliId] của cha
     const _qraw = msg.data?.quote;
     if (_qraw) {
-      const _pid = _qraw.globalMsgId != null ? String(_qraw.globalMsgId) : (_qraw.cliMsgId != null ? String(_qraw.cliMsgId) : null);
-      if (_pid) {
-        sess.quoteChain.set(msgId, _pid);
-        if (sess.quoteChain.size > 10000) sess.quoteChain.delete(sess.quoteChain.keys().next().value);
+      const _pg = _qraw.globalMsgId != null ? String(_qraw.globalMsgId) : null;
+      const _pc = _qraw.cliMsgId   != null ? String(_qraw.cliMsgId)   : null;
+      const _parents = [_pg, _pc].filter(Boolean);
+      if (_parents.length) {
+        const _og = msg.data?.msgId   != null ? String(msg.data.msgId)   : null;
+        const _oc = msg.data?.cliMsgId != null ? String(msg.data.cliMsgId) : null;
+        for (const k of [_og, _oc].filter(Boolean)) {
+          sess.quoteChain.set(k, _parents);
+          if (sess.quoteChain.size > 20000) sess.quoteChain.delete(sess.quoteChain.keys().next().value);
+        }
       }
     }
     const time = new Date().toLocaleTimeString("vi-VN", { hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
@@ -636,16 +643,20 @@ async function onMessage(sess, msg) {
             let txs = [];
             if (qGlobId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qGlobId));
             if (!txs.length && qCliId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qCliId));
-            // Walk quoteChain ngược về tin gốc nếu không tìm thấy trực tiếp
+            // Walk quoteChain ngược về tin gốc — mỗi node thử cả globId lẫn cliId
             if (!txs.length) {
               const visited = new Set([qGlobId, qCliId].filter(Boolean));
-              let cur = (qGlobId && sess.quoteChain.get(qGlobId)) || (qCliId && sess.quoteChain.get(qCliId));
-              for (let hop = 0; hop < 8 && cur && !txs.length; hop++) {
-                if (visited.has(cur)) break;
-                visited.add(cur);
-                const found = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, cur));
-                if (found.length) { txs = found; break; }
-                cur = sess.quoteChain.get(cur);
+              let pids = sess.quoteChain.get(qGlobId) || sess.quoteChain.get(qCliId) || [];
+              for (let hop = 0; hop < 8 && pids.length && !txs.length; hop++) {
+                const nextSet = new Set();
+                for (const pid of pids) {
+                  if (visited.has(pid)) continue;
+                  visited.add(pid);
+                  const found = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, pid));
+                  if (found.length) { txs = found; break; }
+                  (sess.quoteChain.get(pid) || []).forEach(p => { if (!visited.has(p)) nextSet.add(p); });
+                }
+                if (!txs.length) pids = [...nextSet];
               }
             }
             if (!txs.length) {
