@@ -57,11 +57,17 @@ export function parseBonus(t) {
     const val = parseFloat(tail[1].replace(",", "."));
     if (val > 0 && val <= 10) return val;
   }
-  // Số nguyên cuối câu sau dấu trừ có khoảng trắng: "300k sảnh nhận -1"
+  // Số nguyên cuối câu sau dấu - (kèm khoảng trắng): "300k sảnh nhận -1"
   // Yêu cầu \s trước - để tránh bắt nhầm giá kiểu "500k-100"
   const tailMinus = t.match(/\s-\s*(\d+)\s*$/);
   if (tailMinus) {
     const val = parseInt(tailMinus[1]);
+    if (val > 0 && val <= 10) return val;
+  }
+  // Số nguyên cuối câu sau dấu + liền k hoặc khoảng trắng: "350k+2", "300k +1"
+  const tailPlus = t.match(/(?:k|\s)\+\s*(\d+)\s*$/i);
+  if (tailPlus) {
+    const val = parseInt(tailPlus[1]);
     if (val > 0 && val <= 10) return val;
   }
   return null;
