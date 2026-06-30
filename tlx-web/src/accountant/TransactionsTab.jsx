@@ -195,10 +195,15 @@ function ConvoThread({ raw }) {
 }
 
 function TxRow({ tx, onEdit, onDelete, onApprove, onReject }) {
-  const pts = Number(tx.points);
-  const ptsStr = pts % 1 === 0 ? pts.toFixed(0) : pts.toFixed(2);
+  const abspts = Math.abs(Number(tx.points));
   const receiver = tx.to_member_name || tx.to_member;
   const sender   = tx.from_member_name || tx.from_member;
+  // Nếu chỉ có from_member (không có to_member) → đây là giao dịch trừ điểm
+  const isDeduction = !!tx.from_member && !tx.to_member;
+  const effectivePts = isDeduction ? -abspts : abspts;
+  const ptsStr = abspts % 1 === 0 ? abspts.toFixed(0) : abspts.toFixed(2);
+  const ptsColor = effectivePts >= 0 ? "#34d399" : "#f87171";
+  const ptsSign  = effectivePts >= 0 ? "+" : "-";
   const status   = tx.status || "approved";
   const sCfg     = STATUS_CFG[status] || STATUS_CFG.approved;
   const isPending = status === "pending";
@@ -213,8 +218,8 @@ function TxRow({ tx, onEdit, onDelete, onApprove, onReject }) {
             : <span style={{ fontWeight: 700, fontSize: 13, color: "var(--ink-dim)" }}>Điều chỉnh</span>
         }
         {sender && receiver && <span style={{ fontSize: 11, color: "var(--ink-dim)" }}>← {sender}</span>}
-        <span style={{ marginLeft: "auto", fontWeight: 800, fontSize: 14, color: pts >= 0 ? "#34d399" : "#f87171" }}>
-          {pts >= 0 ? "+" : ""}{ptsStr} đ
+        <span style={{ marginLeft: "auto", fontWeight: 800, fontSize: 14, color: ptsColor }}>
+          {ptsSign}{ptsStr} đ
         </span>
       </div>
 

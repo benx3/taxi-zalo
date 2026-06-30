@@ -276,6 +276,9 @@ export function parseTrip(raw) {
   if (isHardNoise(text)) return null;          // hủy lịch / sản điểm / xác nhận rõ ràng
 
   const explicitPoints = parseBonus(text);
+  const tripType = parseType(text);
+  // Giá >= 1000k mà không nhận dạng được loại cụ thể → khả năng cao là bao xe
+  const finalType = (tripType === "Không rõ" && price >= 1000) ? "Bao xe" : tripType;
   return {
     groupId: raw.groupId,
     group: raw.groupName,
@@ -288,7 +291,7 @@ export function parseTrip(raw) {
     time: parseTime(text),
     car: parseCar(text),
     seats: parseSeats(text),
-    type: parseType(text),
+    type: finalType,
     route: parseRoute(text),
     free: /\bfre+\b/i.test(text),
     explicitPoints,
