@@ -311,11 +311,13 @@ function calcBaremPoints(rulesRow, parserType, price) {
     return price >= lo && price <= hi ? Number(rule.points || 0) : null;
   };
 
-  // Tìm rule khớp chính xác loại cuốc
-  for (const rule of rules) {
-    if (!targetCodes.includes((rule.type || "").toLowerCase())) continue;
-    const pts = matchRule(rule);
-    if (pts !== null) return pts;
+  // Tìm rule khớp theo thứ tự ưu tiên của targetCodes (không theo thứ tự mảng barem)
+  for (const code of targetCodes) {
+    for (const rule of rules) {
+      if ((rule.type || "").toLowerCase() !== code) continue;
+      const pts = matchRule(rule);
+      if (pts !== null) return pts;
+    }
   }
   // Fallback "khac" nếu không khớp loại nào
   for (const rule of rules) {
