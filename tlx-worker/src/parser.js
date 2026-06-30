@@ -51,10 +51,17 @@ export function parseBonus(t) {
     const val = parseFloat(pm[1].replace(",", "."));
     if (val > 0 && val <= 20) return val;
   }
-  // Số thập phân cuối câu không có đơn vị: "500k tg. 0,5"
-  const tail = t.match(/(?:^|\s)(\d+[,\.]\d+)\s*$/);
+  // Số thập phân cuối câu không có đơn vị: "500k tg. 0,5" / "400k-0.5"
+  const tail = t.match(/(?:^|\s|-)(\d+[,\.]\d+)\s*$/);
   if (tail) {
     const val = parseFloat(tail[1].replace(",", "."));
+    if (val > 0 && val <= 10) return val;
+  }
+  // Số nguyên cuối câu sau dấu trừ có khoảng trắng: "300k sảnh nhận -1"
+  // Yêu cầu \s trước - để tránh bắt nhầm giá kiểu "500k-100"
+  const tailMinus = t.match(/\s-\s*(\d+)\s*$/);
+  if (tailMinus) {
+    const val = parseInt(tailMinus[1]);
     if (val > 0 && val <= 10) return val;
   }
   return null;
