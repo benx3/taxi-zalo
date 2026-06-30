@@ -7,8 +7,8 @@ const NOISE_RE = /(lịch hủy|huỷ lịch|hủy lịch|đã có ng|đã có n
 
 export function isConfirmMessage(text) {
   if (!text) return false;
-  // ok.ib / ok ib / oki ib / okie ib / okib — [ie]{0,2} cho phép "oki" và "okie"
-  return /ok[ie]{0,2}\W*i[bp]/i.test(text);
+  // ok ib / oki ib / okie ib / okib / ok inbox / okinbox / oki inbox
+  return /ok[ie]{0,2}\W*(?:i[bp]|inbox)/i.test(text);
 }
 
 export function isClaimMessage(text) {
