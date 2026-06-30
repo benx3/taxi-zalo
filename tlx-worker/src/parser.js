@@ -51,8 +51,16 @@ export function parseBonus(t) {
     const val = parseFloat(pm[1].replace(",", "."));
     if (val > 0 && val <= 20) return val;
   }
+  // Điểm kèm dấu ngay sau giá (không cần cuối chuỗi): "350k-1 , ôm biển" / "500k -1,tgct"
+  // \d{1,2} chặn số lớn (100 = 3 chữ số → không khớp), (?![,.]\d) tránh "1,000"
+  const afterK = t.match(/\d{2,4}\s*k\s*([+\-])\s*(\d{1,2}(?:[,.]\d{1,2})?)\b(?![,.]\d)/i);
+  if (afterK) {
+    const val = parseFloat(afterK[2].replace(",", "."));
+    if (val > 0 && val <= 10) return val;
+  }
   // Số thập phân cuối câu không có đơn vị: "500k tg. 0,5" / "400k-0.5" / "350k+0,5"
-  const tail = t.match(/(?:^|\s|[+\-])(\d+[,\.]\d+)\s*$/);
+  // \d{1,2} cho phần thập phân để tránh bắt nhầm "1,000" (phân cách hàng nghìn)
+  const tail = t.match(/(?:^|\s|[+\-])(\d+[,\.]\d{1,2})\s*$/);
   if (tail) {
     const val = parseFloat(tail[1].replace(",", "."));
     if (val > 0 && val <= 10) return val;
