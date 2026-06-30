@@ -71,6 +71,38 @@ const getSlugFromUrl = () => {
   return null;
 };
 
+// Cập nhật đồng bộ title + description + canonical + OG tags
+function setSeo({ title, desc, canonical }) {
+  document.title = title;
+  const setMeta = (name, val) => {
+    let el = document.querySelector(`meta[name="${name}"]`);
+    if (!el) { el = document.createElement("meta"); el.name = name; document.head.appendChild(el); }
+    el.setAttribute("content", val);
+  };
+  const setOg = (prop, val) => {
+    let el = document.querySelector(`meta[property="${prop}"]`);
+    if (!el) { el = document.createElement("meta"); el.setAttribute("property", prop); document.head.appendChild(el); }
+    el.setAttribute("content", val);
+  };
+  const setTw = (name, val) => {
+    let el = document.querySelector(`meta[name="${name}"]`);
+    if (!el) { el = document.createElement("meta"); el.name = name; document.head.appendChild(el); }
+    el.setAttribute("content", val);
+  };
+  const setLink = (rel, val) => {
+    let el = document.querySelector(`link[rel="${rel}"]`);
+    if (!el) { el = document.createElement("link"); el.rel = rel; document.head.appendChild(el); }
+    el.href = val;
+  };
+  setMeta("description", desc);
+  setOg("og:title", title);
+  setOg("og:description", desc);
+  setOg("og:url", canonical);
+  setTw("twitter:title", title);
+  setTw("twitter:description", desc);
+  setLink("canonical", canonical);
+}
+
 const AVT_COLORS = ["#1e3a5f","#1a2e1a","#2a1a2a","#2a2a1a","#1a2a2a"];
 function ZaloAvatar({ uid, name, src, size = 40 }) {
   const [imgErr, setImgErr] = useState(false);
@@ -250,8 +282,8 @@ function GroupsView({ onSelect }) {
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "40px 16px 0" }}>
       <div style={{ marginBottom: 28, textAlign: "center" }}>
-        <h1 style={{ fontFamily: "'Plus Jakarta Sans',system-ui", fontWeight: 800, fontSize: 28, margin: "0 0 8px", color: c.ink }}>Tra cứu điểm tài xế Zalo</h1>
-        <p style={{ color: c.dim, fontSize: 15 }}>Chọn nhóm để xem điểm và lịch sử giao dịch thành viên</p>
+        <h1 style={{ fontFamily: "'Plus Jakarta Sans',system-ui", fontWeight: 800, fontSize: 28, margin: "0 0 8px", color: c.ink }}>Tra Cứu Điểm Tài Xế Zalo</h1>
+        <p style={{ color: c.dim, fontSize: 15 }}>Xem bảng xếp hạng điểm barem, lịch sử giao dịch và điểm thưởng tài xế theo nhóm Zalo</p>
       </div>
 
       {loading && <div style={{ textAlign: "center", padding: 60, color: c.dim }}>Đang tải…</div>}
@@ -347,8 +379,8 @@ function MembersView({ group, onBack, onSelect }) {
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ fontSize: 22, fontWeight: 800, color: c.ink, margin: 0 }}>{group.group_name || group.group_id}</h2>
-            <p style={{ color: c.dim, fontSize: 14, marginTop: 4 }}>{members.length} thành viên</p>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: c.ink, margin: 0 }}>Điểm tài xế {group.group_name || group.group_id}</h1>
+            <p style={{ color: c.dim, fontSize: 14, marginTop: 4 }}>Bảng xếp hạng điểm thưởng · {members.length} tài xế</p>
           </div>
           <button onClick={copyLink} style={{ flexShrink: 0, marginTop: 4, padding: "7px 14px", borderRadius: 9, border: `1px solid ${c.border}`, background: copied ? "rgba(52,211,153,.15)" : "rgba(255,255,255,.05)", color: copied ? c.accent : c.dim, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, transition: "all .15s" }}>
             {copied ? "✓ Đã sao chép!" : "🔗 Sao chép link"}
@@ -574,11 +606,36 @@ export default function PublicPointsPage() {
   const [member, setMember] = useState(null);
   const [slugLoading, setSlugLoading] = useState(false);
 
+  // SEO: cập nhật title/desc/canonical/OG theo từng view
   useEffect(() => {
-    document.title = "Tính Điểm Tài Xế Zalo — Tra Cứu Điểm Thưởng";
-    const desc = document.querySelector('meta[name="description"]');
-    if (desc) desc.setAttribute("content", "Tra cứu điểm thưởng tài xế Zalo theo nhóm. Xem số điểm hiện tại, lịch sử giao dịch, bảng xếp hạng thành viên nhóm tài xế.");
+    const origin = window.location.origin;
+    const gName = group?.group_name || group?.group_id || "";
+    const gSlug = group ? (group.slug || slugify(gName)) : "";
+    const mName = member ? (member.alias || member.display_name || member.zalo_uid || "") : "";
 
+    if (!group || view === "groups") {
+      setSeo({
+        title: "Tra Cứu Điểm Tài Xế Zalo — Bảng Xếp Hạng & Điểm Thưởng Nhóm Xe",
+        desc: "Tra cứu điểm thưởng tài xế Zalo theo nhóm. Xem bảng xếp hạng điểm barem, lịch sử giao dịch và thứ hạng tài xế trong nhóm xe.",
+        canonical: `${origin}/tinh-diem-tai-xe-zalo`,
+      });
+    } else if (view === "members") {
+      setSeo({
+        title: `Điểm Tài Xế ${gName} — Bảng Xếp Hạng & Điểm Thưởng Zalo`,
+        desc: `Xem điểm thưởng tài xế nhóm ${gName} trên Zalo. Bảng xếp hạng điểm barem, lịch sử giao dịch và thứ hạng tài xế cập nhật theo thời gian thực.`,
+        canonical: `${origin}/xem-diem/${gSlug}`,
+      });
+    } else if (view === "transactions") {
+      setSeo({
+        title: `${mName} — Lịch Sử Điểm Thưởng Nhóm ${gName} | Tra Cứu Điểm Tài Xế Zalo`,
+        desc: `Chi tiết lịch sử điểm thưởng của tài xế ${mName} trong nhóm ${gName}. Xem giao dịch điểm barem, san điểm và điểm tích lũy Zalo.`,
+        canonical: `${origin}/xem-diem/${gSlug}`,
+      });
+    }
+  }, [view, group, member]);
+
+  // URL routing: load nhóm từ slug + popstate
+  useEffect(() => {
     // Nếu URL là /xem-diem/:slug → load nhóm trực tiếp
     const slug = getSlugFromUrl();
     if (slug) {
