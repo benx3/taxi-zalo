@@ -38,11 +38,18 @@ function hasRouteHint(t) {
 
 // ----- ĐIỂM EXPLICIT: "1đ","1₫","1d","1điểm","+-1.5","-+2d","1 diem","0,5đ" -----
 export function parseBonus(t) {
-  // Có đơn vị (tuỳ chọn tiền tố +-/-+): "1đ","1₫","+-1.5d","-+2 điểm","1 diem"
-  // ₫ = U+20AB (ký hiệu tiền tệ), đ = U+0111 (chữ cái Vietnamese) — cần match cả hai
-  const m = t.match(/(?:[+\-]{2})?\s*(\d+(?:[,\.]\d+)?)\s*(điểm|diem|đ|₫|d)(?![\wÀ-ɏḀ-ỿ])/i);
-  if (m) {
-    const val = parseFloat(m[1].replace(",", "."));
+  // Đơn vị ngắn (đ, ₫, d) bắt ở bất kỳ đâu: "1đ", "1₫", "+-1.5d"
+  // ₫ = U+20AB (ký hiệu tiền tệ), đ = U+0111 (chữ cái Vietnamese)
+  const ms = t.match(/(?:[+\-]{2})?\s*(\d+(?:[,\.]\d+)?)\s*(?:đ|₫|d)(?![\wÀ-ɏḀ-ỿ])/i);
+  if (ms) {
+    const val = parseFloat(ms[1].replace(",", "."));
+    if (val > 0 && val <= 20) return val;
+  }
+  // Đơn vị dài "điểm/diem" — thêm lookahead chặn "2 điểm thuận thành" (địa điểm, không phải điểm thưởng)
+  // Không match nếu "điểm" theo sau bởi khoảng trắng + chữ cái (tên địa điểm)
+  const ml = t.match(/(?:[+\-]{2})?\s*(\d+(?:[,\.]\d+)?)\s*(?:điểm|diem)(?![\wÀ-ɏḀ-ỿ])(?!\s+[\wÀ-ɏḀ-ỿ])/i);
+  if (ml) {
+    const val = parseFloat(ml[1].replace(",", "."));
     if (val > 0 && val <= 20) return val;
   }
   // Tiền tố +- hoặc -+ không kèm đơn vị: "ib+-1.5", "ok -+2"
