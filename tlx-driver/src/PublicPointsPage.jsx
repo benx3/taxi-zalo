@@ -383,10 +383,9 @@ function MembersView({ group, onBack, onSelect }) {
             <p style={{ color: c.dim, fontSize: 14, marginTop: 4 }}>Bảng xếp hạng điểm thưởng · {members.length} tài xế</p>
           </div>
           <button onClick={copyLink} style={{ flexShrink: 0, marginTop: 4, padding: "7px 14px", borderRadius: 9, border: `1px solid ${c.border}`, background: copied ? "rgba(52,211,153,.15)" : "rgba(255,255,255,.05)", color: copied ? c.accent : c.dim, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, transition: "all .15s" }}>
-            {copied ? "✓ Đã sao chép!" : "🔗 Sao chép link"}
+            {copied ? "✓ Đã sao chép!" : "🔗 Chia sẻ"}
           </button>
         </div>
-        <div style={{ marginTop: 6, fontSize: 11, color: "#4a5568", wordBreak: "break-all" }}>{shareUrl}</div>
       </div>
 
       {/* Search + Sort + Page size */}
