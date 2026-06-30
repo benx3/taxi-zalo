@@ -65,11 +65,15 @@ const slugify = (name) =>
     .replace(/^-+|-+$/g, "")
     .replace(/-+/g, "-");
 
-const getSlugFromUrl = () => {
+const parseUrl = () => {
   const p = window.location.pathname;
-  if (p.startsWith("/xem-diem/")) return decodeURIComponent(p.slice("/xem-diem/".length));
-  return null;
+  if (!p.startsWith("/xem-diem/")) return { groupSlug: null, memberUid: null };
+  const rest = decodeURIComponent(p.slice("/xem-diem/".length));
+  const slash = rest.indexOf("/");
+  if (slash === -1) return { groupSlug: rest || null, memberUid: null };
+  return { groupSlug: rest.slice(0, slash) || null, memberUid: rest.slice(slash + 1) || null };
 };
+const getSlugFromUrl = () => parseUrl().groupSlug;
 
 // Cập nhật đồng bộ title + description + canonical + OG tags
 function setSeo({ title, desc, canonical }) {
@@ -489,11 +493,17 @@ function MembersView({ group, onBack, onSelect }) {
 }
 
 /* ── TransactionsView ───────────────────────────── */
-function TransactionsView({ group, member, onBack }) {
+function TransactionsView({ group, member, groupSlug, onBack }) {
   const [txs, setTxs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [page, setPage] = useState(1);
+  const [copied, setCopied] = useState(false);
+
+  const shareUrl = `${window.location.origin}/xem-diem/${groupSlug}/${member.zalo_uid}`;
+  const copyLink = () => {
+    navigator.clipboard.writeText(shareUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  };
 
   useEffect(() => {
     get(`/api/public/transactions/${group.group_id}/${member.zalo_uid}?limit=200`)
@@ -552,6 +562,9 @@ function TransactionsView({ group, member, onBack }) {
         <h3 style={{ fontSize: 16, fontWeight: 700, color: c.ink, margin: 0 }}>
           Lịch sử giao dịch <span style={{ color: c.dim, fontWeight: 500, fontSize: 14 }}>({txs.length})</span>
         </h3>
+        <button onClick={copyLink} style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 9, border: `1px solid ${c.border}`, background: copied ? "rgba(52,211,153,.15)" : "rgba(255,255,255,.05)", color: copied ? c.accent : c.dim, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+          {copied ? "✓ Đã sao chép!" : "🔗 Chia sẻ"}
+        </button>
       </div>
 
       {loading && <div style={{ textAlign: "center", padding: 40, color: c.dim }}>Đang tải…</div>}
@@ -628,39 +641,42 @@ export default function PublicPointsPage() {
       setSeo({
         title: `${mName} — Lịch Sử Điểm Thưởng Nhóm ${gName} | Tra Cứu Điểm Tài Xế Zalo`,
         desc: `Chi tiết lịch sử điểm thưởng của tài xế ${mName} trong nhóm ${gName}. Xem giao dịch điểm barem, san điểm và điểm tích lũy Zalo.`,
-        canonical: `${origin}/xem-diem/${gSlug}`,
+        canonical: `${origin}/xem-diem/${gSlug}/${member?.zalo_uid || ""}`,
       });
     }
   }, [view, group, member]);
 
+  // Tải nhóm + thành viên từ slug/uid
+  const loadFromUrl = useCallback(({ groupSlug, memberUid }) => {
+    if (!groupSlug) { setGroup(null); setMember(null); setView("groups"); return; }
+    setSlugLoading(true);
+    get(`/api/public/by-slug/${encodeURIComponent(groupSlug)}`)
+      .then(g => {
+        setGroup(g);
+        if (memberUid) {
+          return get(`/api/public/members/${g.group_id}`)
+            .then(ms => {
+              const m = ms.find(x => x.zalo_uid === memberUid);
+              if (m) { setMember(m); setView("transactions"); }
+              else { setMember(null); setView("members"); }
+            });
+        } else {
+          setMember(null); setView("members");
+        }
+      })
+      .catch(() => { setGroup(null); setMember(null); setView("groups"); })
+      .finally(() => setSlugLoading(false));
+  }, []);
+
   // URL routing: load nhóm từ slug + popstate
   useEffect(() => {
-    // Nếu URL là /xem-diem/:slug → load nhóm trực tiếp
-    const slug = getSlugFromUrl();
-    if (slug) {
-      setSlugLoading(true);
-      get(`/api/public/by-slug/${encodeURIComponent(slug)}`)
-        .then(g => { setGroup(g); setView("members"); })
-        .catch(() => {})
-        .finally(() => setSlugLoading(false));
-    }
+    const parsed = parseUrl();
+    if (parsed.groupSlug) loadFromUrl(parsed);
 
-    // Browser back/forward button
-    const onPop = () => {
-      const s = getSlugFromUrl();
-      if (s) {
-        setSlugLoading(true);
-        get(`/api/public/by-slug/${encodeURIComponent(s)}`)
-          .then(g => { setGroup(g); setMember(null); setView("members"); })
-          .catch(() => { setGroup(null); setMember(null); setView("groups"); })
-          .finally(() => setSlugLoading(false));
-      } else {
-        setGroup(null); setMember(null); setView("groups");
-      }
-    };
+    const onPop = () => loadFromUrl(parseUrl());
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, []);
+  }, [loadFromUrl]);
 
   const selectGroup = (g, slug) => {
     setGroup(g); setMember(null); setView("members");
@@ -674,6 +690,14 @@ export default function PublicPointsPage() {
 
   const backToMembers = () => {
     setMember(null); setView("members");
+    const gSlug = group ? (group.slug || slugify(group.group_name)) : "";
+    window.history.pushState({}, "", `/xem-diem/${gSlug}`);
+  };
+
+  const selectMember = (g, m) => {
+    setMember(m); setView("transactions");
+    const gSlug = g.slug || slugify(g.group_name);
+    window.history.pushState({}, "", `/xem-diem/${gSlug}/${m.zalo_uid}`);
   };
 
   return (
@@ -689,13 +713,14 @@ export default function PublicPointsPage() {
         <MembersView
           group={group}
           onBack={backToGroups}
-          onSelect={m => { setMember(m); setView("transactions"); }}
+          onSelect={m => selectMember(group, m)}
         />
       )}
       {!slugLoading && view === "transactions" && group && member && (
         <TransactionsView
           group={group}
           member={member}
+          groupSlug={group.slug || slugify(group.group_name)}
           onBack={backToMembers}
         />
       )}
