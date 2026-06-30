@@ -112,9 +112,32 @@ app.get("/api/zalo/pending-qr", (req, res) => {
 });
 
 // ---------- Public API — không cần đăng nhập ----------
+
+// Chuyển tên nhóm thành slug URL-safe: bỏ dấu tiếng Việt, ký tự đặc biệt
+function slugify(name) {
+  return (name || "")
+    .replace(/\{[^}]*\}|\([^)]*\)|\[[^\]]*\]/g, " ") // bỏ nội dung trong {}/[]/()
+    .replace(/[đĐ]/g, "d")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-");
+}
+
 app.get("/api/public/groups", async (_req, res) => {
-  try { res.json(await dbm.listPublicGroups()); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  try {
+    const groups = await dbm.listPublicGroups();
+    res.json(groups.map(g => ({ ...g, slug: slugify(g.group_name) })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get("/api/public/by-slug/:slug", async (req, res) => {
+  try {
+    const groups = await dbm.listPublicGroups();
+    const found = groups.find(g => slugify(g.group_name) === req.params.slug);
+    if (!found) return res.status(404).json({ error: "Nhóm không tồn tại" });
+    res.json({ ...found, slug: slugify(found.group_name) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get("/api/public/members/:groupId", async (req, res) => {
   try { res.json(await dbm.listMembersWithYesterday(req.params.groupId)); }

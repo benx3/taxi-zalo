@@ -55,6 +55,22 @@ const noMark = (s) => (s || "").toLowerCase()
   .normalize("NFD")
   .replace(/\p{Mn}/gu, "");
 
+const slugify = (name) =>
+  (name || "")
+    .replace(/\{[^}]*\}|\([^)]*\)|\[[^\]]*\]/g, " ")
+    .replace(/[đĐ]/g, "d")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-");
+
+const getSlugFromUrl = () => {
+  const p = window.location.pathname;
+  if (p.startsWith("/xem-diem/")) return decodeURIComponent(p.slice("/xem-diem/".length));
+  return null;
+};
+
 const AVT_COLORS = ["#1e3a5f","#1a2e1a","#2a1a2a","#2a2a1a","#1a2a2a"];
 function ZaloAvatar({ uid, name, src, size = 40 }) {
   const [imgErr, setImgErr] = useState(false);
@@ -244,21 +260,25 @@ function GroupsView({ onSelect }) {
         <div style={{ textAlign: "center", padding: 60, color: c.dim }}>Chưa có nhóm nào.</div>
       )}
 
-      {groups.map(g => (
-        <div key={g.group_id} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: "18px 20px", marginBottom: 12, display: "flex", alignItems: "center", gap: 16, cursor: "pointer", transition: "border-color .15s" }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = c.blue}
-          onMouseLeave={e => e.currentTarget.style.borderColor = c.border}
-          onClick={() => onSelect(g)}>
-          <div style={{ width: 46, height: 46, borderRadius: 12, background: "rgba(88,166,255,.12)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-            <Users size={22} color={c.blue} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: 16, color: c.ink }}>{g.group_name || g.group_id}</div>
-            <div style={{ fontSize: 12, color: c.dim, marginTop: 2 }}>Nhóm tài xế · Xem điểm thành viên</div>
-          </div>
-          <ChevronRight size={20} color={c.dim} />
-        </div>
-      ))}
+      {groups.map(g => {
+        const slug = g.slug || slugify(g.group_name);
+        return (
+          <a key={g.group_id} href={`/xem-diem/${slug}`}
+            style={{ display: "flex", alignItems: "center", gap: 16, background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: "18px 20px", marginBottom: 12, cursor: "pointer", transition: "border-color .15s", textDecoration: "none" }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = c.blue}
+            onMouseLeave={e => e.currentTarget.style.borderColor = c.border}
+            onClick={e => { e.preventDefault(); onSelect(g, slug); }}>
+            <div style={{ width: 46, height: 46, borderRadius: 12, background: "rgba(88,166,255,.12)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+              <Users size={22} color={c.blue} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 16, color: c.ink }}>{g.group_name || g.group_id}</div>
+              <div style={{ fontSize: 12, color: c.dim, marginTop: 2 }}>Nhóm tài xế · Xem điểm thành viên</div>
+            </div>
+            <ChevronRight size={20} color={c.dim} />
+          </a>
+        );
+      })}
     </div>
   );
 }
@@ -275,6 +295,12 @@ function MembersView({ group, onBack, onSelect }) {
   const [sortDir, setSortDir] = useState("desc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [copied, setCopied] = useState(false);
+
+  const shareUrl = `${window.location.origin}/xem-diem/${group.slug || slugify(group.group_name)}`;
+  const copyLink = () => {
+    navigator.clipboard.writeText(shareUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  };
 
   useEffect(() => {
     get(`/api/public/members/${group.group_id}`).then(setMembers).catch(e => setErr(e.message)).finally(() => setLoading(false));
@@ -319,8 +345,16 @@ function MembersView({ group, onBack, onSelect }) {
       </button>
 
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 800, color: c.ink, margin: 0 }}>{group.group_name || group.group_id}</h2>
-        <p style={{ color: c.dim, fontSize: 14, marginTop: 4 }}>{members.length} thành viên</p>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ fontSize: 22, fontWeight: 800, color: c.ink, margin: 0 }}>{group.group_name || group.group_id}</h2>
+            <p style={{ color: c.dim, fontSize: 14, marginTop: 4 }}>{members.length} thành viên</p>
+          </div>
+          <button onClick={copyLink} style={{ flexShrink: 0, marginTop: 4, padding: "7px 14px", borderRadius: 9, border: `1px solid ${c.border}`, background: copied ? "rgba(52,211,153,.15)" : "rgba(255,255,255,.05)", color: copied ? c.accent : c.dim, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, transition: "all .15s" }}>
+            {copied ? "✓ Đã sao chép!" : "🔗 Sao chép link"}
+          </button>
+        </div>
+        <div style={{ marginTop: 6, fontSize: 11, color: "#4a5568", wordBreak: "break-all" }}>{shareUrl}</div>
       </div>
 
       {/* Search + Sort + Page size */}
@@ -538,31 +572,75 @@ export default function PublicPointsPage() {
   const [view, setView] = useState("groups");
   const [group, setGroup] = useState(null);
   const [member, setMember] = useState(null);
+  const [slugLoading, setSlugLoading] = useState(false);
 
   useEffect(() => {
     document.title = "Tính Điểm Tài Xế Zalo — Tra Cứu Điểm Thưởng";
     const desc = document.querySelector('meta[name="description"]');
     if (desc) desc.setAttribute("content", "Tra cứu điểm thưởng tài xế Zalo theo nhóm. Xem số điểm hiện tại, lịch sử giao dịch, bảng xếp hạng thành viên nhóm tài xế.");
+
+    // Nếu URL là /xem-diem/:slug → load nhóm trực tiếp
+    const slug = getSlugFromUrl();
+    if (slug) {
+      setSlugLoading(true);
+      get(`/api/public/by-slug/${encodeURIComponent(slug)}`)
+        .then(g => { setGroup(g); setView("members"); })
+        .catch(() => {})
+        .finally(() => setSlugLoading(false));
+    }
+
+    // Browser back/forward button
+    const onPop = () => {
+      const s = getSlugFromUrl();
+      if (s) {
+        setSlugLoading(true);
+        get(`/api/public/by-slug/${encodeURIComponent(s)}`)
+          .then(g => { setGroup(g); setMember(null); setView("members"); })
+          .catch(() => { setGroup(null); setMember(null); setView("groups"); })
+          .finally(() => setSlugLoading(false));
+      } else {
+        setGroup(null); setMember(null); setView("groups");
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
+
+  const selectGroup = (g, slug) => {
+    setGroup(g); setMember(null); setView("members");
+    window.history.pushState({ groupId: g.group_id }, "", `/xem-diem/${slug || slugify(g.group_name)}`);
+  };
+
+  const backToGroups = () => {
+    setGroup(null); setMember(null); setView("groups");
+    window.history.pushState({}, "", "/tinh-diem-tai-xe-zalo");
+  };
+
+  const backToMembers = () => {
+    setMember(null); setView("members");
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: c.bg, color: c.ink, fontFamily: "system-ui,sans-serif" }}>
       <SiteNav />
-      {view === "groups" && (
-        <GroupsView onSelect={g => { setGroup(g); setMember(null); setView("members"); }} />
+      {slugLoading && (
+        <div style={{ textAlign: "center", padding: 80, color: c.dim }}>Đang tải nhóm…</div>
       )}
-      {view === "members" && group && (
+      {!slugLoading && view === "groups" && (
+        <GroupsView onSelect={selectGroup} />
+      )}
+      {!slugLoading && view === "members" && group && (
         <MembersView
           group={group}
-          onBack={() => setView("groups")}
+          onBack={backToGroups}
           onSelect={m => { setMember(m); setView("transactions"); }}
         />
       )}
-      {view === "transactions" && group && member && (
+      {!slugLoading && view === "transactions" && group && member && (
         <TransactionsView
           group={group}
           member={member}
-          onBack={() => setView("members")}
+          onBack={backToMembers}
         />
       )}
       <SiteFooter />
