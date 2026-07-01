@@ -47,6 +47,7 @@ export const api = {
   lookupUser: (phone) => req(`/api/accountant/lookup-user?phone=${encodeURIComponent(phone)}`, null, "GET"),
   importMembersPreview: (groupId, rows) => req("/api/accountant/members/import-preview", { groupId, rows }),
   importMembersConfirm: (groupId, rows) => req("/api/accountant/members/import-confirm", { groupId, rows }),
+  importPoints: (groupId, rows) => req("/api/accountant/import-points", { groupId, rows }),
   deleteMember: (groupId, zaloUid) => req(`/api/accountant/members/${encodeURIComponent(groupId)}/${encodeURIComponent(zaloUid)}`, null, "DELETE"),
 
   // Giao dịch điểm

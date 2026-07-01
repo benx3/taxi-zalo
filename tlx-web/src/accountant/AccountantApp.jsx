@@ -1,20 +1,22 @@
 import React, { useState, useEffect } from "react";
 import { Users, Clock, BarChart2, User, LogOut, KeyRound, X, Check,
-         Wifi, WifiOff, QrCode, Bell, Lock, Search, AlertCircle, RefreshCw, Eye, EyeOff, MessageSquare } from "lucide-react";
+         Wifi, WifiOff, QrCode, Bell, Lock, Search, AlertCircle, RefreshCw, Eye, EyeOff, MessageSquare, FileUp } from "lucide-react";
 import { api } from "./api.js";
 import MembersTab from "./MembersTab.jsx";
 import TransactionsTab from "./TransactionsTab.jsx";
 import BaremTab from "./BaremTab.jsx";
 import PendingTab from "./PendingTab.jsx";
 import RawMessagesTab from "./RawMessagesTab.jsx";
+import ImportPointsTab from "./ImportPointsTab.jsx";
 
 const TABS = [
-  { key: "members",      icon: Users,         label: "Thành viên" },
-  { key: "transactions", icon: Clock,          label: "Giao dịch" },
-  { key: "pending",      icon: Bell,           label: "Chờ duyệt" },
-  { key: "barem",        icon: BarChart2,      label: "Barem" },
-  { key: "raw",          icon: MessageSquare,  label: "Tin nhắn" },
-  { key: "account",      icon: User,           label: "Tài khoản" },
+  { key: "members",       icon: Users,         label: "Thành viên" },
+  { key: "transactions",  icon: Clock,          label: "Giao dịch" },
+  { key: "pending",       icon: Bell,           label: "Chờ duyệt" },
+  { key: "barem",         icon: BarChart2,      label: "Barem" },
+  { key: "import-points", icon: FileUp,         label: "Import Điểm" },
+  { key: "raw",           icon: MessageSquare,  label: "Tin nhắn" },
+  { key: "account",       icon: User,           label: "Tài khoản" },
 ];
 
 export default function AccountantApp({ me: initMe, onLogout, worker }) {
@@ -171,12 +173,13 @@ export default function AccountantApp({ me: initMe, onLogout, worker }) {
               </div>
             </div>
           )}
-          {activeGroup && tab === "members"      && <MembersTab groupId={activeGroup.group_id} />}
-          {activeGroup && tab === "transactions" && <TransactionsTab groupId={activeGroup.group_id} />}
-          {activeGroup && tab === "pending"      && <PendingTab groupId={activeGroup.group_id} liveItems={pendingTransfers} onProcessed={removePending} />}
-          {activeGroup && tab === "barem"        && <BaremTab groupId={activeGroup.group_id} />}
-          {activeGroup && tab === "raw"          && <div style={{ padding: "0 24px 24px" }}><RawMessagesTab groupId={activeGroup.group_id} /></div>}
-          {tab === "account"                     && <AccountTab me={me} onLogout={onLogout} />}
+          {activeGroup && tab === "members"       && <MembersTab groupId={activeGroup.group_id} />}
+          {activeGroup && tab === "transactions"  && <TransactionsTab groupId={activeGroup.group_id} />}
+          {activeGroup && tab === "pending"       && <PendingTab groupId={activeGroup.group_id} liveItems={pendingTransfers} onProcessed={removePending} />}
+          {activeGroup && tab === "barem"         && <BaremTab groupId={activeGroup.group_id} />}
+          {activeGroup && tab === "import-points" && <ImportPointsTab groupId={activeGroup.group_id} />}
+          {activeGroup && tab === "raw"           && <div style={{ padding: "0 24px 24px" }}><RawMessagesTab groupId={activeGroup.group_id} /></div>}
+          {tab === "account"                      && <AccountTab me={me} onLogout={onLogout} />}
         </div>
       </div>
 

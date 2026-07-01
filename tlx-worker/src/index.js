@@ -314,6 +314,41 @@ app.post("/api/accountant/members/import-confirm", async (req, res) => {
   res.json({ ok: true, added, merged });
 });
 
+// Import điểm từ Excel
+app.post("/api/accountant/import-points", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  const { groupId, rows } = req.body;
+  if (!groupId || !Array.isArray(rows)) return res.status(400).json({ error: "Thiếu groupId hoặc rows" });
+  if (!await checkGroupAccess(req, res, groupId)) return;
+
+  const batchTs = Date.now();
+  let updated = 0, created = 0, skipped = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const finalPoints  = Number(row.finalPoints)  || 0;
+    const currentPoints = Number(row.currentPoints) || 0;
+    const delta = +((finalPoints - currentPoints).toFixed(10));
+
+    let uid = row.zaloUid;
+
+    try {
+      if (row.isNew) {
+        uid = `~imp_${batchTs}_${i}`;
+        await dbm.upsertMember(groupId, uid, { display_name: String(row.name || "").trim() });
+        created++;
+      }
+      if (Math.abs(delta) < 0.0001) { skipped++; continue; }
+      await dbm.adjustPoints(groupId, uid, delta, "Import điểm", "manual");
+      if (!row.isNew) updated++;
+    } catch (e) {
+      console.error(`[import-points] row ${i}:`, e?.message);
+    }
+  }
+
+  res.json({ ok: true, updated, created, skipped });
+});
+
 // Giao dịch điểm
 app.get("/api/accountant/transactions", async (req, res) => {
   const { groupId, zaloUid, limit, dateFrom, dateTo } = req.query;
