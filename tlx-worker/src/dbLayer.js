@@ -51,7 +51,7 @@ export const {
   saveTrip, markTripWon, deleteSavedTrip, listSavedTrips, purgeOld,
   getSetting, setSetting,
   getAccountantGroups, getGroupAccountants, getGroupZaloOwner, findGroupByName, addAccountantGroup, removeAccountantGroup, setGroupPublicVisible,
-  countMembers, listMembers, listMembersWithYesterday, getMemberByZaloUid, upsertMember, deleteRemovedMembers, deleteMember, mergeTempMember, setMemberAlias,
+  countMembers, listMembers, listMembersWithYesterday, getMemberByZaloUid, upsertMember, markRemovedMembers, deleteRemovedMembers, deleteMember, mergeTempMember, setMemberAlias,
   getPrimaryAccountantSelfIdForGroup, getMembersByDisplayName,
   listRawMessages, saveRawMessage, hasRawMessage,
   adjustPoints, getTransactionsByTripMsgId, listTransactions, updateTransaction, deleteTransaction,

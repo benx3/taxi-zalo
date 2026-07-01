@@ -416,7 +416,7 @@ export async function countMembers(groupId) {
   return Number(r.rows[0]?.cnt ?? 0);
 }
 export async function listMembers(groupId) {
-  const r = await q("SELECT * FROM members WHERE group_id=$1 ORDER BY points DESC, display_name ASC", [groupId]);
+  const r = await q("SELECT * FROM members WHERE group_id=$1 ORDER BY is_out ASC, points DESC, display_name ASC", [groupId]);
   return r.rows;
 }
 export async function listMembersWithYesterday(groupId) {
@@ -434,7 +434,7 @@ export async function listMembersWithYesterday(groupId) {
       ), 0))::numeric, 10) AS points_yesterday
     FROM members m
     WHERE m.group_id = $1
-    ORDER BY m.points DESC, m.display_name ASC
+    ORDER BY m.is_out ASC, m.points DESC, m.display_name ASC
   `, [groupId, todayStartMs]);
   return r.rows;
 }
@@ -444,12 +444,13 @@ export async function getMemberByZaloUid(groupId, zaloUid) {
 }
 export async function upsertMember(groupId, zaloUid, { phone, display_name, avatar } = {}) {
   const r = await q(`
-    INSERT INTO members(id,group_id,zalo_uid,phone,display_name,avatar,points,created_at,updated_at)
-    VALUES($1,$2,$3,$4,$5,$6,0,$7,$7)
+    INSERT INTO members(id,group_id,zalo_uid,phone,display_name,avatar,points,is_out,created_at,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,0,0,$7,$7)
     ON CONFLICT(group_id,zalo_uid) DO UPDATE
       SET phone=COALESCE($4,members.phone),
           display_name=COALESCE($5,members.display_name),
           avatar=COALESCE($6,members.avatar),
+          is_out=0,
           updated_at=$7
     RETURNING id`,
     [uid(), groupId, zaloUid, phone || null, display_name || null, avatar || null, now()]);
@@ -459,13 +460,16 @@ export async function setMemberAlias(groupId, zaloUid, alias) {
   await q("UPDATE members SET alias=$1, updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
     [alias || null, now(), groupId, zaloUid]);
 }
-export async function deleteRemovedMembers(groupId, activeUids) {
+export async function markRemovedMembers(groupId, activeUids) {
   if (!activeUids.length) return 0;
   const r = await q(
-    `DELETE FROM members WHERE group_id=$1 AND zalo_uid != ALL($2)`,
-    [groupId, activeUids]
+    `UPDATE members SET is_out=1, updated_at=$3 WHERE group_id=$1 AND zalo_uid != ALL($2) AND zalo_uid NOT LIKE '~imp_%'`,
+    [groupId, activeUids, now()]
   );
   return r.rowCount;
+}
+export async function deleteRemovedMembers(groupId, activeUids) {
+  return markRemovedMembers(groupId, activeUids);
 }
 export async function deleteMember(groupId, zaloUid) {
   const r = await q("DELETE FROM members WHERE group_id=$1 AND zalo_uid=$2", [groupId, zaloUid]);

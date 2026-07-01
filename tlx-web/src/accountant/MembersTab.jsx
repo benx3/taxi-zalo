@@ -305,6 +305,7 @@ export default function MembersTab({ groupId }) {
                     {m.alias || m.display_name || m.zalo_uid}
                     {m.alias && <span style={{ fontSize: 11, color: "var(--ink-dim)", fontWeight: 400, marginLeft: 5 }}>({m.display_name})</span>}
                     {(m.zalo_uid || "").startsWith("~imp_") && <span style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,.15)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 4, padding: "1px 5px", marginLeft: 6 }}>TẠM</span>}
+                    {m.is_out === 1 && <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", background: "rgba(148,163,184,.12)", border: "1px solid rgba(148,163,184,.3)", borderRadius: 4, padding: "1px 5px", marginLeft: 6 }}>OUT</span>}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--ink-dim)", marginTop: 1 }}>#{(m.zalo_uid || "").slice(-6)}{m.phone ? ` · ${m.phone}` : ""}</div>
                 </button>

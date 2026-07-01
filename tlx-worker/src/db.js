@@ -130,6 +130,7 @@ try { db.exec("ALTER TABLE point_transactions ADD COLUMN requester_uid TEXT"); }
 try { db.exec("ALTER TABLE point_transactions ADD COLUMN raw_text TEXT"); } catch {}
 try { db.exec("ALTER TABLE members ADD COLUMN avatar TEXT"); } catch {}
 try { db.exec("ALTER TABLE members ADD COLUMN alias TEXT"); } catch {}
+try { db.exec("ALTER TABLE members ADD COLUMN is_out INTEGER DEFAULT 0"); } catch {}
 
 const sessions = new Map(); // token -> userId (đăng nhập web)
 
@@ -537,7 +538,7 @@ export function countMembers(groupId) {
   return db.prepare("SELECT COUNT(*) as cnt FROM members WHERE group_id=?").get(groupId)?.cnt ?? 0;
 }
 export function listMembers(groupId) {
-  return db.prepare("SELECT * FROM members WHERE group_id=? ORDER BY points DESC, display_name COLLATE NOCASE ASC").all(groupId);
+  return db.prepare("SELECT * FROM members WHERE group_id=? ORDER BY is_out ASC, points DESC, display_name COLLATE NOCASE ASC").all(groupId);
 }
 export function listMembersWithYesterday(groupId) {
   const vnOffsetMs = 7 * 60 * 60 * 1000;
@@ -554,7 +555,7 @@ export function listMembersWithYesterday(groupId) {
       ), 0), 10) AS points_yesterday
     FROM members m
     WHERE m.group_id = ?
-    ORDER BY m.points DESC, m.display_name COLLATE NOCASE ASC
+    ORDER BY m.is_out ASC, m.points DESC, m.display_name COLLATE NOCASE ASC
   `).all(todayStartMs, groupId);
 }
 export function getMemberByZaloUid(groupId, zaloUid) {
@@ -563,12 +564,12 @@ export function getMemberByZaloUid(groupId, zaloUid) {
 export function upsertMember(groupId, zaloUid, { phone, display_name, avatar } = {}) {
   const existing = getMemberByZaloUid(groupId, zaloUid);
   if (existing) {
-    db.prepare("UPDATE members SET phone=COALESCE(?,phone), display_name=COALESCE(?,display_name), avatar=COALESCE(?,avatar), updated_at=? WHERE id=?")
+    db.prepare("UPDATE members SET phone=COALESCE(?,phone), display_name=COALESCE(?,display_name), avatar=COALESCE(?,avatar), is_out=0, updated_at=? WHERE id=?")
       .run(phone || null, display_name || null, avatar || null, now(), existing.id);
     return existing.id;
   }
   const id = uid();
-  db.prepare("INSERT INTO members(id,group_id,zalo_uid,phone,display_name,avatar,points,created_at,updated_at) VALUES(?,?,?,?,?,?,0,?,?)")
+  db.prepare("INSERT INTO members(id,group_id,zalo_uid,phone,display_name,avatar,points,is_out,created_at,updated_at) VALUES(?,?,?,?,?,?,0,0,?,?)")
     .run(id, groupId, zaloUid, phone || null, display_name || null, avatar || null, now(), now());
   return id;
 }
@@ -576,11 +577,14 @@ export function setMemberAlias(groupId, zaloUid, alias) {
   db.prepare("UPDATE members SET alias=?, updated_at=? WHERE group_id=? AND zalo_uid=?")
     .run(alias || null, now(), groupId, zaloUid);
 }
-export function deleteRemovedMembers(groupId, activeUids) {
-  if (!activeUids.length) return 0; // an toàn: không xóa cả nhóm nếu Zalo trả về rỗng
+export function markRemovedMembers(groupId, activeUids) {
+  if (!activeUids.length) return 0; // an toàn: không mark cả nhóm nếu Zalo trả về rỗng
   const placeholders = activeUids.map(() => "?").join(",");
-  return db.prepare(`DELETE FROM members WHERE group_id=? AND zalo_uid NOT IN (${placeholders})`)
-    .run(groupId, ...activeUids).changes;
+  return db.prepare(`UPDATE members SET is_out=1, updated_at=? WHERE group_id=? AND zalo_uid NOT IN (${placeholders}) AND zalo_uid NOT LIKE '~imp_%'`)
+    .run(now(), groupId, ...activeUids).changes;
+}
+export function deleteRemovedMembers(groupId, activeUids) {
+  return markRemovedMembers(groupId, activeUids);
 }
 export function deleteMember(groupId, zaloUid) {
   return db.prepare("DELETE FROM members WHERE group_id=? AND zalo_uid=?")
