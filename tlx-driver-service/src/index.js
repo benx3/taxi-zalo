@@ -147,7 +147,7 @@ app.get("/api/public/transactions/:groupId/:zaloUid", async (req, res) => {
   try {
     const { groupId, zaloUid } = req.params;
     const limit = Math.min(Number(req.query.limit) || 50, 200);
-    res.json(await dbm.listTransactions(groupId, { zaloUid, limit }));
+    res.json(await dbm.listTransactions(groupId, { zaloUid, limit, approvedOnly: true }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

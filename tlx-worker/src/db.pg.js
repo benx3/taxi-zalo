@@ -512,12 +512,13 @@ export async function getTransactionsByTripMsgId(groupId, tripMsgId) {
   );
   return r.rows;
 }
-export async function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo } = {}) {
+export async function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo, approvedOnly = false } = {}) {
   const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name
     FROM point_transactions pt
     LEFT JOIN members fm ON fm.group_id=pt.group_id AND fm.zalo_uid=pt.from_member
     LEFT JOIN members tm ON tm.group_id=pt.group_id AND tm.zalo_uid=pt.to_member`;
-  const conds = ["pt.group_id=$1", "pt.status != 'rejected'"];
+  const conds = ["pt.group_id=$1"];
+  if (approvedOnly) conds.push("(pt.status IS NULL OR pt.status = 'approved')");
   const params = [groupId];
   if (zaloUid) { conds.push(`(pt.from_member=$${params.push(zaloUid)} OR pt.to_member=$${params.push(zaloUid)})`); }
   if (dateFrom) { conds.push(`pt.created_at >= $${params.push(dateFrom)}`); }
