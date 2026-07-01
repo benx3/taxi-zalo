@@ -634,7 +634,7 @@ export function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, date
     FROM point_transactions pt
     LEFT JOIN members fm ON fm.group_id=pt.group_id AND fm.zalo_uid=pt.from_member
     LEFT JOIN members tm ON tm.group_id=pt.group_id AND tm.zalo_uid=pt.to_member`;
-  const conds = ["pt.group_id=?"];
+  const conds = ["pt.group_id=?", "pt.status != 'rejected'"];
   const params = [groupId];
   if (zaloUid) { conds.push("(pt.from_member=? OR pt.to_member=?)"); params.push(zaloUid, zaloUid); }
   if (dateFrom) { conds.push("pt.created_at >= ?"); params.push(dateFrom); }
