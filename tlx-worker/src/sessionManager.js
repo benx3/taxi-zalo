@@ -585,7 +585,8 @@ async function onMessage(sess, msg) {
           if (qGlobId2) sess.claimCache.delete(qGlobId2);
           cacheRawMsg(sess, msgId, msg);
           Promise.resolve((async () => {
-            const confirmFree = /\bfre+\b/i.test(text);
+            // "lịch free" / "lich free" = lịch trình rảnh, không phải cuốc miễn phí
+            const confirmFree = /\bfre+\b/i.test(text) && !/(?:lịch|lich)\s+fre+/i.test(text);
             const rulesRow = await dbm.getRules(dbGroupId);
             const baremPts = calcBaremPoints(rulesRow, cachedClaim.tripType, cachedClaim.tripPrice);
             const confirmPts = parseBonus(text) || 0;
