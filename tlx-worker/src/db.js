@@ -642,7 +642,7 @@ export function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, date
   params.push(limit);
   return db.prepare(`${base} WHERE ${conds.join(" AND ")} ORDER BY pt.created_at DESC LIMIT ?`).all(...params);
 }
-export function updateTransaction(id, { reason, points }) {
+export function updateTransaction(id, { reason, points, raw_text }) {
   const tx = db.prepare("SELECT * FROM point_transactions WHERE id=?").get(id);
   if (!tx) throw new Error("Không tìm thấy giao dịch");
   const diff = (points !== undefined ? points : tx.points) - tx.points;
@@ -654,8 +654,8 @@ export function updateTransaction(id, { reason, points }) {
     if (tx.from_member) db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
       .run(-diff, now(), tx.group_id, tx.from_member);
   }
-  db.prepare("UPDATE point_transactions SET reason=COALESCE(?,reason), points=COALESCE(?,points) WHERE id=?")
-    .run(reason || null, points !== undefined ? points : null, id);
+  db.prepare("UPDATE point_transactions SET reason=COALESCE(?,reason), points=COALESCE(?,points), raw_text=COALESCE(?,raw_text) WHERE id=?")
+    .run(reason || null, points !== undefined ? points : null, raw_text || null, id);
 }
 export function deleteTransaction(id) {
   const tx = db.prepare("SELECT * FROM point_transactions WHERE id=?").get(id);

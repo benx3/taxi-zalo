@@ -153,6 +153,7 @@ export default function PendingTab({ groupId, liveItems, onProcessed }) {
                       convo.tripPoster    && { time: convo.tripTime,    name: convo.tripPoster,    text: convo.tripText,    color: null },
                       convo.claimer       && { time: convo.claimTime,   name: convo.claimer,       text: convo.claimText,   color: "#60a5fa" },
                       convo.confirmPoster && { time: convo.confirmTime, name: convo.confirmPoster, text: convo.confirmText, color: "#34d399" },
+                      convo.freePoster    && { time: convo.freeTime,    name: convo.freePoster,    text: convo.freeText,    color: "#fb923c" },
                     ].filter(Boolean).map((row, i) => (
                       <div key={i} style={{ display: "flex", gap: 5, marginBottom: 2 }}>
                         <span style={{ fontSize: 10, color: "var(--ink-dim)", whiteSpace: "nowrap", paddingTop: 1 }}>{row.time || ""}</span>

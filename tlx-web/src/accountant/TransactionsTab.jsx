@@ -167,6 +167,7 @@ function ConvoThread({ raw }) {
         {row(c.tripTime, c.tripPoster, c.tripText, null)}
         {c.claimText   && row(c.claimTime,   c.claimer,       c.claimText,   "#60a5fa")}
         {c.confirmText && row(c.confirmTime,  c.confirmPoster, c.confirmText, "#34d399")}
+        {c.freeText    && row(c.freeTime,     c.freePoster,    c.freeText,    "#fb923c")}
         {c.cancelText  && row(c.cancelTime,   c.canceller,     c.cancelText,  "#f87171")}
         {logItems.length > 0 && (
           <div style={{ marginTop: 6, borderTop: "1px solid var(--line)", paddingTop: 5 }}>
