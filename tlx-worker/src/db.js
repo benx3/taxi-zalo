@@ -159,6 +159,12 @@ export async function ensureSeed() {
     msg_type    INTEGER DEFAULT 0,
     created_at  INTEGER NOT NULL
   )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS barem_msg_refs (
+    group_id    TEXT NOT NULL,
+    msg_id      TEXT NOT NULL,
+    trip_msg_id TEXT NOT NULL,
+    PRIMARY KEY (group_id, msg_id)
+  )`);
   db.exec(`CREATE TABLE IF NOT EXISTS barem_trip_log (
     group_id   TEXT NOT NULL,
     msg_id     TEXT NOT NULL,
@@ -653,6 +659,13 @@ export function getTransactionsByConfirmMsgId(groupId, confirmMsgId) {
   return db.prepare(
     "SELECT * FROM point_transactions WHERE group_id=? AND type IN ('barem','barem_adjust') AND (json_extract(raw_text,'$.confirmMsgId')=? OR json_extract(raw_text,'$.claimMsgId')=?) ORDER BY created_at ASC LIMIT 20"
   ).all(groupId, confirmMsgId, confirmMsgId);
+}
+export function addBaremMsgRef(groupId, msgId, tripMsgId) {
+  if (!msgId || !tripMsgId) return;
+  db.prepare("INSERT OR IGNORE INTO barem_msg_refs(group_id,msg_id,trip_msg_id) VALUES(?,?,?)").run(groupId, msgId, tripMsgId);
+}
+export function getBaremMsgRefTripMsgId(groupId, msgId) {
+  return db.prepare("SELECT trip_msg_id FROM barem_msg_refs WHERE group_id=? AND msg_id=?").get(groupId, msgId)?.trip_msg_id || null;
 }
 export function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo, approvedOnly = false } = {}) {
   const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name

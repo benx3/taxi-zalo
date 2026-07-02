@@ -136,6 +136,12 @@ export async function initDb() {
     created_at  BIGINT NOT NULL
   )`);
   await q("CREATE INDEX IF NOT EXISTS idx_rawmsg_group ON raw_messages(group_id, created_at DESC)");
+  await q(`CREATE TABLE IF NOT EXISTS barem_msg_refs (
+    group_id    TEXT NOT NULL,
+    msg_id      TEXT NOT NULL,
+    trip_msg_id TEXT NOT NULL,
+    PRIMARY KEY (group_id, msg_id)
+  )`);
   await q(`CREATE TABLE IF NOT EXISTS barem_trip_log (
     group_id   TEXT NOT NULL,
     msg_id     TEXT NOT NULL,
@@ -539,6 +545,14 @@ export async function getTransactionsByConfirmMsgId(groupId, confirmMsgId) {
     [groupId, confirmMsgId]
   );
   return r.rows;
+}
+export async function addBaremMsgRef(groupId, msgId, tripMsgId) {
+  if (!msgId || !tripMsgId) return;
+  await q("INSERT INTO barem_msg_refs(group_id,msg_id,trip_msg_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING", [groupId, msgId, tripMsgId]);
+}
+export async function getBaremMsgRefTripMsgId(groupId, msgId) {
+  const r = await q("SELECT trip_msg_id FROM barem_msg_refs WHERE group_id=$1 AND msg_id=$2", [groupId, msgId]);
+  return r.rows[0]?.trip_msg_id || null;
 }
 export async function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo, approvedOnly = false } = {}) {
   const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name

@@ -648,6 +648,9 @@ async function onMessage(sess, msg) {
               const txMsgId = cachedClaim.tripMsgId || msgId;
               await dbm.adjustPoints(dbGroupId, cachedClaim.tripPosterId, +pts, reason, 'barem', txMsgId, null, null, convo);
               await dbm.adjustPoints(dbGroupId, cachedClaim.takerId,      -pts, reason, 'barem', txMsgId, null, null, convo);
+              // Lưu mapping msg → trip_msg_id để Section E tìm được sau khi restart
+              for (const mid of [msgId, qCliId2, qGlobId2, cachedClaim.tripMsgId].filter(Boolean))
+                Promise.resolve(dbm.addBaremMsgRef(dbGroupId, mid, txMsgId)).catch(() => {});
               console.log(`[${sess.userId}] ✅ Barem auto: ${pts}đ | ${ptsSrc}`);
             }
           })()).catch(e => console.error(`[${sess.userId}] barem apply:`, e?.message || e));
@@ -688,16 +691,30 @@ async function onMessage(sess, msg) {
                 if (!txs.length) pids = [...nextSet];
               }
             }
-            // Fallback: tìm theo confirmMsgId/claimMsgId trong raw_text (ví dụ: rely "ok ib" sau restart)
+            // Fallback 1: tìm theo confirmMsgId/claimMsgId trong raw_text JSON
             if (!txs.length) {
               for (const mid of [qGlobId, qCliId].filter(Boolean)) {
                 if (txs.length) break;
                 txs = await Promise.resolve(dbm.getTransactionsByConfirmMsgId(dbGroupId, mid));
               }
             }
+            // Fallback 2: tra bảng barem_msg_refs (persistent mapping msg → trip_msg_id)
+            if (!txs.length) {
+              for (const mid of [qGlobId, qCliId].filter(Boolean)) {
+                if (txs.length) break;
+                const refId = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, mid));
+                if (refId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, refId));
+              }
+            }
             if (!txs.length) {
               console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy tx cho quoted glob=${qGlobId} cli=${qCliId}`);
               return;
+            }
+            // Lưu ref cho các lần lookup sau (kể cả sau restart)
+            const _foundTripMsgId = txs.find(t => t.type === 'barem')?.trip_msg_id;
+            if (_foundTripMsgId) {
+              for (const mid of [qGlobId, qCliId].filter(Boolean))
+                Promise.resolve(dbm.addBaremMsgRef(dbGroupId, mid, _foundTripMsgId)).catch(() => {});
             }
             // Xác định poster/taker từ barem tx GỐC (type='barem') — luôn đúng bất kể
             // hướng của các barem_adjust (diff âm làm from_member/to_member đổi chiều)
