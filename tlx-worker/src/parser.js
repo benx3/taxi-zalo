@@ -8,7 +8,9 @@ const NOISE_RE = /(lịch hủy|huỷ lịch|hủy lịch|đã có ng|đã có n
 export function isConfirmMessage(text) {
   if (!text) return false;
   // ok ib / 0k ib / oki ib / okie ib / okib / ok inbox / okinbox / oki inbox
-  return /[o0]k[ie]{0,2}\W*(?:i[bp]|inbox)/i.test(text);
+  if (/[o0]k[ie]{0,2}\W*(?:i[bp]|inbox)/i.test(text)) return true;
+  // "ib" đứng một mình (không kèm ok) cũng là confirm — có thể có @mention trước
+  return /^\s*(?:@.+?\s+)?ib\s*$/i.test(text);
 }
 
 export function isClaimMessage(text) {
