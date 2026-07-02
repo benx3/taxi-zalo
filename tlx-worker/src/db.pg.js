@@ -124,7 +124,7 @@ export async function initDb() {
   await q("ALTER TABLE point_transactions ADD COLUMN IF NOT EXISTS raw_text TEXT");
   await q("ALTER TABLE members ADD COLUMN IF NOT EXISTS avatar TEXT");
   await q("ALTER TABLE members ADD COLUMN IF NOT EXISTS alias TEXT");
-  await q("ALTER TABLE members ADD COLUMN IF NOT EXISTS is_out INTEGER DEFAULT 0");
+  await q("ALTER TABLE members ADD COLUMN IF NOT EXISTS is_out INTEGER DEFAULT 0").catch(() => {});
   await q("ALTER TABLE accountant_groups ADD COLUMN IF NOT EXISTS zalo_group_id TEXT");
   await q(`CREATE TABLE IF NOT EXISTS raw_messages (
     msg_id      TEXT PRIMARY KEY,
