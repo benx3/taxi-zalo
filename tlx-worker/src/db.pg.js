@@ -554,6 +554,13 @@ export async function getBaremMsgRefTripMsgId(groupId, msgId) {
   const r = await q("SELECT trip_msg_id FROM barem_msg_refs WHERE group_id=$1 AND msg_id=$2", [groupId, msgId]);
   return r.rows[0]?.trip_msg_id || null;
 }
+export async function getLatestBaremTripMsgId(groupId, memberUid) {
+  const r = await q(
+    "SELECT trip_msg_id FROM point_transactions WHERE group_id=$1 AND type='barem' AND (to_member=$2 OR from_member=$2) ORDER BY created_at DESC LIMIT 1",
+    [groupId, memberUid]
+  );
+  return r.rows[0]?.trip_msg_id || null;
+}
 export async function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo, approvedOnly = false } = {}) {
   const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name
     FROM point_transactions pt

@@ -55,7 +55,7 @@ export const {
   saveTripLog, getTripLog, saveClaimLog, getClaimLog, deleteClaimLog, purgeBaremLogs, clearBaremLogs,
   getPrimaryAccountantSelfIdForGroup, getMembersByDisplayName,
   adjustPoints, getTransactionsByTripMsgId, getTransactionsByConfirmMsgId,
-  addBaremMsgRef, getBaremMsgRefTripMsgId,
+  addBaremMsgRef, getBaremMsgRefTripMsgId, getLatestBaremTripMsgId,
   listTransactions, updateTransaction, deleteTransaction,
   addBaremPending,
   createPendingTransfer, listPendingTransfers, approvePendingTransfer, rejectPendingTransfer,
