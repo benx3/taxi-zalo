@@ -561,7 +561,7 @@ function MemberDetail({ member, groupId, onBack }) {
     setLoadingTx(true);
     Promise.all([
       api.listMembers(groupId).then(list => { const found = list.find(x => x.zalo_uid === member.zalo_uid); if (found) { setM(found); setAliasVal(found.alias || ""); } }),
-      api.listTransactions(groupId, member.zalo_uid, 500).then(data => { setTxs(data); setTxPage(1); }),
+      api.listTransactions(groupId, member.zalo_uid, 500).then(data => { setTxs([...data].sort((a, b) => b.created_at - a.created_at)); setTxPage(1); }),
     ]).catch(() => {}).finally(() => setLoadingTx(false));
   };
   useEffect(() => { reload(); }, []);

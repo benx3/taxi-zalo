@@ -33,7 +33,7 @@ export default function TransactionsTab({ groupId }) {
     const fromTs = from ? new Date(from).getTime() : undefined;
     const toTs   = to   ? new Date(to).getTime()   : undefined;
     api.listTransactions(groupId, null, fromTs || toTs ? 2000 : 500, fromTs, toTs)
-      .then(data => { setTxs(data); setPage(1); })
+      .then(data => { setTxs([...data].sort((a, b) => b.created_at - a.created_at)); setPage(1); })
       .catch(() => {})
       .finally(() => setLoading(false));
   };

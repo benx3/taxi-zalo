@@ -450,7 +450,7 @@ function ChangePasswordModal({ onClose }) {
 function HistoryView() {
   const [items,setItems]=useState(null);
   const [err,setErr]=useState("");
-  useEffect(()=>{ api.savedTrips().then(setItems).catch(e=>setErr(e.message)); },[]);
+  useEffect(()=>{ api.savedTrips().then(data=>setItems([...data].sort((a,b)=>b.taken_at-a.taken_at))).catch(e=>setErr(e.message)); },[]);
   const fmtDate=(ms)=>new Date(ms).toLocaleString("vi-VN",{hour12:false});
   if(err) return <ErrBox>{err}</ErrBox>;
   if(items===null) return <div style={{textAlign:"center",padding:"40px",color:"var(--ink-dim)"}}>Đang tải lịch sử…</div>;

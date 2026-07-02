@@ -514,7 +514,7 @@ function TransactionsView({ group, member, groupSlug, onBack }) {
 
   useEffect(() => {
     get(`/api/public/transactions/${group.group_id}/${member.zalo_uid}?limit=200`)
-      .then(data => { setTxs(data); setPage(1); })
+      .then(data => { setTxs([...data].sort((a, b) => b.created_at - a.created_at)); setPage(1); })
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
   }, [group.group_id, member.zalo_uid]);
