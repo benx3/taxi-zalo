@@ -717,12 +717,6 @@ async function onMessage(sess, msg) {
             const takerUid      = baremTakerTx.from_member;
             const origTripMsgId = baremPosterTx.trip_msg_id;
 
-            // Chỉ poster hoặc taker của cuốc xe mới được thay đổi điểm/hủy/free
-            if (String(senderId) !== String(posterUid) && String(senderId) !== String(takerUid)) {
-              console.warn(`[${sess.userId}] (E) barem ${action.type}: người gửi ${senderId} (${senderName}) không phải poster=${posterUid} hay taker=${takerUid} — bỏ qua`);
-              return;
-            }
-
             // currentPts = tổng CÓ DẤU của tất cả txs đối với poster
             // (to_member=poster → +points; from_member=poster → -points)
             const currentPts = txs.reduce((s, t) => {
