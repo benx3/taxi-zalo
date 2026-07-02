@@ -649,6 +649,11 @@ export function getTransactionsByTripMsgId(groupId, tripMsgId) {
     "SELECT * FROM point_transactions WHERE group_id=? AND trip_msg_id=? AND type IN ('barem','barem_adjust') ORDER BY created_at ASC LIMIT 20"
   ).all(groupId, tripMsgId);
 }
+export function getTransactionsByConfirmMsgId(groupId, confirmMsgId) {
+  return db.prepare(
+    "SELECT * FROM point_transactions WHERE group_id=? AND type IN ('barem','barem_adjust') AND (json_extract(raw_text,'$.confirmMsgId')=? OR json_extract(raw_text,'$.claimMsgId')=?) ORDER BY created_at ASC LIMIT 20"
+  ).all(groupId, confirmMsgId, confirmMsgId);
+}
 export function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo, approvedOnly = false } = {}) {
   const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name
     FROM point_transactions pt

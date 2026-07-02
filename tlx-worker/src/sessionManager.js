@@ -634,7 +634,9 @@ async function onMessage(sess, msg) {
             }
             const convo = JSON.stringify({
               tripTime: cachedClaim.tripTime, tripPoster: cachedClaim.tripPosterName, tripText: cachedClaim.tripText,
+              claimMsgId: qCliId2 || qGlobId2 || null,
               claimTime: cachedClaim.claimTime, claimer: cachedClaim.takerName, claimText: cachedClaim.claimText,
+              confirmMsgId: msgId,
               confirmTime: time, confirmPoster: senderName, confirmText: text,
               multiTrips: cachedClaim.allTrips || null,
             });
@@ -684,6 +686,13 @@ async function onMessage(sess, msg) {
                   (sess.quoteChain.get(pid) || []).forEach(p => { if (!visited.has(p)) nextSet.add(p); });
                 }
                 if (!txs.length) pids = [...nextSet];
+              }
+            }
+            // Fallback: tìm theo confirmMsgId/claimMsgId trong raw_text (ví dụ: rely "ok ib" sau restart)
+            if (!txs.length) {
+              for (const mid of [qGlobId, qCliId].filter(Boolean)) {
+                if (txs.length) break;
+                txs = await Promise.resolve(dbm.getTransactionsByConfirmMsgId(dbGroupId, mid));
               }
             }
             if (!txs.length) {

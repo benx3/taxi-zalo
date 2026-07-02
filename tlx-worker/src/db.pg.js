@@ -533,6 +533,13 @@ export async function getTransactionsByTripMsgId(groupId, tripMsgId) {
   );
   return r.rows;
 }
+export async function getTransactionsByConfirmMsgId(groupId, confirmMsgId) {
+  const r = await q(
+    "SELECT * FROM point_transactions WHERE group_id=$1 AND type IN ('barem','barem_adjust') AND (raw_text::jsonb->>'confirmMsgId'=$2 OR raw_text::jsonb->>'claimMsgId'=$2) ORDER BY created_at ASC LIMIT 20",
+    [groupId, confirmMsgId]
+  );
+  return r.rows;
+}
 export async function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo, approvedOnly = false } = {}) {
   const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name
     FROM point_transactions pt
