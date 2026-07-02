@@ -67,9 +67,11 @@ export function parseBonus(t) {
     const val = parseFloat(afterK[2].replace(",", "."));
     if (val > 0 && val <= 10) return val;
   }
-  // Số thập phân cuối câu không có đơn vị: "500k tg. 0,5" / "400k-0.5" / "350k+0,5"
+  // Số thập phân cuối câu không có đơn vị: "500k tg. 0,5" / "400k-0.5" / "350k+0,5" / "/0,5"
+  // - Cho phép "/" trước số (vd: "/0,5" trong "xe 7 /300k /0,5")
+  // - Cho phép ghi chú ASCII ngắn sau số (vd: "0,5 .csct", "0,5 tg") trước cuối chuỗi
   // \d{1,2} cho phần thập phân để tránh bắt nhầm "1,000" (phân cách hàng nghìn)
-  const tail = t.match(/(?:^|\s|[+\-])(\d+[,\.]\d{1,2})\s*$/);
+  const tail = t.match(/(?:^|\s|[+\-/])(\d+[,\.]\d{1,2})\s*(?:[.,;]*\s*[a-zA-Z]{2,8})?\s*$/);
   if (tail) {
     const val = parseFloat(tail[1].replace(",", "."));
     if (val > 0 && val <= 10) return val;
@@ -99,7 +101,9 @@ export function parsePrice(t) {
     return Math.round((parseInt(trDec[1]) + parseInt(frac) / Math.pow(10, frac.length)) * 1000);
   }
   // 1tr300k, 1tr3, 1 triệu 300
-  const tr = t.match(/(\d)\s*(?:tr|triệu)\s*(\d{0,3})/i);
+  // Đổi thứ tự: "triệu" (đầy đủ) được phép có khoảng trắng; "tr" (viết tắt) phải đứng ngay sau chữ số
+  // hoặc theo sau là khoảng trắng/chữ số/cuối chuỗi — tránh match "200 Trần" (đường phố).
+  const tr = t.match(/(\d)\s*(?:triệu|tr(?=[\s\d]|$))\s*(\d{0,3})/i);
   if (tr) return parseInt(tr[1]) * 1000 + (tr[2] ? parseInt(tr[2].padEnd(3, "0")) : 0);
   // 200k / 350 k
   const k = t.match(/(\d{2,4})\s*k\b/i);
