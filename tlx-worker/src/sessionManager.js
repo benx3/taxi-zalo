@@ -671,51 +671,42 @@ async function onMessage(sess, msg) {
       const mentions = msg.data?.mentions || [];
       const ktMentioned = mentions.some(m => String(m.uid) === String(sess.selfId));
       if (process.env.DEBUG_BAREM) console.log(`[BAREM_E] hasQuote=${!!qd} ktMentioned=${ktMentioned} mentions=${JSON.stringify(mentions.map(m=>m.uid))} selfId=${sess.selfId}`);
-      if (ktMentioned) {
+      // Tin không có quote → không thuộc cuốc nào, bỏ qua
+      if (qd && ktMentioned) {
         const parsedBonus = parseBonus(text);
         const action = detectBaremAction(text) || (parsedBonus > 0 ? { type: 'adjust', points: parsedBonus } : null);
         if (!action && process.env.DEBUG_BAREM) console.log(`[BAREM_E] no action for text="${text.slice(0,80)}"`);
         if (action) {
-          const qGlobId = qd?.globalMsgId != null ? String(qd.globalMsgId) : "";
-          const qCliId  = qd?.cliMsgId   != null ? String(qd.cliMsgId)   : "";
+          const qGlobId = qd.globalMsgId != null ? String(qd.globalMsgId) : "";
+          const qCliId  = qd.cliMsgId   != null ? String(qd.cliMsgId)   : "";
           Promise.resolve((async () => {
             let txs = [];
             let foundTier = 0;
-            if (qd) {
-              // Tầng 1: quoted msg chính là trip_msg_id gốc
-              if (qGlobId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qGlobId));
-              if (!txs.length && qCliId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qCliId));
-              if (txs.length) foundTier = 1;
-              // Tầng 2: tìm qua confirmMsgId/claimMsgId trong raw_text JSON (ok ib message)
-              if (!txs.length) {
-                for (const mid of [qGlobId, qCliId].filter(Boolean)) {
-                  if (txs.length) break;
-                  txs = await Promise.resolve(dbm.getTransactionsByConfirmMsgId(dbGroupId, mid));
-                }
-                if (txs.length) foundTier = 2;
-              }
-              // Tầng 3: tra bảng barem_msg_refs (persistent mapping msg → trip_msg_id)
-              if (!txs.length) {
-                for (const mid of [qGlobId, qCliId].filter(Boolean)) {
-                  if (txs.length) break;
-                  try {
-                    const refId = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, mid));
-                    if (refId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, refId));
-                  } catch {}
-                }
-                if (txs.length) foundTier = 3;
-              }
-            }
-            // Tầng 4: không có quote hoặc quote không tìm được → barem gần nhất của người gửi
+            // Tầng 1: quoted msg chính là trip_msg_id gốc
+            if (qGlobId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qGlobId));
+            if (!txs.length && qCliId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qCliId));
+            if (txs.length) foundTier = 1;
+            // Tầng 2: tìm qua confirmMsgId/claimMsgId trong raw_text JSON (ok ib message)
             if (!txs.length) {
-              const latestTripId = await Promise.resolve(dbm.getLatestBaremTripMsgId(dbGroupId, senderId));
-              if (latestTripId) {
-                txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, latestTripId));
-                if (txs.length) foundTier = 4;
+              for (const mid of [qGlobId, qCliId].filter(Boolean)) {
+                if (txs.length) break;
+                txs = await Promise.resolve(dbm.getTransactionsByConfirmMsgId(dbGroupId, mid));
               }
+              if (txs.length) foundTier = 2;
+            }
+            // Tầng 3: tra bảng barem_msg_refs — bất kỳ tin nào đã được E xử lý đều là entry point
+            if (!txs.length) {
+              for (const mid of [qGlobId, qCliId].filter(Boolean)) {
+                if (txs.length) break;
+                try {
+                  const refId = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, mid));
+                  if (refId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, refId));
+                } catch {}
+              }
+              if (txs.length) foundTier = 3;
             }
             if (!txs.length) {
-              console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy tx | quoted glob=${qGlobId} cli=${qCliId} sender=${senderId} group=${dbGroupId}`);
+              console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy tx | quoted glob=${qGlobId} cli=${qCliId} | group=${dbGroupId}`);
               return;
             }
             console.log(`[${sess.userId}] (E) barem ${action.type}: found ${txs.length} tx via tier${foundTier} | glob=${qGlobId} cli=${qCliId}`);
