@@ -538,7 +538,7 @@ async function onMessage(sess, msg) {
     // (C) Kế toán: phát hiện người nhận cuốc reply "Ok" quoting trip → lưu claim
     if (sess.isAccountant && senderId !== String(sess.selfId)) {
       const qd = msg.data?.quote;
-      if (qd && isClaimMessage(text)) {
+      if (qd && (isClaimMessage(text) || isConfirmMessage(text))) {
         if (process.env.DEBUG_BAREM) console.log(`[BAREM_CLAIM] from=${senderId} quote=`, JSON.stringify(qd)?.slice(0, 300));
         const quoteOwnerId = String(qd.ownerId || "");
         // TQuote không có msgId — chỉ có cliMsgId (number) và globalMsgId (number)
