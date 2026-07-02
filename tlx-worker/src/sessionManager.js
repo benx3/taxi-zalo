@@ -673,37 +673,25 @@ async function onMessage(sess, msg) {
           const qCliId  = qd.cliMsgId   != null ? String(qd.cliMsgId)   : "";
           Promise.resolve((async () => {
             let txs = [];
+            // Tìm bằng DB — không dùng quoteChain in-memory (mất sau restart)
+            // Tầng 1: quoted msg chính là trip_msg_id gốc
             if (qGlobId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qGlobId));
             if (!txs.length && qCliId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qCliId));
-            // Walk quoteChain ngược về tin gốc — mỗi node thử cả globId lẫn cliId
-            if (!txs.length) {
-              const visited = new Set([qGlobId, qCliId].filter(Boolean));
-              let pids = sess.quoteChain.get(qGlobId) || sess.quoteChain.get(qCliId) || [];
-              for (let hop = 0; hop < 8 && pids.length && !txs.length; hop++) {
-                const nextSet = new Set();
-                for (const pid of pids) {
-                  if (visited.has(pid)) continue;
-                  visited.add(pid);
-                  const found = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, pid));
-                  if (found.length) { txs = found; break; }
-                  (sess.quoteChain.get(pid) || []).forEach(p => { if (!visited.has(p)) nextSet.add(p); });
-                }
-                if (!txs.length) pids = [...nextSet];
-              }
-            }
-            // Fallback 1: tìm theo confirmMsgId/claimMsgId trong raw_text JSON
+            // Tầng 2: tìm qua confirmMsgId/claimMsgId trong raw_text JSON (ok ib message)
             if (!txs.length) {
               for (const mid of [qGlobId, qCliId].filter(Boolean)) {
                 if (txs.length) break;
                 txs = await Promise.resolve(dbm.getTransactionsByConfirmMsgId(dbGroupId, mid));
               }
             }
-            // Fallback 2: tra bảng barem_msg_refs (persistent mapping msg → trip_msg_id)
+            // Tầng 3: tra bảng barem_msg_refs (persistent mapping msg → trip_msg_id)
             if (!txs.length) {
               for (const mid of [qGlobId, qCliId].filter(Boolean)) {
                 if (txs.length) break;
-                const refId = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, mid));
-                if (refId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, refId));
+                try {
+                  const refId = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, mid));
+                  if (refId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, refId));
+                } catch {}
               }
             }
             if (!txs.length) {
