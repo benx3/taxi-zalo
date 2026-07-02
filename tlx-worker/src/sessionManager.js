@@ -288,6 +288,7 @@ const PARSER_TO_BAREM = {
   "Bao xe 2 chiều":  ["bao_xe_2c"],
   "Ghép 1":          ["ghep_1"],
   "Ghép 2":          ["ghep_2"],
+  "Ghép 3":          ["ghep_3", "ghep_2"],  // thử ghep_3 trước, fallback ghep_2
   "Không rõ":        ["ghep_1"],   // fallback barem: tính như ghép 1
   "Hàng":            ["ship"],
   "Sân bay đón":     ["san_bay_don"],
