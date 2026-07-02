@@ -714,44 +714,56 @@ async function onMessage(sess, msg) {
             let baseConvo = null;
             try { baseConvo = baremPosterTx.raw_text ? JSON.parse(baremPosterTx.raw_text) : null; } catch {}
 
-            // Lịch sử điều chỉnh — chỉ lấy phía poster để tránh lặp
-            // (mỗi adjust tạo 2 tx poster+taker cùng raw_text → bỏ bên taker)
-            const adjustHistory = txs
-              .filter(t => t.type === 'barem_adjust' && t.raw_text &&
-                (t.to_member === posterUid || t.from_member === posterUid))
-              .map(t => { try { return JSON.parse(t.raw_text); } catch {} return null; })
-              .filter(Boolean);
-
-            const reversalConvo = JSON.stringify({
-              ...(baseConvo || {}),
-              ...(adjustHistory.length ? { adjustHistory } : {}),
-              cancelTime: time, canceller: senderName, cancelText: text,
-            });
+            // Lịch sử điều chỉnh — đọc từ barem tx (source of truth).
+            // KHÔNG đọc từ adj txs vì cancel/free sẽ làm mất dữ liệu gốc nếu overwrite chúng.
+            const adjustHistory = baseConvo?.adjustHistory || [];
 
             if (action.type === 'cancel') {
-              // Zero out tất cả tx liên quan cuốc này
+              const reversalConvo = JSON.stringify({
+                ...(baseConvo || {}),
+                ...(adjustHistory.length ? { adjustHistory } : {}),
+                cancelTime: time, canceller: senderName, cancelText: text,
+              });
+              // Chỉ update raw_text của barem txs; adj txs chỉ zero points (giữ raw_text gốc)
               for (const tx of txs) {
-                await dbm.updateTransaction(tx.id, { points: 0, reason: 'Hủy lịch', raw_text: reversalConvo });
+                const upd = { points: 0, reason: 'Hủy lịch' };
+                if (tx.type === 'barem') upd.raw_text = reversalConvo;
+                await dbm.updateTransaction(tx.id, upd);
               }
               console.log(`[${sess.userId}] ❌ Barem cancel: set 0đ (${txs.length} tx) currentWas=${currentPts}đ | poster=${posterUid} taker=${takerUid}`);
             } else if (action.type === 'free') {
-              // Zero out tất cả tx liên quan cuốc này
               const freeConvo = JSON.stringify({
                 ...(baseConvo || {}),
                 ...(adjustHistory.length ? { adjustHistory } : {}),
                 freeTime: time, freePoster: senderName, freeText: text,
               });
+              // Chỉ update raw_text của barem txs; adj txs chỉ zero points
               for (const tx of txs) {
-                await dbm.updateTransaction(tx.id, { points: 0, reason: 'Lịch free', raw_text: freeConvo });
+                const upd = { points: 0, reason: 'Lịch free' };
+                if (tx.type === 'barem') upd.raw_text = freeConvo;
+                await dbm.updateTransaction(tx.id, upd);
               }
               console.log(`[${sess.userId}] 🆓 Barem free: set 0đ (${txs.length} tx) | poster=${posterUid} taker=${takerUid}`);
             } else if (action.type === 'adjust') {
               const diff = action.points - currentPts;
               if (diff === 0) return;
               const reason = `Thỏa thuận: ${currentPts}đ → ${action.points}đ`;
-              // Dùng origTripMsgId để tx adjust được liên kết với cuốc gốc
-              await dbm.adjustPoints(dbGroupId, posterUid,  diff, reason, 'barem_adjust', origTripMsgId, null, null, reversalConvo);
-              await dbm.adjustPoints(dbGroupId, takerUid,  -diff, reason, 'barem_adjust', origTripMsgId, null, null, reversalConvo);
+              // Hấp thụ cancel/free trước đó vào adjustHistory (khi điều chỉnh lại sau hủy/free)
+              const prevEvents = [];
+              if (baseConvo?.cancelText) prevEvents.push({ cancelTime: baseConvo.cancelTime, canceller: baseConvo.canceller, cancelText: baseConvo.cancelText });
+              else if (baseConvo?.freeText) prevEvents.push({ cancelTime: baseConvo.freeTime, canceller: baseConvo.freePoster, cancelText: `[Free] ${baseConvo.freeText}` });
+              const newEntry = { cancelTime: time, canceller: senderName, cancelText: text };
+              const newAdjHistory = [...adjustHistory, ...prevEvents, newEntry];
+              // Xóa cancelText/freeText cũ khỏi base (đã hấp thụ vào adjustHistory)
+              const { cancelText: _ct, cancelTime: _cT, canceller: _c, freeText: _ft, freeTime: _fT, freePoster: _fp, adjustHistory: _ah, ...cleanBase } = baseConvo || {};
+              const adjConvo = JSON.stringify({ ...cleanBase, adjustHistory: newAdjHistory });
+              // Update barem txs để duy trì running adjustHistory
+              for (const tx of txs) {
+                if (tx.type === 'barem') await dbm.updateTransaction(tx.id, { raw_text: adjConvo });
+              }
+              // Tạo adj txs với full snapshot (context đầy đủ cho ConvoThread)
+              await dbm.adjustPoints(dbGroupId, posterUid,  diff, reason, 'barem_adjust', origTripMsgId, null, null, adjConvo);
+              await dbm.adjustPoints(dbGroupId, takerUid,  -diff, reason, 'barem_adjust', origTripMsgId, null, null, adjConvo);
               console.log(`[${sess.userId}] 📝 Barem adjust: ${currentPts}→${action.points}đ diff=${diff} | poster=${posterUid} taker=${takerUid}`);
             }
           })()).catch(e => console.error(`[${sess.userId}] barem action (E):`, e?.message || e));
