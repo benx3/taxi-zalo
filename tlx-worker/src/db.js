@@ -793,10 +793,15 @@ export function deleteClaimLog(groupId, msgId) {
   db.prepare("DELETE FROM barem_claim_log WHERE group_id=? AND (msg_id=? OR cli_msg_id=?)").run(groupId, msgId, msgId);
 }
 export function purgeBaremLogs() {
-  const cutoff = now() - 86400000; // 24h
+  const cutoff = now() - 86400000; // 24h — dùng khi restart service
   const r1 = db.prepare("DELETE FROM barem_trip_log  WHERE created_at < ?").run(cutoff);
   const r2 = db.prepare("DELETE FROM barem_claim_log WHERE created_at < ?").run(cutoff);
   if (r1.changes || r2.changes) console.log(`🧹 Barem log: xoá ${r1.changes} trip + ${r2.changes} claim cũ hơn 24h`);
+}
+export function clearBaremLogs() {
+  const r1 = db.prepare("DELETE FROM barem_trip_log").run();
+  const r2 = db.prepare("DELETE FROM barem_claim_log").run();
+  console.log(`🧹 23:59 — Reset barem log: xoá ${r1.changes} trip + ${r2.changes} claim`);
 }
 
 export default db;

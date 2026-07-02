@@ -52,7 +52,7 @@ export const {
   getSetting, setSetting,
   getAccountantGroups, getGroupAccountants, getGroupZaloOwner, findGroupByName, addAccountantGroup, removeAccountantGroup, setGroupPublicVisible,
   countMembers, listMembers, listMembersWithYesterday, getMemberByZaloUid, upsertMember, markRemovedMembers, deleteRemovedMembers, deleteMember, mergeTempMember, setMemberAlias,
-  saveTripLog, getTripLog, saveClaimLog, getClaimLog, deleteClaimLog, purgeBaremLogs,
+  saveTripLog, getTripLog, saveClaimLog, getClaimLog, deleteClaimLog, purgeBaremLogs, clearBaremLogs,
   getPrimaryAccountantSelfIdForGroup, getMembersByDisplayName,
   listRawMessages, saveRawMessage, hasRawMessage,
   adjustPoints, getTransactionsByTripMsgId, listTransactions, updateTransaction, deleteTransaction,

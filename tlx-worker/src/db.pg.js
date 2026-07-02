@@ -778,10 +778,15 @@ export async function deleteClaimLog(groupId, msgId) {
   await q("DELETE FROM barem_claim_log WHERE group_id=$1 AND (msg_id=$2 OR cli_msg_id=$2)", [groupId, msgId]);
 }
 export async function purgeBaremLogs() {
-  const cutoff = now() - 86400000; // 24h
+  const cutoff = now() - 86400000; // 24h — dùng khi restart service
   const r1 = await q("DELETE FROM barem_trip_log  WHERE created_at < $1", [cutoff]);
   const r2 = await q("DELETE FROM barem_claim_log WHERE created_at < $1", [cutoff]);
   if (r1.rowCount || r2.rowCount) console.log(`🧹 Barem log: xoá ${r1.rowCount} trip + ${r2.rowCount} claim cũ hơn 24h`);
+}
+export async function clearBaremLogs() {
+  const r1 = await q("DELETE FROM barem_trip_log");
+  const r2 = await q("DELETE FROM barem_claim_log");
+  console.log(`🧹 23:59 — Reset barem log: xoá ${r1.rowCount} trip + ${r2.rowCount} claim`);
 }
 
 export default pool;

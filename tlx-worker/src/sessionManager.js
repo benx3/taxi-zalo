@@ -728,19 +728,34 @@ async function onMessage(sess, msg) {
 
             const reversalConvo = JSON.stringify({
               ...(baseConvo || {}),
+              ...(adjustHistory.length ? { adjustHistory } : {}),
               cancelTime: time, canceller: senderName, cancelText: text,
               rawLog,
             });
 
+            // Lịch sử điều chỉnh (phòng tài xế thu hồi tin nhắn thỏa thuận)
+            const adjustHistory = posterTxs
+              .filter(t => t.type === 'barem_adjust' && t.raw_text)
+              .map(t => { try { return JSON.parse(t.raw_text); } catch {} return null; })
+              .filter(Boolean);
+
             if (action.type === 'cancel') {
-              if (currentPts === 0) return; // đã được free trước đó
-              await dbm.adjustPoints(dbGroupId, posterUid, -currentPts, 'Hủy lịch', 'barem_cancel', origTripMsgId, null, null, reversalConvo);
-              await dbm.adjustPoints(dbGroupId, takerUid,  +currentPts, 'Hủy lịch', 'barem_cancel', origTripMsgId, null, null, reversalConvo);
-              console.log(`[${sess.userId}] ❌ Barem cancel: ±${currentPts}đ | poster=${posterUid} taker=${takerUid}`);
+              // Zero out tất cả tx (barem gốc + barem_adjust) — tương tự free
+              const cancelConvo = JSON.stringify({
+                ...(baseConvo || {}),
+                ...(adjustHistory.length ? { adjustHistory } : {}),
+                cancelTime: time, canceller: senderName, cancelText: text,
+                rawLog,
+              });
+              for (const tx of [...posterTxs, ...takerTxs]) {
+                await dbm.updateTransaction(tx.id, { points: 0, reason: 'Hủy lịch', raw_text: cancelConvo });
+              }
+              console.log(`[${sess.userId}] ❌ Barem cancel: set 0đ (${posterTxs.length + takerTxs.length} tx) currentWas=${currentPts}đ | poster=${posterUid} taker=${takerUid}`);
             } else if (action.type === 'free') {
               // Zero out tất cả tx (barem gốc + mọi barem_adjust trước đó)
               const freeConvo = JSON.stringify({
                 ...(baseConvo || {}),
+                ...(adjustHistory.length ? { adjustHistory } : {}),
                 freeTime: time, freePoster: senderName, freeText: text,
               });
               for (const tx of [...posterTxs, ...takerTxs]) {
@@ -1349,6 +1364,18 @@ setInterval(async () => {
   }
 }, CATCHUP_INTERVAL);
 
-// Dọn barem_trip_log / barem_claim_log cũ hơn 24h — chạy mỗi giờ
+// Startup: xóa log cũ hơn 24h (phòng service restart giữa ngày)
 Promise.resolve(dbm.purgeBaremLogs()).catch(() => {});
-setInterval(() => { Promise.resolve(dbm.purgeBaremLogs()).catch(() => {}); }, 60 * 60 * 1000);
+
+// Mỗi ngày 23:59: reset toàn bộ barem log — cuốc hôm trước không áp barem ngày hôm sau
+function scheduleNightlyBaremReset() {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(23, 59, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  setTimeout(() => {
+    Promise.resolve(dbm.clearBaremLogs()).catch(e => console.warn('clearBaremLogs:', e?.message));
+    scheduleNightlyBaremReset();
+  }, next.getTime() - Date.now());
+}
+scheduleNightlyBaremReset();
