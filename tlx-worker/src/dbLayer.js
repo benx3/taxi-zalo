@@ -54,7 +54,6 @@ export const {
   countMembers, listMembers, listMembersWithYesterday, getMemberByZaloUid, upsertMember, markRemovedMembers, deleteRemovedMembers, deleteMember, mergeTempMember, setMemberAlias,
   saveTripLog, getTripLog, saveClaimLog, getClaimLog, deleteClaimLog, purgeBaremLogs, clearBaremLogs,
   getPrimaryAccountantSelfIdForGroup, getMembersByDisplayName,
-  listRawMessages, saveRawMessage, hasRawMessage,
   adjustPoints, getTransactionsByTripMsgId, listTransactions, updateTransaction, deleteTransaction,
   addBaremPending,
   createPendingTransfer, listPendingTransfers, approvePendingTransfer, rejectPendingTransfer,

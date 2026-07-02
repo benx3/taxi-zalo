@@ -108,6 +108,7 @@ function attach(userId, api, onEvent) {
     groupNameById: new Map(),
     claims: new Map(),          // `${groupId}:${ownerId}` -> {savedId, msgId, text}
     rawMsgById: new Map(),      // msgId -> object message gốc (để reply đúng tin)
+    processedMsgIds: new Set(), // dedup catchup (không cần DB raw_messages)
     quoteChain: new Map(),      // msgId → parentMsgId (truy vết reply chain cho Section E)
     sentOks: new Map(),         // msgId cuốc -> {groupId, sent, savedId} (để thu hồi khi huỷ)
     tripMsgCache: new Map(),    // msgId → {type, price, senderId} — cuốc gần đây (barem tracking)
@@ -203,8 +204,7 @@ async function catchUpMissedMessages(sess, zaloGroupId) {
     for (const msg of msgs) {
       const rawMsgId = msg.data?.msgId || msg.data?.cliMsgId;
       if (!rawMsgId) continue;
-      const already = await Promise.resolve(dbm.hasRawMessage(String(rawMsgId)));
-      if (already) continue;
+      if (sess.processedMsgIds.has(String(rawMsgId))) continue;
       // Chưa xử lý → đưa vào onMessage (sẽ lưu raw + process + dedup)
       onMessage(sess, msg);
       await sleep(30); // nhường event loop giữa các tin
@@ -378,13 +378,12 @@ async function onMessage(sess, msg) {
 
     const text = typeof msg.data?.content === "string" ? msg.data.content : (msg.data?.content?.title || "");
     const msgTs = Number(msg.data?.ts || msg.data?.createTime || msg.data?.serverTime || Date.now());
-    const msgType = Number(msg.data?.msgType || 0);
 
-    // Lưu raw message (audit log + anti-cheat + catchup sau downtime)
-    // msg.data?.msgId thường là globalMsgId; cliMsgId là ID client — cả hai đã có trong msgId ở trên
-    const rawMsgId = msg.data?.msgId || msg.data?.cliMsgId;
+    // Dedup: đánh dấu đã xử lý (dùng cho catchup sau downtime thay vì raw_messages DB)
+    const rawMsgId = String(msg.data?.msgId || msg.data?.cliMsgId || "");
     if (rawMsgId) {
-      Promise.resolve(dbm.saveRawMessage(String(rawMsgId), groupId, senderId, senderName, text, msgType, msgTs)).catch(() => {});
+      sess.processedMsgIds.add(rawMsgId);
+      if (sess.processedMsgIds.size > 5000) sess.processedMsgIds.clear();
     }
 
     // Thu thập thành viên thụ động: mỗi tin nhắn trong nhóm được theo dõi → lưu sender
@@ -601,6 +600,15 @@ async function onMessage(sess, msg) {
           Promise.resolve(dbm.deleteClaimLog(dbGroupId, qCliId2 || qGlobId2)).catch(() => {});
           cacheRawMsg(sess, msgId, msg);
           Promise.resolve((async () => {
+            // Dedup: phòng catchup sau restart fire barem 2 lần cho cùng cuốc
+            const txRef = cachedClaim.tripMsgId;
+            if (txRef) {
+              const existingTxs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, txRef));
+              if (existingTxs.some(t => t.type === 'barem')) {
+                console.log(`[${sess.userId}] ⏭️  Barem skip dup: ${txRef}`);
+                return;
+              }
+            }
             // "lịch free" / "lich free" = lịch trình rảnh, không phải cuốc miễn phí
             const confirmFree = /\bfre+\b/i.test(text) && !/(?:lịch|lich)\s+fre+/i.test(text);
             const rulesRow = await dbm.getRules(dbGroupId);
@@ -703,52 +711,22 @@ async function onMessage(sess, msg) {
             let baseConvo = null;
             try { baseConvo = posterTx.raw_text ? JSON.parse(posterTx.raw_text) : null; } catch {}
 
-            // Lấy toàn bộ tin nhắn trong nhóm từ trước khi cuốc được đăng đến tin hủy/điều chỉnh
-            // Window 4h trước thời điểm barem được áp dụng → đủ bao gồm tin đăng cuốc
-            const WINDOW_MS = 4 * 60 * 60 * 1000;
-            let rawLog = "";
-            try {
-              const rawMsgs = await Promise.resolve(
-                dbm.listRawMessages(dbGroupId, {
-                  dateFrom: posterTx.created_at - WINDOW_MS,
-                  dateTo: msgTs + 1000,
-                  limit: 200,
-                })
-              );
-              rawLog = rawMsgs
-                .filter(m => m.text)
-                .map(m => ({
-                  msgId: m.msg_id,
-                  uid:   m.sender_id,
-                  name:  m.sender_name || "",
-                  ts:    m.created_at,
-                  text:  m.text,
-                }));
-            } catch {}
-
-            const reversalConvo = JSON.stringify({
-              ...(baseConvo || {}),
-              ...(adjustHistory.length ? { adjustHistory } : {}),
-              cancelTime: time, canceller: senderName, cancelText: text,
-              rawLog,
-            });
-
             // Lịch sử điều chỉnh (phòng tài xế thu hồi tin nhắn thỏa thuận)
             const adjustHistory = posterTxs
               .filter(t => t.type === 'barem_adjust' && t.raw_text)
               .map(t => { try { return JSON.parse(t.raw_text); } catch {} return null; })
               .filter(Boolean);
 
+            const reversalConvo = JSON.stringify({
+              ...(baseConvo || {}),
+              ...(adjustHistory.length ? { adjustHistory } : {}),
+              cancelTime: time, canceller: senderName, cancelText: text,
+            });
+
             if (action.type === 'cancel') {
               // Zero out tất cả tx (barem gốc + barem_adjust) — tương tự free
-              const cancelConvo = JSON.stringify({
-                ...(baseConvo || {}),
-                ...(adjustHistory.length ? { adjustHistory } : {}),
-                cancelTime: time, canceller: senderName, cancelText: text,
-                rawLog,
-              });
               for (const tx of [...posterTxs, ...takerTxs]) {
-                await dbm.updateTransaction(tx.id, { points: 0, reason: 'Hủy lịch', raw_text: cancelConvo });
+                await dbm.updateTransaction(tx.id, { points: 0, reason: 'Hủy lịch', raw_text: reversalConvo });
               }
               console.log(`[${sess.userId}] ❌ Barem cancel: set 0đ (${posterTxs.length + takerTxs.length} tx) currentWas=${currentPts}đ | poster=${posterUid} taker=${takerUid}`);
             } else if (action.type === 'free') {
