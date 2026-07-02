@@ -167,8 +167,14 @@ function ConvoThread({ raw }) {
         {row(c.tripTime, c.tripPoster, c.tripText, null)}
         {c.claimText   && row(c.claimTime,   c.claimer,       c.claimText,   "#60a5fa")}
         {c.confirmText && row(c.confirmTime,  c.confirmPoster, c.confirmText, "#34d399")}
+        {(c.adjustHistory || []).map((h, i) =>
+          h?.cancelText ? <div key={i} style={{ display: "flex", gap: 6, marginBottom: 3 }}>
+            <span style={{ fontSize: 10, color: "var(--ink-dim)", whiteSpace: "nowrap", paddingTop: 1 }}>{h.cancelTime}</span>
+            <span style={{ fontSize: 11, color: "#fbbf24" }}><b style={{ color: "var(--ink)", marginRight: 4 }}>{h.canceller}:</b>{h.cancelText}</span>
+          </div> : null
+        )}
+        {c.cancelText  && row(c.cancelTime,   c.canceller,     c.cancelText,  "#fbbf24")}
         {c.freeText    && row(c.freeTime,     c.freePoster,    c.freeText,    "#fb923c")}
-        {c.cancelText  && row(c.cancelTime,   c.canceller,     c.cancelText,  "#f87171")}
         {logItems.length > 0 && (
           <div style={{ marginTop: 6, borderTop: "1px solid var(--line)", paddingTop: 5 }}>
             <button onClick={() => setShowLog(v => !v)}
