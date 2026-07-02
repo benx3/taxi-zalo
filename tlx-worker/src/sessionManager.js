@@ -544,7 +544,13 @@ async function onMessage(sess, msg) {
         // TQuote không có msgId — chỉ có cliMsgId (number) và globalMsgId (number)
         const qCliId = qd.cliMsgId != null ? String(qd.cliMsgId) : "";
         const qGlobId = qd.globalMsgId != null ? String(qd.globalMsgId) : "";
-        const cachedTrip = sess.tripMsgCache.get(qCliId) || (qGlobId ? sess.tripMsgCache.get(qGlobId) : null);
+        let cachedTrip = sess.tripMsgCache.get(qCliId) || (qGlobId ? sess.tripMsgCache.get(qGlobId) : null);
+        // Fallback DB nếu cache bị evict (cuốc đăng sáng, "Ok" chiều)
+        if (!cachedTrip) {
+          cachedTrip = (qCliId ? await dbm.getTripLog(dbGroupId, qCliId) : null)
+                    || (qGlobId ? await dbm.getTripLog(dbGroupId, qGlobId) : null);
+          if (cachedTrip) console.log(`[${sess.userId}] 📂 (C) tripLog từ DB: ${qCliId || qGlobId}`);
+        }
         if (process.env.DEBUG_BAREM) console.log(`[BAREM_CLAIM] quoteOwnerId=${quoteOwnerId} cliMsgId=${qCliId} globalMsgId=${qGlobId} tripFound=${!!cachedTrip}`);
         if (cachedTrip && quoteOwnerId && quoteOwnerId !== senderId) {
           // Điểm thỏa thuận ngay trong tin ok (vd: "@A ok 2đ dbcl") > điểm explicit trong tin đăng > barem
@@ -567,6 +573,8 @@ async function onMessage(sess, msg) {
           cacheRawMsg(sess, msgId, msg);
           while (sess.claimCache.size > 100)
             sess.claimCache.delete(sess.claimCache.keys().next().value);
+          // Lưu DB để dùng khi cache bị evict (B Ok sáng, poster xác nhận chiều)
+          Promise.resolve(dbm.saveClaimLog(dbGroupId, msgId, msg.data.cliMsgId ? String(msg.data.cliMsgId) : null, claimData)).catch(() => {});
         }
       }
     }
@@ -578,11 +586,19 @@ async function onMessage(sess, msg) {
         if (process.env.DEBUG_BAREM) console.log(`[BAREM_CONFIRM] from=${senderId} quote=`, JSON.stringify(qd)?.slice(0, 300));
         const qCliId2  = qd.cliMsgId != null ? String(qd.cliMsgId) : "";
         const qGlobId2 = qd.globalMsgId != null ? String(qd.globalMsgId) : "";
-        const cachedClaim = sess.claimCache.get(qCliId2) || (qGlobId2 ? sess.claimCache.get(qGlobId2) : null);
+        let cachedClaim = sess.claimCache.get(qCliId2) || (qGlobId2 ? sess.claimCache.get(qGlobId2) : null);
+        // Fallback DB nếu cache bị evict
+        if (!cachedClaim) {
+          cachedClaim = (qCliId2 ? await dbm.getClaimLog(dbGroupId, qCliId2) : null)
+                     || (qGlobId2 ? await dbm.getClaimLog(dbGroupId, qGlobId2) : null);
+          if (cachedClaim) console.log(`[${sess.userId}] 📂 (D) claimLog từ DB: ${qCliId2 || qGlobId2}`);
+        }
         if (process.env.DEBUG_BAREM) console.log(`[BAREM_CONFIRM] cliMsgId=${qCliId2} globalMsgId=${qGlobId2} claimFound=${!!cachedClaim} posterMatch=${cachedClaim?.tripPosterId === senderId}`);
         if (cachedClaim && senderId === cachedClaim.tripPosterId) {
           sess.claimCache.delete(qCliId2);
           if (qGlobId2) sess.claimCache.delete(qGlobId2);
+          // Xóa claim khỏi DB (đã consume)
+          Promise.resolve(dbm.deleteClaimLog(dbGroupId, qCliId2 || qGlobId2)).catch(() => {});
           cacheRawMsg(sess, msgId, msg);
           Promise.resolve((async () => {
             // "lịch free" / "lich free" = lịch trình rảnh, không phải cuốc miễn phí
@@ -666,16 +682,22 @@ async function onMessage(sess, msg) {
               console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy tx cho quoted glob=${qGlobId} cli=${qCliId}`);
               return;
             }
-            // Phân biệt poster (to_member không null) và taker (from_member không null)
-            const posterTx = txs.find(t => t.to_member && !t.from_member);
-            const takerTx  = txs.find(t => t.from_member && !t.to_member);
-            if (!posterTx || !takerTx) {
+            // Gom tất cả tx của poster (to_member) và taker (from_member) — bao gồm cả barem_adjust trước đó
+            const posterTxs = txs.filter(t => t.to_member && !t.from_member);
+            const takerTxs  = txs.filter(t => t.from_member && !t.to_member);
+            if (!posterTxs.length || !takerTxs.length) {
               console.warn(`[${sess.userId}] (E) barem ${action.type}: không phân biệt poster/taker từ ${txs.length} tx`);
               return;
             }
-            const posterUid   = posterTx.to_member;
-            const takerUid    = takerTx.from_member;
-            const originalPts = Number(posterTx.points);
+            // Tx đầu tiên (ORDER BY ASC) là barem gốc — dùng để lấy UID và trip_msg_id gốc
+            const posterTx = posterTxs[0];
+            const takerTx  = takerTxs[0];
+            const posterUid = posterTx.to_member;
+            const takerUid  = takerTx.from_member;
+            // currentPts = tổng hiện tại sau tất cả điều chỉnh
+            const currentPts = posterTxs.reduce((s, t) => s + Number(t.points), 0);
+            // trip_msg_id gốc để liên kết adjust/cancel mới vào cùng cuốc
+            const origTripMsgId = posterTx.trip_msg_id;
 
             // Giữ nội dung convo gốc + thêm tin hành động
             let baseConvo = null;
@@ -711,25 +733,28 @@ async function onMessage(sess, msg) {
             });
 
             if (action.type === 'cancel') {
-              await dbm.adjustPoints(dbGroupId, posterUid, -originalPts, 'Hủy lịch', 'barem_cancel', msgId, null, null, reversalConvo);
-              await dbm.adjustPoints(dbGroupId, takerUid,  +originalPts, 'Hủy lịch', 'barem_cancel', msgId, null, null, reversalConvo);
-              console.log(`[${sess.userId}] ❌ Barem cancel: ±${originalPts}đ | poster=${posterUid} taker=${takerUid}`);
+              if (currentPts === 0) return; // đã được free trước đó
+              await dbm.adjustPoints(dbGroupId, posterUid, -currentPts, 'Hủy lịch', 'barem_cancel', origTripMsgId, null, null, reversalConvo);
+              await dbm.adjustPoints(dbGroupId, takerUid,  +currentPts, 'Hủy lịch', 'barem_cancel', origTripMsgId, null, null, reversalConvo);
+              console.log(`[${sess.userId}] ❌ Barem cancel: ±${currentPts}đ | poster=${posterUid} taker=${takerUid}`);
             } else if (action.type === 'free') {
-              // Cập nhật điểm giao dịch gốc về 0 + ghi nhận tin "lich free" vào convo
+              // Zero out tất cả tx (barem gốc + mọi barem_adjust trước đó)
               const freeConvo = JSON.stringify({
                 ...(baseConvo || {}),
                 freeTime: time, freePoster: senderName, freeText: text,
               });
-              await dbm.updateTransaction(posterTx.id, { points: 0, reason: 'Lịch free', raw_text: freeConvo });
-              await dbm.updateTransaction(takerTx.id,  { points: 0, reason: 'Lịch free', raw_text: freeConvo });
-              console.log(`[${sess.userId}] 🆓 Barem free: set 0đ | poster=${posterUid} taker=${takerUid}`);
+              for (const tx of [...posterTxs, ...takerTxs]) {
+                await dbm.updateTransaction(tx.id, { points: 0, reason: 'Lịch free', raw_text: freeConvo });
+              }
+              console.log(`[${sess.userId}] 🆓 Barem free: set 0đ (${posterTxs.length + takerTxs.length} tx) | poster=${posterUid} taker=${takerUid}`);
             } else if (action.type === 'adjust') {
-              const diff = action.points - originalPts;
+              const diff = action.points - currentPts;
               if (diff === 0) return;
-              const reason = `Thỏa thuận: ${originalPts}đ → ${action.points}đ`;
-              await dbm.adjustPoints(dbGroupId, posterUid,  diff, reason, 'barem_adjust', msgId, null, null, reversalConvo);
-              await dbm.adjustPoints(dbGroupId, takerUid,  -diff, reason, 'barem_adjust', msgId, null, null, reversalConvo);
-              console.log(`[${sess.userId}] 📝 Barem adjust: ${originalPts}→${action.points}đ diff=${diff} | poster=${posterUid} taker=${takerUid}`);
+              const reason = `Thỏa thuận: ${currentPts}đ → ${action.points}đ`;
+              // Dùng origTripMsgId để tx adjust được liên kết với cuốc gốc
+              await dbm.adjustPoints(dbGroupId, posterUid,  diff, reason, 'barem_adjust', origTripMsgId, null, null, reversalConvo);
+              await dbm.adjustPoints(dbGroupId, takerUid,  -diff, reason, 'barem_adjust', origTripMsgId, null, null, reversalConvo);
+              console.log(`[${sess.userId}] 📝 Barem adjust: ${currentPts}→${action.points}đ diff=${diff} | poster=${posterUid} taker=${takerUid}`);
             }
           })()).catch(e => console.error(`[${sess.userId}] barem action (E):`, e?.message || e));
           return;
@@ -791,6 +816,8 @@ async function onMessage(sess, msg) {
           if (msg.data.cliMsgId) sess.tripMsgCache.set(String(msg.data.cliMsgId), tripData);
           while (sess.tripMsgCache.size > 100)
             sess.tripMsgCache.delete(sess.tripMsgCache.keys().next().value);
+          // Lưu DB để dùng khi cache bị evict (cuốc đăng sáng, xác nhận chiều)
+          Promise.resolve(dbm.saveTripLog(dbGroupId, msgId, msg.data.cliMsgId ? String(msg.data.cliMsgId) : null, tripData)).catch(() => {});
         }
       }
       for (let i = 0; i < trips.length; i++) {
@@ -1321,3 +1348,7 @@ setInterval(async () => {
     await sleep(3000); // stagger giữa các session
   }
 }, CATCHUP_INTERVAL);
+
+// Dọn barem_trip_log / barem_claim_log cũ hơn 24h — chạy mỗi giờ
+Promise.resolve(dbm.purgeBaremLogs()).catch(() => {});
+setInterval(() => { Promise.resolve(dbm.purgeBaremLogs()).catch(() => {}); }, 60 * 60 * 1000);

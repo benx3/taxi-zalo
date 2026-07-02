@@ -136,6 +136,22 @@ export async function initDb() {
     created_at  BIGINT NOT NULL
   )`);
   await q("CREATE INDEX IF NOT EXISTS idx_rawmsg_group ON raw_messages(group_id, created_at DESC)");
+  await q(`CREATE TABLE IF NOT EXISTS barem_trip_log (
+    group_id   TEXT NOT NULL,
+    msg_id     TEXT NOT NULL,
+    cli_msg_id TEXT,
+    data       TEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY (group_id, msg_id)
+  )`);
+  await q(`CREATE TABLE IF NOT EXISTS barem_claim_log (
+    group_id   TEXT NOT NULL,
+    msg_id     TEXT NOT NULL,
+    cli_msg_id TEXT,
+    data       TEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY (group_id, msg_id)
+  )`);
 }
 
 const sessions = new Map(); // token -> userId (RAM; production lớn nên thay bằng Redis)
@@ -512,7 +528,7 @@ export async function adjustPoints(groupId, zaloUid, delta, reason, type = "manu
 }
 export async function getTransactionsByTripMsgId(groupId, tripMsgId) {
   const r = await q(
-    "SELECT * FROM point_transactions WHERE group_id=$1 AND trip_msg_id=$2 AND type='barem' ORDER BY created_at DESC LIMIT 10",
+    "SELECT * FROM point_transactions WHERE group_id=$1 AND trip_msg_id=$2 AND type IN ('barem','barem_adjust') ORDER BY created_at ASC LIMIT 20",
     [groupId, tripMsgId]
   );
   return r.rows;
@@ -735,6 +751,37 @@ export async function purgeOld() {
   if (r.rowCount) console.log(`🧹 Đã xoá ${r.rowCount} cuốc cũ hơn 2 tháng.`);
   const r2 = await q("DELETE FROM raw_messages WHERE created_at < $1", [now() - 3 * 86400000]);
   if (r2.rowCount) console.log(`🧹 Đã xoá ${r2.rowCount} raw messages cũ hơn 3 ngày.`);
+}
+
+// ---------- Barem trip/claim log (DB persistence cho tripMsgCache / claimCache) ----------
+export async function saveTripLog(groupId, msgId, cliMsgId, data) {
+  await q(
+    "INSERT INTO barem_trip_log(group_id,msg_id,cli_msg_id,data,created_at) VALUES($1,$2,$3,$4,$5) ON CONFLICT(group_id,msg_id) DO UPDATE SET data=$4,created_at=$5",
+    [groupId, msgId, cliMsgId || null, JSON.stringify(data), now()]
+  );
+}
+export async function getTripLog(groupId, msgId) {
+  const r = await q("SELECT data FROM barem_trip_log WHERE group_id=$1 AND (msg_id=$2 OR cli_msg_id=$2)", [groupId, msgId]);
+  return r.rows.length ? JSON.parse(r.rows[0].data) : null;
+}
+export async function saveClaimLog(groupId, msgId, cliMsgId, data) {
+  await q(
+    "INSERT INTO barem_claim_log(group_id,msg_id,cli_msg_id,data,created_at) VALUES($1,$2,$3,$4,$5) ON CONFLICT(group_id,msg_id) DO UPDATE SET data=$4,created_at=$5",
+    [groupId, msgId, cliMsgId || null, JSON.stringify(data), now()]
+  );
+}
+export async function getClaimLog(groupId, msgId) {
+  const r = await q("SELECT data FROM barem_claim_log WHERE group_id=$1 AND (msg_id=$2 OR cli_msg_id=$2)", [groupId, msgId]);
+  return r.rows.length ? JSON.parse(r.rows[0].data) : null;
+}
+export async function deleteClaimLog(groupId, msgId) {
+  await q("DELETE FROM barem_claim_log WHERE group_id=$1 AND (msg_id=$2 OR cli_msg_id=$2)", [groupId, msgId]);
+}
+export async function purgeBaremLogs() {
+  const cutoff = now() - 86400000; // 24h
+  const r1 = await q("DELETE FROM barem_trip_log  WHERE created_at < $1", [cutoff]);
+  const r2 = await q("DELETE FROM barem_claim_log WHERE created_at < $1", [cutoff]);
+  if (r1.rowCount || r2.rowCount) console.log(`🧹 Barem log: xoá ${r1.rowCount} trip + ${r2.rowCount} claim cũ hơn 24h`);
 }
 
 export default pool;

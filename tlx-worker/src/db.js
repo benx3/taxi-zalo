@@ -159,6 +159,22 @@ export async function ensureSeed() {
     msg_type    INTEGER DEFAULT 0,
     created_at  INTEGER NOT NULL
   )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS barem_trip_log (
+    group_id   TEXT NOT NULL,
+    msg_id     TEXT NOT NULL,
+    cli_msg_id TEXT,
+    data       TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (group_id, msg_id)
+  )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS barem_claim_log (
+    group_id   TEXT NOT NULL,
+    msg_id     TEXT NOT NULL,
+    cli_msg_id TEXT,
+    data       TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (group_id, msg_id)
+  )`);
 }
 
 // ---------- Auth ----------
@@ -630,7 +646,7 @@ export function adjustPoints(groupId, zaloUid, delta, reason, type = "manual", t
 }
 export function getTransactionsByTripMsgId(groupId, tripMsgId) {
   return db.prepare(
-    "SELECT * FROM point_transactions WHERE group_id=? AND trip_msg_id=? AND type='barem' ORDER BY created_at DESC LIMIT 10"
+    "SELECT * FROM point_transactions WHERE group_id=? AND trip_msg_id=? AND type IN ('barem','barem_adjust') ORDER BY created_at ASC LIMIT 20"
   ).all(groupId, tripMsgId);
 }
 export function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo, approvedOnly = false } = {}) {
@@ -754,6 +770,33 @@ export function getRules(groupId) {
 export function saveRules(groupId, rulesJson, rawText) {
   db.prepare("INSERT INTO point_rules(group_id,rules_json,raw_text,updated_at) VALUES(?,?,?,?) ON CONFLICT(group_id) DO UPDATE SET rules_json=excluded.rules_json, raw_text=excluded.raw_text, updated_at=excluded.updated_at")
     .run(groupId, rulesJson, rawText || "", now());
+}
+
+// ---------- Barem trip/claim log (DB persistence cho tripMsgCache / claimCache) ----------
+export function saveTripLog(groupId, msgId, cliMsgId, data) {
+  db.prepare("INSERT OR REPLACE INTO barem_trip_log(group_id,msg_id,cli_msg_id,data,created_at) VALUES(?,?,?,?,?)")
+    .run(groupId, msgId, cliMsgId || null, JSON.stringify(data), now());
+}
+export function getTripLog(groupId, msgId) {
+  const row = db.prepare("SELECT data FROM barem_trip_log WHERE group_id=? AND (msg_id=? OR cli_msg_id=?)").get(groupId, msgId, msgId);
+  return row ? JSON.parse(row.data) : null;
+}
+export function saveClaimLog(groupId, msgId, cliMsgId, data) {
+  db.prepare("INSERT OR REPLACE INTO barem_claim_log(group_id,msg_id,cli_msg_id,data,created_at) VALUES(?,?,?,?,?)")
+    .run(groupId, msgId, cliMsgId || null, JSON.stringify(data), now());
+}
+export function getClaimLog(groupId, msgId) {
+  const row = db.prepare("SELECT data FROM barem_claim_log WHERE group_id=? AND (msg_id=? OR cli_msg_id=?)").get(groupId, msgId, msgId);
+  return row ? JSON.parse(row.data) : null;
+}
+export function deleteClaimLog(groupId, msgId) {
+  db.prepare("DELETE FROM barem_claim_log WHERE group_id=? AND (msg_id=? OR cli_msg_id=?)").run(groupId, msgId, msgId);
+}
+export function purgeBaremLogs() {
+  const cutoff = now() - 86400000; // 24h
+  const r1 = db.prepare("DELETE FROM barem_trip_log  WHERE created_at < ?").run(cutoff);
+  const r2 = db.prepare("DELETE FROM barem_claim_log WHERE created_at < ?").run(cutoff);
+  if (r1.changes || r2.changes) console.log(`🧹 Barem log: xoá ${r1.changes} trip + ${r2.changes} claim cũ hơn 24h`);
 }
 
 export default db;
