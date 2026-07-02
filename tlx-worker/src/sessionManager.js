@@ -710,11 +710,18 @@ async function onMessage(sess, msg) {
               return;
             }
             console.log(`[${sess.userId}] (E) barem ${action.type}: found ${txs.length} tx via tier${foundTier} | glob=${qGlobId} cli=${qCliId}`);
-            // Lưu ref: cả tin được quote (qGlobId/qCliId) VÀ tin hiện tại (msgId)
-            // → mọi tin đã được Section E xử lý đều trở thành entry point cho lần sau
+            // Dedup: nếu 2 KT cùng tag → chỉ 1 session được xử lý tin này
+            // addBaremMsgRef dùng ON CONFLICT DO NOTHING — session nào insert trước thắng
             const _foundTripMsgId = txs.find(t => t.type === 'barem')?.trip_msg_id;
+            const _dedupKey = `E:${msgId}`;
+            const _alreadyDone = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, _dedupKey));
+            if (_alreadyDone) {
+              console.log(`[${sess.userId}] ⏭️ (E) skip dup: ${msgId}`);
+              return;
+            }
             if (_foundTripMsgId) {
-              for (const mid of [msgId, qGlobId, qCliId].filter(Boolean))
+              // Ghi dedup key + entry points cho chain tiếp theo
+              for (const mid of [_dedupKey, msgId, qGlobId, qCliId].filter(Boolean))
                 Promise.resolve(dbm.addBaremMsgRef(dbGroupId, mid, _foundTripMsgId)).catch(e => console.warn(`[${sess.userId}] addBaremMsgRef(E) err:`, e?.message || e));
             }
             // Xác định poster/taker từ barem tx GỐC (type='barem') — luôn đúng bất kể
