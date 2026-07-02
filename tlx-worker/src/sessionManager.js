@@ -690,29 +690,32 @@ async function onMessage(sess, msg) {
               console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy tx cho quoted glob=${qGlobId} cli=${qCliId}`);
               return;
             }
-            // Gom tất cả tx của poster (to_member) và taker (from_member) — bao gồm cả barem_adjust trước đó
-            const posterTxs = txs.filter(t => t.to_member && !t.from_member);
-            const takerTxs  = txs.filter(t => t.from_member && !t.to_member);
-            if (!posterTxs.length || !takerTxs.length) {
-              console.warn(`[${sess.userId}] (E) barem ${action.type}: không phân biệt poster/taker từ ${txs.length} tx`);
+            // Xác định poster/taker từ barem tx GỐC (type='barem') — luôn đúng bất kể
+            // hướng của các barem_adjust (diff âm làm from_member/to_member đổi chiều)
+            const baremPosterTx = txs.find(t => t.type === 'barem' && t.to_member && !t.from_member);
+            const baremTakerTx  = txs.find(t => t.type === 'barem' && t.from_member && !t.to_member);
+            if (!baremPosterTx || !baremTakerTx) {
+              console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy barem gốc trong ${txs.length} tx`);
               return;
             }
-            // Tx đầu tiên (ORDER BY ASC) là barem gốc — dùng để lấy UID và trip_msg_id gốc
-            const posterTx = posterTxs[0];
-            const takerTx  = takerTxs[0];
-            const posterUid = posterTx.to_member;
-            const takerUid  = takerTx.from_member;
-            // currentPts = tổng hiện tại sau tất cả điều chỉnh
-            const currentPts = posterTxs.reduce((s, t) => s + Number(t.points), 0);
-            // trip_msg_id gốc để liên kết adjust/cancel mới vào cùng cuốc
-            const origTripMsgId = posterTx.trip_msg_id;
+            const posterUid     = baremPosterTx.to_member;
+            const takerUid      = baremTakerTx.from_member;
+            const origTripMsgId = baremPosterTx.trip_msg_id;
+
+            // currentPts = tổng CÓ DẤU của tất cả txs đối với poster
+            // (to_member=poster → +points; from_member=poster → -points)
+            const currentPts = txs.reduce((s, t) => {
+              if (t.to_member === posterUid) return s + Number(t.points);
+              if (t.from_member === posterUid) return s - Number(t.points);
+              return s;
+            }, 0);
 
             // Giữ nội dung convo gốc + thêm tin hành động
             let baseConvo = null;
-            try { baseConvo = posterTx.raw_text ? JSON.parse(posterTx.raw_text) : null; } catch {}
+            try { baseConvo = baremPosterTx.raw_text ? JSON.parse(baremPosterTx.raw_text) : null; } catch {}
 
-            // Lịch sử điều chỉnh (phòng tài xế thu hồi tin nhắn thỏa thuận)
-            const adjustHistory = posterTxs
+            // Lịch sử điều chỉnh — lọc theo type để tránh nhầm với barem gốc
+            const adjustHistory = txs
               .filter(t => t.type === 'barem_adjust' && t.raw_text)
               .map(t => { try { return JSON.parse(t.raw_text); } catch {} return null; })
               .filter(Boolean);
@@ -724,22 +727,22 @@ async function onMessage(sess, msg) {
             });
 
             if (action.type === 'cancel') {
-              // Zero out tất cả tx (barem gốc + barem_adjust) — tương tự free
-              for (const tx of [...posterTxs, ...takerTxs]) {
+              // Zero out tất cả tx liên quan cuốc này
+              for (const tx of txs) {
                 await dbm.updateTransaction(tx.id, { points: 0, reason: 'Hủy lịch', raw_text: reversalConvo });
               }
-              console.log(`[${sess.userId}] ❌ Barem cancel: set 0đ (${posterTxs.length + takerTxs.length} tx) currentWas=${currentPts}đ | poster=${posterUid} taker=${takerUid}`);
+              console.log(`[${sess.userId}] ❌ Barem cancel: set 0đ (${txs.length} tx) currentWas=${currentPts}đ | poster=${posterUid} taker=${takerUid}`);
             } else if (action.type === 'free') {
-              // Zero out tất cả tx (barem gốc + mọi barem_adjust trước đó)
+              // Zero out tất cả tx liên quan cuốc này
               const freeConvo = JSON.stringify({
                 ...(baseConvo || {}),
                 ...(adjustHistory.length ? { adjustHistory } : {}),
                 freeTime: time, freePoster: senderName, freeText: text,
               });
-              for (const tx of [...posterTxs, ...takerTxs]) {
+              for (const tx of txs) {
                 await dbm.updateTransaction(tx.id, { points: 0, reason: 'Lịch free', raw_text: freeConvo });
               }
-              console.log(`[${sess.userId}] 🆓 Barem free: set 0đ (${posterTxs.length + takerTxs.length} tx) | poster=${posterUid} taker=${takerUid}`);
+              console.log(`[${sess.userId}] 🆓 Barem free: set 0đ (${txs.length} tx) | poster=${posterUid} taker=${takerUid}`);
             } else if (action.type === 'adjust') {
               const diff = action.points - currentPts;
               if (diff === 0) return;
