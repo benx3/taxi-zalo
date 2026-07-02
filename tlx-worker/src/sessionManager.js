@@ -698,10 +698,11 @@ async function onMessage(sess, msg) {
               console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy tx cho quoted glob=${qGlobId} cli=${qCliId}`);
               return;
             }
-            // Lưu ref cho các lần lookup sau (kể cả sau restart)
+            // Lưu ref: cả tin được quote (qGlobId/qCliId) VÀ tin hiện tại (msgId)
+            // → mọi tin đã được Section E xử lý đều trở thành entry point cho lần sau
             const _foundTripMsgId = txs.find(t => t.type === 'barem')?.trip_msg_id;
             if (_foundTripMsgId) {
-              for (const mid of [qGlobId, qCliId].filter(Boolean))
+              for (const mid of [msgId, qGlobId, qCliId].filter(Boolean))
                 Promise.resolve(dbm.addBaremMsgRef(dbGroupId, mid, _foundTripMsgId)).catch(() => {});
             }
             // Xác định poster/taker từ barem tx GỐC (type='barem') — luôn đúng bất kể
