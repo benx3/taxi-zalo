@@ -714,9 +714,11 @@ async function onMessage(sess, msg) {
             let baseConvo = null;
             try { baseConvo = baremPosterTx.raw_text ? JSON.parse(baremPosterTx.raw_text) : null; } catch {}
 
-            // Lịch sử điều chỉnh — lọc theo type để tránh nhầm với barem gốc
+            // Lịch sử điều chỉnh — chỉ lấy phía poster để tránh lặp
+            // (mỗi adjust tạo 2 tx poster+taker cùng raw_text → bỏ bên taker)
             const adjustHistory = txs
-              .filter(t => t.type === 'barem_adjust' && t.raw_text)
+              .filter(t => t.type === 'barem_adjust' && t.raw_text &&
+                (t.to_member === posterUid || t.from_member === posterUid))
               .map(t => { try { return JSON.parse(t.raw_text); } catch {} return null; })
               .filter(Boolean);
 
