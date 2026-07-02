@@ -506,9 +506,10 @@ function ConvoThread({ raw }) {
     return (
       <div style={{ background: "rgba(0,0,0,.25)", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", marginTop: 5, lineHeight: 1.45 }}>
         {row(c.tripTime, c.tripPoster, c.tripText, null)}
-        {c.claimText && row(c.claimTime, c.claimer, c.claimText, "#60a5fa")}
+        {c.claimText   && row(c.claimTime,   c.claimer,       c.claimText,   "#60a5fa")}
         {c.confirmText && row(c.confirmTime, c.confirmPoster, c.confirmText, "#34d399")}
-        {c.freeText && row(c.freeTime, c.freePoster, c.freeText, "#fb923c")}
+        {c.freeText    && row(c.freeTime,    c.freePoster,    c.freeText,    "#fb923c")}
+        {c.cancelText  && row(c.cancelTime,  c.canceller,     c.cancelText,  "#f87171")}
       </div>
     );
   }
