@@ -706,7 +706,12 @@ async function onMessage(sess, msg) {
     if (sess.isAccountant && senderId !== String(sess.selfId)) {
       const qd = msg.data?.quote;
       const mentions = msg.data?.mentions || [];
-      const ktMentioned = mentions.some(m => String(m.uid) === String(sess.selfId));
+      let ktMentioned = mentions.some(m => String(m.uid) === String(sess.selfId));
+      // Cũng nhận lệnh khi nhóm tag KT người thật (ktUid) thay vì tag bot
+      if (!ktMentioned && mentions.length > 0) {
+        const _ktUidE = await dbm.getGroupKtUid(dbGroupId);
+        if (_ktUidE) ktMentioned = mentions.some(m => String(m.uid) === String(_ktUidE));
+      }
       if (process.env.DEBUG_BAREM) console.log(`[BAREM_E] hasQuote=${!!qd} ktMentioned=${ktMentioned} mentions=${JSON.stringify(mentions.map(m=>m.uid))} selfId=${sess.selfId}`);
       // Tin không có quote → không thuộc cuốc nào, bỏ qua
       if (qd && ktMentioned) {
@@ -730,7 +735,7 @@ async function onMessage(sess, msg) {
                 txs = await Promise.resolve(dbm.getTransactionsByConfirmMsgId(dbGroupId, mid));
               }
               if (txs.length) foundTier = 2;
-            }
+            } 
             // Tầng 3: tra bảng barem_msg_refs — bất kỳ tin nào đã được E xử lý đều là entry point
             if (!txs.length) {
               for (const mid of [qGlobId, qCliId].filter(Boolean)) {
