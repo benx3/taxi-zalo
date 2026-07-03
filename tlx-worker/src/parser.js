@@ -67,13 +67,19 @@ export function parseBonus(t) {
     const val = parseFloat(afterK[2].replace(",", "."));
     if (val > 0 && val <= 10) return val;
   }
-  // Số thập phân cuối câu không có đơn vị: "500k tg. 0,5" / "400k-0.5" / "350k+0,5" / "/0,5"
-  // - Cho phép "/" trước số (vd: "/0,5" trong "xe 7 /300k /0,5")
+  // Số thập phân cuối câu không có đơn vị: "500k tg. 0,5" / "400k-0.5" / "350k+0,5" / "/0,5" / "Ok.0.5"
+  // - Cho phép "/." trước số (vd: "/0,5", "Ok.0.5")
   // - Cho phép ghi chú ASCII ngắn sau số (vd: "0,5 .csct", "0,5 tg") trước cuối chuỗi
   // \d{1,2} cho phần thập phân để tránh bắt nhầm "1,000" (phân cách hàng nghìn)
-  const tail = t.match(/(?:^|\s|[+\-/])(\d+[,\.]\d{1,2})\s*(?:[.,;]*\s*[a-zA-Z]{2,8})?\s*$/);
+  const tail = t.match(/(?:^|\s|[+\-/.])(\d+[,\.]\d{1,2})\s*(?:[.,;]*\s*[a-zA-Z]{2,8})?\s*$/);
+  // Số thập phân trước @mention: "lịch 0,5 @Kế Toán lưu ý" / "okib 0.5 @KT"
+  const beforeAt = t.match(/(?:^|\s|[+\-/.])(\d+[,\.]\d{1,2})\s+@/);
   if (tail) {
     const val = parseFloat(tail[1].replace(",", "."));
+    if (val > 0 && val <= 10) return val;
+  }
+  if (beforeAt) {
+    const val = parseFloat(beforeAt[1].replace(",", "."));
     if (val > 0 && val <= 10) return val;
   }
   // Số nguyên cuối câu sau dấu - (kèm khoảng trắng): "300k sảnh nhận -1"
