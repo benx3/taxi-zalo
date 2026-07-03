@@ -2,7 +2,7 @@
 // parser.js — bóc tách tin nhắn cuốc xe thành object có cấu trúc
 // ============================================================
 
-const CLAIM_RE = /\b([o0]k[ie]{0,2}|[o0]kib|ib)\b/i;
+const CLAIM_RE = /\b([o0]k[ie]{0,2}|[o0]kib|[o0]kp|ib)\b/i;
 const NOISE_RE = /(lịch hủy|huỷ lịch|hủy lịch|đã có ng|đã có người|đã bay|bay rồi|sản giúp|san giúp|san hộ|san ho|sản hộ|lưu ý|luu y|dbcl|cảm ơn|cám ơn|thank|ck rồi|đã ck|nhận luôn|nhan luon|máu ko|máu không)/i;
 
 export function isConfirmMessage(text) {
@@ -18,7 +18,7 @@ export function isClaimMessage(text) {
   const t = text.trim();
   if (isConfirmMessage(t)) return false;  // "oki ib", "okie ib", "0k ib" là confirm, không phải claim
   // Strip leading @mention so "@Tên đầy đủ ok" still counts as a claim
-  const core = t.replace(/^@.+?\s+(?=(?:[o0]k[ie]{0,2}|[o0]kib|ib)(?:\W|$))/i, "").trim();
+  const core = t.replace(/^@.+?\s+(?=(?:[o0]k[ie]{0,2}|[o0]kib|[o0]kp|ib)(?:\W|$))/i, "").trim();
   const hasPrice = /\d{2,4}\s*k|\dtr|\d{1,3}(?:[.,]\d{3})+\s*đ/i.test(t);
   return !hasPrice && core.length <= 25 && CLAIM_RE.test(core);
 }
