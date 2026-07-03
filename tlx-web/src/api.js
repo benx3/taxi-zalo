@@ -48,6 +48,8 @@ export const api = {
   accountantGroups: (userId) => req(`/api/admin/accountant-groups/${userId}`, null, "GET"),
   groupAccountants: (groupId) => req(`/api/admin/groups/${groupId}/accountants`, null, "GET"),
   setAccountantGroup: (accountantId, groupId, groupName, action) => req("/api/admin/accountant-groups", { accountantId, groupId, groupName, action }),
+  getDataStats: () => req("/api/admin/data-stats", null, "GET"),
+  purgeTable: (table, days) => req("/api/admin/purge", { table, days }),
 };
 
 const _cfgWs = import.meta.env?.VITE_WS_BASE || "ws://localhost:8082/ws";

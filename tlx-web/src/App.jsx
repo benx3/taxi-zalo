@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import {
   Shield, CreditCard, Ban, RefreshCw, X, User, TrendingUp,
   Users, CheckCircle2, Lock, AlertTriangle, LogOut, Settings,
-  Search, Phone, Mic, Eye, EyeOff, GitMerge, UserPlus, Activity, Bot
+  Search, Phone, Mic, Eye, EyeOff, GitMerge, UserPlus, Activity, Bot,
+  Database, Trash2
 } from "lucide-react";
 import { api, getToken, setToken } from "./api.js";
 
@@ -62,6 +63,95 @@ function AdminLoginScreen({ onLogin }) {
           {err&&<ErrBox>{err}</ErrBox>}
           <button onClick={submit} disabled={busy} style={{...primaryBtn,background:"linear-gradient(135deg,#a78bfa,#7c3aed)",boxShadow:"0 6px 18px rgba(167,139,250,.3)",opacity:busy?0.6:1}}>{busy?"ĐANG ĐĂNG NHẬP…":"ĐĂNG NHẬP ADMIN"}</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===== Admin: Quản lý dữ liệu hệ thống ===== */
+const DATA_TABLES = [
+  { key: 'barem_trip_log',     label: 'Log cuốc xe',       note: 'Cache tạm cuốc xe',              recommend: 3  },
+  { key: 'barem_claim_log',    label: 'Log claim',          note: 'Cache tạm claim tài xế',         recommend: 3  },
+  { key: 'barem_msg_refs',     label: 'Tra cứu tin nhắn',  note: 'Index hủy/điều chỉnh Section E', recommend: 7  },
+  { key: 'point_transactions', label: 'Giao dịch điểm',    note: 'Lịch sử tính điểm barem',        recommend: 30 },
+  { key: 'raw_messages',       label: 'Tin nhắn thô',      note: 'Tin nhắn Zalo lưu debug',        recommend: 3  },
+  { key: 'saved_trips',        label: 'Cuốc đã lưu',       note: 'Lịch sử cuốc xe tài xế',        recommend: 30 },
+];
+function DataManagementSection({ flash, cardStyle }) {
+  const [stats, setStats] = useState(null);
+  const [purging, setPurging] = useState(null);
+  const [confirmPurge, setConfirmPurge] = useState(null);
+
+  const loadStats = () => api.getDataStats().then(setStats).catch(() => setStats({}));
+  useEffect(() => { loadStats(); }, []);
+
+  const doPurge = async () => {
+    const { table, days } = confirmPurge;
+    setConfirmPurge(null);
+    setPurging(table);
+    try {
+      const r = await api.purgeTable(table, days);
+      flash(true, `Đã xóa ${r.deleted.toLocaleString()} dòng từ "${DATA_TABLES.find(t => t.key === table)?.label}"`);
+      loadStats();
+    } catch (e) { flash(false, e.message || 'Lỗi xóa'); }
+    finally { setPurging(null); }
+  };
+
+  return (
+    <div style={cardStyle}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+        <Database size={17} color="#94a3b8"/>
+        <span style={{fontWeight:700,fontSize:15}}>Dữ liệu hệ thống</span>
+        <button onClick={loadStats} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'var(--ink-dim)',padding:4}} title="Tải lại">
+          <RefreshCw size={14}/>
+        </button>
+      </div>
+
+      {confirmPurge && (
+        <div style={{background:'rgba(248,113,113,.08)',border:'1px solid #f8717133',borderRadius:10,padding:12,marginBottom:12}}>
+          <p style={{margin:'0 0 10px',fontSize:13,color:'var(--ink)'}}>
+            Xóa dữ liệu cũ hơn <b>{confirmPurge.days} ngày</b> từ bảng <b>"{DATA_TABLES.find(t=>t.key===confirmPurge.table)?.label}"</b>?
+          </p>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={doPurge} style={{padding:'6px 14px',borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:12,background:'rgba(248,113,113,.15)',color:'#f87171',border:'1px solid #f8717144'}}>Xóa</button>
+            <button onClick={()=>setConfirmPurge(null)} style={{padding:'6px 14px',borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:12,background:'transparent',color:'var(--ink-dim)',border:'1px solid var(--line)'}}>Hủy</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{display:'flex',flexDirection:'column',gap:6}}>
+        {DATA_TABLES.map(t => {
+          const s = stats?.[t.key];
+          const busy = purging === t.key;
+          return (
+            <div key={t.key} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:10,background:'rgba(0,0,0,.15)'}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:13}}>{t.label}</div>
+                <div style={{fontSize:11,color:'var(--ink-dim)'}}>{t.note} · khuyến nghị ≤{t.recommend} ngày</div>
+              </div>
+              <div style={{textAlign:'right',minWidth:72}}>
+                {stats === null
+                  ? <span style={{fontSize:12,color:'var(--ink-dim)'}}>…</span>
+                  : <>
+                      <div style={{fontSize:13,fontWeight:700}}>{(s?.count ?? 0).toLocaleString()}</div>
+                      {s?.oldestDays != null && <div style={{fontSize:11,color:'var(--ink-dim)'}}>cũ: {s.oldestDays}d</div>}
+                    </>
+                }
+              </div>
+              <button
+                onClick={() => !busy && !confirmPurge && setConfirmPurge({ table: t.key, days: t.recommend })}
+                disabled={busy || !!confirmPurge}
+                title={`Xóa dữ liệu cũ hơn ${t.recommend} ngày`}
+                style={{padding:'5px 10px',borderRadius:8,cursor:busy||confirmPurge?'default':'pointer',fontWeight:700,fontSize:12,
+                  background:'rgba(248,113,113,.08)',color:'#f87171',border:'1px solid #f8717133',whiteSpace:'nowrap',
+                  display:'flex',alignItems:'center',gap:5}}
+              >
+                <Trash2 size={11}/>
+                {busy ? '…' : `>${t.recommend}d`}
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -297,6 +387,8 @@ function AdminSettingsTab() {
           Gemini: lấy key tại <b>aistudio.google.com</b> → Get API Key (free tier 1500 req/ngày).
         </p>
       </div>
+
+      <DataManagementSection flash={flash} cardStyle={cardStyle}/>
 
       {msg && (
         <div style={{padding:"10px 14px",borderRadius:10,fontSize:13,fontWeight:600,

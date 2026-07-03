@@ -201,6 +201,21 @@ app.post("/api/admin/accountant-groups", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Admin: quản lý dữ liệu ----------
+app.get("/api/admin/data-stats", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  res.json(await dbm.getDataStats());
+});
+app.post("/api/admin/purge", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { table, days } = req.body;
+  if (!table || !days || Number(days) < 1) return res.status(400).json({ error: "Thiếu table hoặc days" });
+  try {
+    const deleted = await dbm.purgeTable(table, Number(days));
+    res.json({ deleted });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 // ---------- Kế toán ----------
 async function requireAccountant(req, res) {
   const a = tokenOf(req);

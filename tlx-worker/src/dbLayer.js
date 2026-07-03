@@ -62,4 +62,5 @@ export const {
   lockAccountantGroups, isGroupsLocked,
   getRules, saveRules,
   getGroupKtUid, setGroupKtUid,
+  purgeTable, getDataStats,
 } = impl;

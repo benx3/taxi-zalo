@@ -165,6 +165,7 @@ export async function ensureSeed() {
     trip_msg_id TEXT NOT NULL,
     PRIMARY KEY (group_id, msg_id)
   )`);
+  try { db.exec("ALTER TABLE barem_msg_refs ADD COLUMN created_at INTEGER"); } catch {}
   db.exec(`CREATE TABLE IF NOT EXISTS barem_trip_log (
     group_id   TEXT NOT NULL,
     msg_id     TEXT NOT NULL,
@@ -662,7 +663,7 @@ export function getTransactionsByConfirmMsgId(groupId, confirmMsgId) {
 }
 export function addBaremMsgRef(groupId, msgId, tripMsgId) {
   if (!msgId || !tripMsgId) return;
-  db.prepare("INSERT OR IGNORE INTO barem_msg_refs(group_id,msg_id,trip_msg_id) VALUES(?,?,?)").run(groupId, msgId, tripMsgId);
+  db.prepare("INSERT OR IGNORE INTO barem_msg_refs(group_id,msg_id,trip_msg_id,created_at) VALUES(?,?,?,?)").run(groupId, msgId, tripMsgId, Date.now());
 }
 export function getBaremMsgRefTripMsgId(groupId, msgId) {
   return db.prepare("SELECT trip_msg_id FROM barem_msg_refs WHERE group_id=? AND msg_id=?").get(groupId, msgId)?.trip_msg_id || null;
@@ -827,4 +828,28 @@ export function clearBaremLogs() {
   console.log(`🧹 23:59 — Reset barem log: xoá ${r1.changes} trip + ${r2.changes} claim`);
 }
 
+const PURGEABLE = {
+  barem_trip_log: 'created_at', barem_claim_log: 'created_at', barem_msg_refs: 'created_at',
+  point_transactions: 'created_at', raw_messages: 'created_at', saved_trips: 'taken_at',
+};
+export function purgeTable(table, days) {
+  const col = PURGEABLE[table];
+  if (!col) throw new Error('Bảng không được phép xóa: ' + table);
+  const cutoff = Date.now() - days * 86400000;
+  return db.prepare(`DELETE FROM ${table} WHERE ${col} < ?`).run(cutoff).changes;
+}
+export function getDataStats() {
+  const nowMs = Date.now();
+  const result = {};
+  for (const [table, col] of Object.entries(PURGEABLE)) {
+    try {
+      const row = db.prepare(`SELECT COUNT(*) as cnt, MIN(${col}) as oldest FROM ${table}`).get();
+      result[table] = {
+        count: Number(row.cnt),
+        oldestDays: row.oldest ? Math.floor((nowMs - Number(row.oldest)) / 86400000) : null,
+      };
+    } catch { result[table] = { count: 0, oldestDays: null }; }
+  }
+  return result;
+}
 export default db;

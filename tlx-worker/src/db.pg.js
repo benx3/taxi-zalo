@@ -142,6 +142,7 @@ export async function initDb() {
     trip_msg_id TEXT NOT NULL,
     PRIMARY KEY (group_id, msg_id)
   )`);
+  await q("ALTER TABLE barem_msg_refs ADD COLUMN IF NOT EXISTS created_at BIGINT");
   await q(`CREATE TABLE IF NOT EXISTS barem_trip_log (
     group_id   TEXT NOT NULL,
     msg_id     TEXT NOT NULL,
@@ -548,7 +549,7 @@ export async function getTransactionsByConfirmMsgId(groupId, confirmMsgId) {
 }
 export async function addBaremMsgRef(groupId, msgId, tripMsgId) {
   if (!msgId || !tripMsgId) return;
-  await q("INSERT INTO barem_msg_refs(group_id,msg_id,trip_msg_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING", [groupId, msgId, tripMsgId]);
+  await q("INSERT INTO barem_msg_refs(group_id,msg_id,trip_msg_id,created_at) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [groupId, msgId, tripMsgId, Date.now()]);
 }
 export async function getBaremMsgRefTripMsgId(groupId, msgId) {
   const r = await q("SELECT trip_msg_id FROM barem_msg_refs WHERE group_id=$1 AND msg_id=$2", [groupId, msgId]);
@@ -817,4 +818,30 @@ export async function clearBaremLogs() {
   console.log(`🧹 23:59 — Reset barem log: xoá ${r1.rowCount} trip + ${r2.rowCount} claim`);
 }
 
+const PURGEABLE = {
+  barem_trip_log: 'created_at', barem_claim_log: 'created_at', barem_msg_refs: 'created_at',
+  point_transactions: 'created_at', raw_messages: 'created_at', saved_trips: 'taken_at',
+};
+export async function purgeTable(table, days) {
+  const col = PURGEABLE[table];
+  if (!col) throw new Error('Bảng không được phép xóa: ' + table);
+  const cutoff = Date.now() - days * 86400000;
+  const r = await q(`DELETE FROM ${table} WHERE ${col} < $1`, [cutoff]);
+  return r.rowCount;
+}
+export async function getDataStats() {
+  const nowMs = Date.now();
+  const result = {};
+  for (const [table, col] of Object.entries(PURGEABLE)) {
+    try {
+      const r = await q(`SELECT COUNT(*) as cnt, MIN(${col}) as oldest FROM ${table}`);
+      const row = r.rows[0];
+      result[table] = {
+        count: Number(row.cnt),
+        oldestDays: row.oldest ? Math.floor((nowMs - Number(row.oldest)) / 86400000) : null,
+      };
+    } catch { result[table] = { count: 0, oldestDays: null }; }
+  }
+  return result;
+}
 export default pool;
