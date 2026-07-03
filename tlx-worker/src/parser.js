@@ -238,7 +238,7 @@ function cleanPlace(s) {
       // số hiệu chuyến bay: VJ123, VN204, QH123, BL456, VU789...
       .replace(/^\s*[A-Z]{2}\d{3,4}\b[\s.:,_-]*/i, "")
       // các từ khoá ở ĐẦU. KHÔNG dùng \b (sai với chữ Việt có dấu); dùng (?=[\s.:,_-]|$)
-      .replace(/^\s*(csct|cs ct|cnct|cn ct|snct|sn ct|free+|fr+ee|fer+|vtri|vt|vị trí|yc|ycvt|dự|sm|sd|sáng mai|ngày mai|mai|gấp|gap)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")
+      .replace(/^\s*(csct|cs ct|cnct|cn ct|snct|sn ct|free+|fr+ee|fer+|frr|fii|vtri|vt|vị trí|yc|ycvt|dự|sm|sd|sáng mai|ngày mai|mai|gấp|gap)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")
       .replace(/^\s*\d{1,2}\s*(?:[-–]\s*\d{1,2})?\s*[h:]\s*\d{0,2}\s*p?\s*(?:[-–_]\s*\d{1,2}\s*[h:]?\s*\d{0,2}\s*p?)?\s*(sm|sáng mai)?[\s.:,_-]*/i, "") // "22h","6h30","5-6h","0h25p","6h_6h30"
       .replace(/^\s*\d{1,3}\s*p(?=[\s.:,_-]|$)[\s.:,_-]*/i, "")  // "30p"
       .replace(/^\s*\d+\s*(ghép|ghế|ghê|ghé|ghe|gh|khách|khach|kh|k|g)(?=[\s.:,_-]|$)[\s.:,_-]*/i, "") // "1 ghế","1ghép","1k","1g","1ghe"
@@ -251,7 +251,7 @@ function cleanPlace(s) {
   return s
     .replace(/\d[\d.,]*\s*(k|đ|nghìn|tr|triệu)\b.*$/i, "")  // giá có đơn vị + đuôi
     .replace(/\d{1,3}(?:[.,]\d{3})+\s*đ?.*$/i, "")          // giá "200.000"
-    .replace(/\b(free+|fr+ee|fer+|tg|tgct|tgian|ki\d+|sd|cl|0[.,]5)\b.*$/i, "")
+    .replace(/\b(free+|fr+ee|fer+|frr|fii|tg|tgct|tgian|ki\d+|sd|cl|0[.,]5)\b.*$/i, "")
     .replace(/khách\s*(cần|can|có mặt|co mat).*/i, "")       // bỏ ghi chú "khách cần có mặt 8h40"
     .replace(/\b(lb|lx|cl|dv\d?|ck|tk|cth)\s*[-:]?\s*$/i, "") // bỏ suffix noise cuối: lb-, lx, dv1...
     .replace(/_{2,}/g, " ")                                  // gạch dưới dài → space
@@ -334,7 +334,7 @@ export function parseTrip(raw) {
     seats: parseSeats(text),
     type: finalType,
     route: parseRoute(text),
-    free: /\bfre+\b/i.test(text),
+    free: /\b(?:fre+|frr|fii)\b/i.test(text),
     explicitPoints,
     bonus: explicitPoints !== null ? `${explicitPoints}đ` : null,
   };
