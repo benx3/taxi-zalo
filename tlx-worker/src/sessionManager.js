@@ -742,8 +742,10 @@ async function onMessage(sess, msg) {
             } else {
               const reason = pts === 0 ? 'Lịch free' : (confirmPts > 0 ? `Chốt ${pts}đ (thỏa thuận)` : `Barem ${cachedClaim.tripType} ${cachedClaim.tripPrice}k`);
               const txMsgId = cachedClaim.tripMsgId || msgId;
-              await dbm.adjustPoints(dbGroupId, cachedClaim.tripPosterId, +pts, reason, 'barem', txMsgId, null, null, convo);
-              await dbm.adjustPoints(dbGroupId, cachedClaim.takerId,      -pts, reason, 'barem', txMsgId, null, null, convo);
+              // Truyền explicit from/to_member để tránh bug -0 >= 0 === true trong JS
+              // (khi pts=0, delta âm vẫn >= 0 nên DB lưu to_member thay vì from_member cho taker)
+              await dbm.adjustPoints(dbGroupId, cachedClaim.tripPosterId, +pts, reason, 'barem', txMsgId, null, cachedClaim.tripPosterId, convo);
+              await dbm.adjustPoints(dbGroupId, cachedClaim.takerId,      -pts, reason, 'barem', txMsgId, cachedClaim.takerId, null, convo);
               // Lưu mapping msg → trip_msg_id để Section E tìm được sau khi restart
               // confirmCliMsgId đảm bảo cover cả trường hợp msg.data.msgId ≠ msg.data.cliMsgId
               for (const mid of [msgId, confirmCliMsgId, qCliId2, qGlobId2, cachedClaim.tripMsgId].filter(Boolean))

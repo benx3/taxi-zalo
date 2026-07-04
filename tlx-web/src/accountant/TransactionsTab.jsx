@@ -17,15 +17,15 @@ function buildPageList(cur, total) {
   return [1, "…", cur - 1, cur, cur + 1, "…", total];
 }
 
-// Gom các cặp barem (poster + taker) có cùng msg_id thành 1 item hiển thị
+// Gom các cặp barem (poster + taker) có cùng trip_msg_id thành 1 item hiển thị
 function groupTransactions(txs) {
   const byMsgId = new Map();
   const others = [];
   for (const tx of txs) {
-    if (tx.type === "barem" && tx.msg_id) {
-      const arr = byMsgId.get(tx.msg_id) || [];
+    if (tx.type === "barem" && tx.trip_msg_id) {
+      const arr = byMsgId.get(tx.trip_msg_id) || [];
       arr.push(tx);
-      byMsgId.set(tx.msg_id, arr);
+      byMsgId.set(tx.trip_msg_id, arr);
     } else {
       others.push(tx);
     }
@@ -35,6 +35,7 @@ function groupTransactions(txs) {
     const poster = group.find(t => t.to_member && !t.from_member);
     const taker  = group.find(t => t.from_member && !t.to_member);
     if (group.length === 2 && poster && taker) {
+      // Trường hợp thường: poster nhận (+pts), taker bị trừ (-pts)
       result.push({
         _paired: true,
         id: poster.id,
@@ -46,6 +47,24 @@ function groupTransactions(txs) {
         reason: poster.reason || taker.reason || null,
         created_at: poster.created_at,
         status: poster.status || "approved",
+        type: "barem",
+      });
+    } else if (group.length === 2 && group.every(t => t.to_member && !t.from_member)) {
+      // pts=0 (free): cả 2 tx đều có to_member vì -0 >= 0 === true trong JS
+      // Poster được insert trước (created_at nhỏ hơn), taker insert sau → sort DESC → taker là [0]
+      const byTime = [...group].sort((a, b) => a.created_at - b.created_at);
+      const [posterTx, takerTx] = byTime;
+      result.push({
+        _paired: true,
+        id: posterTx.id,
+        id2: takerTx.id,
+        points: Number(posterTx.points),
+        posterName: posterTx.to_member_name || posterTx.to_member || "",
+        takerName: takerTx.to_member_name || takerTx.to_member || "",
+        raw_text: tx1.raw_text || tx2.raw_text || null,
+        reason: tx1.reason || tx2.reason || null,
+        created_at: tx1.created_at,
+        status: tx1.status || "approved",
         type: "barem",
       });
     } else {
