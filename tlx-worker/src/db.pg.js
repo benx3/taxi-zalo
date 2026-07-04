@@ -615,10 +615,11 @@ export async function updateTransaction(id, { reason, points, raw_text }) {
     if (bothSet) {
       newTo = tx.to_member; newFrom = tx.from_member; // giữ chiều cũ, chỉ đổi giá trị
     } else {
-      // Dương → to_member (cộng điểm), Âm → from_member (trừ điểm)
+      // 0 = giữ chiều cũ; Dương = to_member (cộng); Âm = from_member (trừ)
       const uid = tx.to_member || tx.from_member;
-      newTo   = newRaw >= 0 ? uid : null;
-      newFrom = newRaw >= 0 ? null : uid;
+      const newIsTo = newRaw === 0 ? !!tx.to_member : newRaw > 0;
+      newTo   = newIsTo ? uid : null;
+      newFrom = newIsTo ? null : uid;
     }
     // Hoàn lại hiệu ứng cũ
     if (tx.to_member) await q("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [oldPts, now(), tx.group_id, tx.to_member]);

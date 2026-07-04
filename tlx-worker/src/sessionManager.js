@@ -770,12 +770,14 @@ async function onMessage(sess, msg) {
         const _ktUidE = await dbm.getGroupKtUid(dbGroupId);
         if (_ktUidE) ktMentioned = mentions.some(m => String(m.uid) === String(_ktUidE));
       }
+      // Log khi có quote nhưng không kích hoạt được (luôn hiện, không cần DEBUG_BAREM)
+      if (qd && !ktMentioned) console.log(`[BAREM_E] ⚠️ quote có nhưng ktMentioned=false | mentions=${JSON.stringify(mentions.map(m=>m.uid))} selfId=${sess.selfId} group=${dbGroupId}`);
       if (process.env.DEBUG_BAREM) console.log(`[BAREM_E] hasQuote=${!!qd} ktMentioned=${ktMentioned} mentions=${JSON.stringify(mentions.map(m=>m.uid))} selfId=${sess.selfId}`);
       // Tin không có quote → không thuộc cuốc nào, bỏ qua
       if (qd && ktMentioned) {
         const parsedBonus = parseBonus(text);
         const action = detectBaremAction(text) || (parsedBonus > 0 ? { type: 'adjust', points: parsedBonus } : null);
-        if (!action && process.env.DEBUG_BAREM) console.log(`[BAREM_E] no action for text="${text.slice(0,80)}"`);
+        if (!action) console.log(`[BAREM_E] ⚠️ ktMentioned=true nhưng không detect action | text="${text.slice(0,80)}"`);
         if (action) {
           const qGlobId = qd.globalMsgId != null ? String(qd.globalMsgId) : "";
           const qCliId  = qd.cliMsgId   != null ? String(qd.cliMsgId)   : "";

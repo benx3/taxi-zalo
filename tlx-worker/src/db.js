@@ -726,9 +726,11 @@ export function updateTransaction(id, { reason, points, raw_text }) {
     if (bothSet) {
       newTo = tx.to_member; newFrom = tx.from_member;
     } else {
+      // 0 = giữ chiều cũ; Dương = to_member (cộng); Âm = from_member (trừ)
       const uid = tx.to_member || tx.from_member;
-      newTo   = newRaw >= 0 ? uid : null;
-      newFrom = newRaw >= 0 ? null : uid;
+      const newIsTo = newRaw === 0 ? !!tx.to_member : newRaw > 0;
+      newTo   = newIsTo ? uid : null;
+      newFrom = newIsTo ? null : uid;
     }
     // Hoàn lại hiệu ứng cũ
     if (tx.to_member) db.prepare("UPDATE members SET points=ROUND(points-?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
