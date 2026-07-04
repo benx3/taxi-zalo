@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Users, Clock, BarChart2, User, LogOut, KeyRound, X, Check,
-         Wifi, WifiOff, QrCode, Bell, Lock, Search, AlertCircle, RefreshCw, Eye, EyeOff, FileUp } from "lucide-react";
+         Wifi, WifiOff, QrCode, Bell, Lock, Search, RefreshCw, Eye, EyeOff, FileUp, Menu } from "lucide-react";
 import { api } from "./api.js";
 import MembersTab from "./MembersTab.jsx";
 import TransactionsTab from "./TransactionsTab.jsx";
@@ -23,10 +23,10 @@ export default function AccountantApp({ me: initMe, onLogout, worker }) {
   const [dbGroups, setDbGroups] = useState([]);
   const [activeGroup, setActiveGroup] = useState(null);
   const [showZaloPanel, setShowZaloPanel] = useState(false);
+  const [navOpen, setNavOpen] = useState(() => window.innerWidth >= 768);
 
   const { wsConnected, zaloConnected, qrImage, zaloGroups, selectedGroups,
-          setWatchedGroups, pendingTransfers, removePending, send, sessionExpired,
-          groupConflict, clearGroupConflict } = worker;
+          setWatchedGroups, pendingTransfers, removePending, send, sessionExpired } = worker;
 
   const reloadMe = () => api.me().then(setMe).catch(() => {});
 
@@ -55,20 +55,12 @@ export default function AccountantApp({ me: initMe, onLogout, worker }) {
 
   return (
     <div style={{ display: "flex", height: "100dvh", overflow: "hidden" }}>
-      {/* Toast: nhóm đã có kế toán khác */}
-      {groupConflict && (
-        <div style={{ position: "fixed", top: 18, left: "50%", transform: "translateX(-50%)", zIndex: 9999, background: "#1e293b", border: "1px solid #f59e0b", borderRadius: 10, padding: "12px 18px", display: "flex", alignItems: "center", gap: 12, boxShadow: "0 4px 24px rgba(0,0,0,.4)", maxWidth: 420, width: "90%" }}>
-          <AlertCircle size={18} style={{ color: "#f59e0b", flexShrink: 0 }} />
-          <div style={{ flex: 1, fontSize: 13, color: "#f1f5f9", lineHeight: 1.5 }}>
-            <strong style={{ color: "#fbbf24" }}>"{groupConflict.groupName}"</strong> đã có kế toán khác theo dõi. Mỗi nhóm chỉ có 1 kế toán.
-          </div>
-          <button onClick={clearGroupConflict} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 2, flexShrink: 0 }}>
-            <X size={16} />
-          </button>
-        </div>
+      {/* Mobile backdrop */}
+      {navOpen && window.innerWidth < 768 && (
+        <div onClick={() => setNavOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 99, background: "rgba(0,0,0,.45)" }} />
       )}
       {/* ===== Sidebar ===== */}
-      <aside style={{ width: 220, flexShrink: 0, background: "var(--card)", borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column" }}>
+      <aside style={{ width: navOpen ? 220 : 0, minWidth: 0, flexShrink: 0, background: "var(--card)", borderRight: navOpen ? "1px solid var(--line)" : "none", display: "flex", flexDirection: "column", overflow: "hidden", transition: "width .2s", ...(navOpen && window.innerWidth < 768 ? { position: "fixed", left: 0, top: 0, height: "100%", zIndex: 100 } : {}) }}>
         {/* Logo */}
         <div style={{ padding: "20px 18px 16px", borderBottom: "1px solid var(--line)" }}>
           <div style={{ fontFamily: "var(--display)", fontWeight: 800, fontSize: 18, color: "var(--ink)", marginBottom: 2 }}>Kế Toán</div>
@@ -139,6 +131,9 @@ export default function AccountantApp({ me: initMe, onLogout, worker }) {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {/* Header */}
         <header style={{ padding: "14px 24px", borderBottom: "1px solid var(--line)", background: "var(--bg)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+          <button onClick={() => setNavOpen(v => !v)} title="Menu" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)", padding: 4, borderRadius: 8, display: "flex", flexShrink: 0 }}>
+            <Menu size={18} />
+          </button>
           <div style={{ flex: 1 }}>
             <span style={{ fontWeight: 700, fontSize: 16 }}>
               {TABS.find(t => t.key === tab)?.label}

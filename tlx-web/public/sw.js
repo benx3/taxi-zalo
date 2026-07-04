@@ -1,6 +1,6 @@
 // Service Worker — cache static assets để app load nhanh trên mobile.
 // CHỈ cache file tĩnh (JS/CSS/HTML/ảnh). KHÔNG cache API/WebSocket (dữ liệu realtime).
-const CACHE = "tlx-v1";
+const CACHE = "tlx-v2";
 const STATIC = ["/", "/index.html", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

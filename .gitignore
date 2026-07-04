@@ -30,3 +30,5 @@ sessions/
 # OS
 .DS_Store
 Thumbs.db
+tlx-worker/test-member.html
+tlx-worker/test-member.js

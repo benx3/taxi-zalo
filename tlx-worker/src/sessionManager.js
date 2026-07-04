@@ -105,6 +105,7 @@ function attach(userId, api, onEvent) {
     groups: [],                 // [{id,name,link}]
     selected: new Set(),        // nhóm theo dõi (rỗng = tất cả)
     groupIdMap: new Map(),      // zalo_group_id → canonical group_id (khi 2 account có ID khác nhau)
+    uidGlobalIdCache: new Map(), // zalo_uid → { globalId, phone } — tránh gọi getUserInfo lặp lại
     groupNameById: new Map(),
     claims: new Map(),          // `${groupId}:${ownerId}` -> {savedId, msgId, text}
     rawMsgById: new Map(),      // msgId -> object message gốc (để reply đúng tin)
@@ -190,6 +191,55 @@ setInterval(async () => {
 // Lấy canonical group_id cho DB (map zalo_group_id → canonical nếu có)
 function resolveGroupId(sess, zaloGroupId) {
   return sess.groupIdMap.get(zaloGroupId) || zaloGroupId;
+}
+
+// Lấy globalId + phone của 1 UID từ Zalo API, dùng cache để không gọi lặp lại
+async function resolveGlobalId(sess, zaloUid) {
+  if (!zaloUid || !sess.api) return {};
+  const cached = sess.uidGlobalIdCache.get(zaloUid);
+  if (cached) return cached;
+  try {
+    const resp = await sess.api.getUserInfo(zaloUid);
+    const prof = resp?.changed_profiles?.[zaloUid]
+      || Object.values(resp?.changed_profiles || {})[0];
+    const result = {
+      globalId: prof?.globalId || null,
+      phone:    prof?.phoneNumber || null,
+    };
+    if (result.globalId) sess.uidGlobalIdCache.set(zaloUid, result);
+    return result;
+  } catch { return {}; }
+}
+
+// Batch-resolve globalId + phone cho nhiều UIDs, cập nhật cache, trả về Map uid→{globalId,phone}
+async function batchResolveGlobalIds(sess, uids) {
+  if (!uids?.length || !sess.api) return {};
+  const result = {};
+  const toFetch = uids.filter(u => u && !sess.uidGlobalIdCache.has(u));
+  // Lấy từ cache trước
+  for (const u of uids) {
+    const c = sess.uidGlobalIdCache.get(u);
+    if (c) result[u] = c;
+  }
+  if (!toFetch.length) return result;
+  const BATCH = 50;
+  for (let i = 0; i < toFetch.length; i += BATCH) {
+    try {
+      const batch = toFetch.slice(i, i + BATCH);
+      const resp = await sess.api.getUserInfo(batch);
+      for (const [uid, prof] of Object.entries(resp?.changed_profiles || {})) {
+        if (prof?.globalId) {
+          const entry = { globalId: prof.globalId, phone: prof.phoneNumber || null };
+          result[uid] = entry;
+          sess.uidGlobalIdCache.set(uid, entry);
+        }
+      }
+    } catch (e) {
+      console.warn(`[${sess.userId}] batchResolveGlobalIds batch ${i}: ${e?.message}`);
+    }
+    if (i + BATCH < toFetch.length) await new Promise(r => setTimeout(r, 200));
+  }
+  return result;
 }
 
 // Bắt kịp tin nhắn bị bỏ sót trong thời gian service down
@@ -389,8 +439,13 @@ async function onMessage(sess, msg) {
 
     // Thu thập thành viên thụ động: mỗi tin nhắn trong nhóm được theo dõi → lưu sender
     if (senderId && sess.isAccountant) {
-      Promise.resolve(dbm.upsertMember(dbGroupId, senderId, { display_name: senderName !== "Không rõ" ? senderName : null }))
-        .catch(() => {});
+      resolveGlobalId(sess, senderId).then(({ globalId, phone }) =>
+        dbm.upsertMember(dbGroupId, senderId, {
+          display_name: senderName !== "Không rõ" ? senderName : null,
+          global_id: globalId || undefined,
+          phone: phone || undefined,
+        })
+      ).catch(() => {});
       // Lưu cả những người bị tag trong tin nhắn (kể cả khi họ chưa chat lần nào)
       const mentioned = msg.data?.mentions || [];
       for (const mn of mentioned) {
@@ -640,11 +695,12 @@ async function onMessage(sess, msg) {
           // Capture cliMsgId của confirm message (để barem_msg_refs cover cả 2 ID)
           const confirmCliMsgId = msg.data?.cliMsgId ? String(msg.data.cliMsgId) : "";
           Promise.resolve((async () => {
-            // Dedup: phòng catchup sau restart fire barem 2 lần cho cùng cuốc
+            // Atomic claim: session đầu tiên ghi được vào barem_msg_refs thì được tính điểm.
+            // Phòng cả restart-catchup lẫn 2 kế toán cùng theo dõi nhóm.
             const txRef = cachedClaim.tripMsgId;
             if (txRef) {
-              const existingTxs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, txRef));
-              if (existingTxs.some(t => t.type === 'barem')) {
+              const claimed = await Promise.resolve(dbm.claimBaremScoring(dbGroupId, txRef));
+              if (!claimed) {
                 console.log(`[${sess.userId}] ⏭️  Barem skip dup: ${txRef}`);
                 return;
               }
@@ -1101,13 +1157,20 @@ async function importGroupMembers(sess, zaloGroupId, canonicalGroupId = null) {
     const memberList = await fetchAllMemberProfiles(sess, zaloGroupId);
     console.log(`[${sess.userId}] importGroupMembers ${zaloGroupId}→${dbGroupId}: ${memberList.length} thành viên`);
 
+    // Batch-resolve globalId + phone cho tất cả members
+    const allUids = memberList.map(m => String(m?.id || "")).filter(Boolean);
+    const globalIdMap = await batchResolveGlobalIds(sess, allUids);
+
     let count = 0;
     for (const m of memberList) {
       const uid = String(m?.id || "");
       if (!uid) continue;
+      const { globalId, phone } = globalIdMap[uid] || {};
       await dbm.upsertMember(dbGroupId, uid, {
         display_name: m.displayName || null,
         avatar: m.avatar || null,
+        global_id: globalId || undefined,
+        phone: phone || undefined,
       });
       // Xóa thành viên tạm (~imp_*) cùng tên nếu vừa tìm được người thật
       if (m.displayName) await dbm.mergeTempMember(dbGroupId, m.displayName);
@@ -1160,24 +1223,6 @@ export async function setWatchedGroups(userId, groupIds) {
         } else {
           const rec = current.find(g => (g.zalo_group_id || g.group_id) === gId || g.group_id === gId);
           if (rec) { canonicalId = rec.group_id; groupName = rec.group_name || gId; }
-        }
-
-        // Conflict: chỉ block khi session này CÓ Zalo (selfId set) VÀ nhóm đã có Zalo kế toán khác
-        // Kế toán không có Zalo luôn được thêm nhóm để quản lý web bình thường
-        if (sess.selfId) {
-          const zaloOwner = await dbm.getGroupZaloOwner(canonicalId, userId);
-          if (zaloOwner) {
-            console.warn(`[${userId}] ⛔ Nhóm "${groupName}" đã có Zalo kế toán "${zaloOwner.name}" — từ chối Zalo monitor`);
-            sess.onEvent(userId, {
-              type: "group_conflict",
-              groupId: gId,
-              groupName,
-              ownerName: zaloOwner.name || zaloOwner.accountant_id,
-            });
-            const idx = acceptedIds.indexOf(gId);
-            if (idx !== -1) acceptedIds.splice(idx, 1);
-            continue;
-          }
         }
 
         if (!alreadyTracked) {
@@ -1296,6 +1341,10 @@ async function fullSyncGroupMembers(sess, groupId) {
   console.log(`[fullSync] ${groupId}: ${memberList.length} thành viên`);
   if (!memberList.length) throw new Error(`Nhóm ${groupId}: không lấy được danh sách thành viên từ Zalo`);
 
+  // Batch-resolve globalId + phone (cùng logic importGroupMembers)
+  const allUids = memberList.map(m => String(m?.id || "")).filter(Boolean);
+  const globalIdMap = await batchResolveGlobalIds(sess, allUids);
+
   const activeUids = [];
   let added = 0, i = 0;
   for (const m of memberList) {
@@ -1303,9 +1352,12 @@ async function fullSyncGroupMembers(sess, groupId) {
     if (!uid) continue;
     const existing = await dbm.getMemberByZaloUid(groupId, uid);
     if (!existing) added++;
+    const { globalId, phone } = globalIdMap[uid] || {};
     await dbm.upsertMember(groupId, uid, {
       display_name: m.displayName || null,
       avatar: m.avatar || null,
+      global_id: globalId || undefined,
+      phone: phone || undefined,
     });
     activeUids.push(uid);
     if (++i % 10 === 0) await yieldLoop();

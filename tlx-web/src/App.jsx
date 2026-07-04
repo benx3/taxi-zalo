@@ -3,7 +3,7 @@ import {
   Shield, CreditCard, Ban, RefreshCw, X, User, TrendingUp,
   Users, CheckCircle2, Lock, AlertTriangle, LogOut, Settings,
   Search, Phone, Mic, Eye, EyeOff, GitMerge, UserPlus, Activity, Bot,
-  Database, Trash2
+  Database, Trash2, Menu
 } from "lucide-react";
 import { api, getToken, setToken } from "./api.js";
 
@@ -410,6 +410,7 @@ function AdminApp({ me, onLogout }) {
   const [adminPage,setAdminPage]=useState(1);
   useEffect(()=>{setAdminPage(1);},[q]);
   const [adminTab,setAdminTab]=useState("users");
+  const [navOpen,setNavOpen]=useState(()=>window.innerWidth>=768);
   const [resetTarget,setResetTarget]=useState(null);
   const [acctTarget,setAcctTarget]=useState(null);
   const [deleteTarget,setDeleteTarget]=useState(null);
@@ -447,8 +448,12 @@ function AdminApp({ me, onLogout }) {
   ];
   return (
     <div style={{display:"flex",height:"100dvh",overflow:"hidden",background:"var(--bg)",color:"var(--ink)",fontFamily:"var(--body)"}}>
+      {/* Mobile backdrop */}
+      {navOpen&&window.innerWidth<768&&(
+        <div onClick={()=>setNavOpen(false)} style={{position:"fixed",inset:0,zIndex:99,background:"rgba(0,0,0,.45)"}}/>
+      )}
       {/* Sidebar */}
-      <aside style={{width:220,flexShrink:0,background:"var(--card)",borderRight:"1px solid var(--line)",display:"flex",flexDirection:"column"}}>
+      <aside style={{width:navOpen?220:0,minWidth:0,flexShrink:0,background:"var(--card)",borderRight:navOpen?"1px solid var(--line)":"none",display:"flex",flexDirection:"column",overflow:"hidden",transition:"width .2s",...(navOpen&&window.innerWidth<768?{position:"fixed",left:0,top:0,height:"100%",zIndex:100}:{})}}>
         <div style={{padding:"20px 18px 14px",borderBottom:"1px solid var(--line)"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
             <div style={{width:30,height:30,borderRadius:9,background:"linear-gradient(135deg,#a78bfa,#7c3aed)",display:"grid",placeItems:"center",flexShrink:0}}><Shield size={16} color="#fff"/></div>
@@ -486,6 +491,7 @@ function AdminApp({ me, onLogout }) {
       {/* Main content */}
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
         <header style={{padding:"14px 24px",borderBottom:"1px solid var(--line)",background:"var(--bg)",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+          <button onClick={()=>setNavOpen(v=>!v)} title="Menu" style={{background:"none",border:"none",cursor:"pointer",color:"var(--ink-dim)",padding:4,borderRadius:8,display:"flex",flexShrink:0}}><Menu size={18}/></button>
           <span style={{fontWeight:700,fontSize:16,flex:1}}>{TABS.find(t=>t.key===adminTab)?.label}</span>
           <button onClick={reload} title="Tải lại" style={{background:"none",border:"none",cursor:"pointer",color:"var(--ink-dim)",padding:6,borderRadius:8,display:"flex"}}><RefreshCw size={15}/></button>
         </header>

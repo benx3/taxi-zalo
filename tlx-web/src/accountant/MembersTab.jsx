@@ -137,6 +137,7 @@ export default function MembersTab({ groupId }) {
     const rows = sorted.map((m, i) => ({
       "STT": i + 1,
       "Tên Zalo": m.display_name || m.zalo_uid || "",
+      "SĐT": m.phone ? String(m.phone).replace(/^84/, "0") : "",
       "Hiện tại": Number(m.points) || 0,
       [`Điểm ${yestLabelFull}`]: m.points_yesterday != null ? Number(m.points_yesterday) : "",
     }));
@@ -275,17 +276,18 @@ export default function MembersTab({ groupId }) {
         {sorted.length > 0 && (
         <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
           {/* Header bảng */}
-          <div style={{ display: "grid", gridTemplateColumns: "36px 40px 1fr 72px 72px 38px", padding: "6px 4px 6px 12px", borderBottom: "1px solid var(--line)", fontSize: 11, fontWeight: 700, color: "var(--ink-dim)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "36px 40px 1fr 100px 72px 72px 38px", padding: "6px 4px 6px 12px", borderBottom: "1px solid var(--line)", fontSize: 11, fontWeight: 700, color: "var(--ink-dim)", textTransform: "uppercase", letterSpacing: ".06em" }}>
             <span>#</span><span />
             <button onClick={() => setSortBy(s => s === "name_asc" ? "name_desc" : "name_asc")}
               style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: sortBy.startsWith("name") ? "var(--accent)" : "var(--ink-dim)", display: "flex", alignItems: "center", gap: 3 }}>
               Tên {sortBy === "name_asc" ? "↑" : sortBy === "name_desc" ? "↓" : ""}
             </button>
+            <span style={{ fontSize: 10, opacity: .7 }}>SĐT</span>
+            <span style={{ textAlign: "right", paddingRight: 4, fontSize: 10, opacity: .7 }}>{yestLabel}</span>
             <button onClick={() => setSortBy(s => s === "points_desc" ? "points_asc" : "points_desc")}
               style={{ background: "none", border: "none", cursor: "pointer", padding: "0 4px 0 0", textAlign: "right", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: sortBy.startsWith("points") ? "var(--accent)" : "var(--ink-dim)", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>
               {sortBy === "points_asc" ? "↑" : sortBy === "points_desc" ? "↓" : ""} Hiện tại
             </button>
-            <span style={{ textAlign: "right", paddingRight: 4, fontSize: 10, opacity: .7 }}>{yestLabel}</span>
             <span />
           </div>
 
@@ -295,7 +297,7 @@ export default function MembersTab({ groupId }) {
           const yest = m.points_yesterday != null ? Number(m.points_yesterday) : null;
           return (
             <React.Fragment key={m.id}>
-              <div style={{ display: "grid", gridTemplateColumns: "36px 40px 1fr 72px 72px 38px", alignItems: "center", borderBottom: "1px solid var(--line)", background: isEditing ? "rgba(52,211,153,.05)" : "transparent" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "36px 40px 1fr 100px 72px 72px 38px", alignItems: "center", borderBottom: "1px solid var(--line)", background: isEditing ? "rgba(52,211,153,.05)" : "transparent" }}>
                 <span style={{ padding: "0 0 0 12px", fontSize: 12, color: "var(--ink-dim)", fontWeight: 600 }}>{rank}</span>
                 <div style={{ display: "flex", alignItems: "center", padding: "8px 0 8px 0" }}>
                   <ZaloAvatar uid={m.zalo_uid} name={m.display_name} src={m.avatar} size={32} />
@@ -307,13 +309,16 @@ export default function MembersTab({ groupId }) {
                     {(m.zalo_uid || "").startsWith("~imp_") && <span style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,.15)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 4, padding: "1px 5px", marginLeft: 6 }}>TẠM</span>}
                     {m.is_out === 1 && <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", background: "rgba(148,163,184,.12)", border: "1px solid rgba(148,163,184,.3)", borderRadius: 4, padding: "1px 5px", marginLeft: 6 }}>OUT</span>}
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--ink-dim)", marginTop: 1 }}>#{(m.zalo_uid || "").slice(-6)}{m.phone ? ` · ${m.phone}` : ""}</div>
+                  <div style={{ fontSize: 11, color: "var(--ink-dim)", marginTop: 1 }}>#{(m.zalo_uid || "").slice(-6)}</div>
                 </button>
-                <div style={{ fontWeight: 800, fontSize: 15, color: pointColor(m.points), textAlign: "right", paddingRight: 8 }}>
-                  {fmtPts(m.points)}
+                <div style={{ fontSize: 12, color: "var(--ink-dim)", fontFamily: "monospace", paddingRight: 4 }}>
+                  {m.phone ? String(m.phone).replace(/^84/, "0") : <span style={{ opacity: .35 }}>—</span>}
                 </div>
                 <div style={{ textAlign: "right", paddingRight: 8, fontSize: 13, fontWeight: 700, color: yest != null ? pointColor(yest) : "var(--ink-dim)" }}>
                   {yest != null ? fmtPts(yest) : "—"}
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: pointColor(m.points), textAlign: "right", paddingRight: 8 }}>
+                  {fmtPts(m.points)}
                 </div>
                 <button onClick={(e) => startEdit(e, m)} title="Chỉnh điểm nhanh"
                   style={{ alignSelf: "stretch", display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", borderLeft: "1px solid var(--line)", cursor: "pointer", color: isEditing ? "var(--accent)" : "var(--ink-dim)" }}>
@@ -586,7 +591,10 @@ function MemberDetail({ member, groupId, onBack }) {
             {m.alias || m.display_name || m.zalo_uid}
             {m.alias && <span style={{ fontSize: 12, color: "var(--ink-dim)", fontWeight: 400, marginLeft: 6 }}>({m.display_name})</span>}
           </div>
-          <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>#{m.zalo_uid}</div>
+          <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>
+            #{m.zalo_uid}
+            {m.phone && <span style={{ marginLeft: 8, color: "#60a5fa", fontFamily: "monospace" }}>{String(m.phone).replace(/^84/, "0")}</span>}
+          </div>
         </div>
         <div style={{ fontWeight: 800, fontSize: 22, color: pointColor(m.points), flexShrink: 0 }}>{fmtPts(m.points)}</div>
       </div>

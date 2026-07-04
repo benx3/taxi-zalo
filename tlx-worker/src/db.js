@@ -166,6 +166,8 @@ export async function ensureSeed() {
     PRIMARY KEY (group_id, msg_id)
   )`);
   try { db.exec("ALTER TABLE barem_msg_refs ADD COLUMN created_at INTEGER"); } catch {}
+  try { db.exec("ALTER TABLE members ADD COLUMN global_id TEXT"); } catch {}
+  try { db.exec("CREATE UNIQUE INDEX idx_members_global_id ON members(group_id,global_id) WHERE global_id IS NOT NULL"); } catch {}
   db.exec(`CREATE TABLE IF NOT EXISTS barem_trip_log (
     group_id   TEXT NOT NULL,
     msg_id     TEXT NOT NULL,
@@ -424,10 +426,12 @@ export function mergeGroups(sourceGroupId, targetGroupId) {
     // Di chuyển members chưa có trong target
     const sourceMembers = db.prepare("SELECT * FROM members WHERE group_id=?").all(sourceGroupId);
     for (const m of sourceMembers) {
-      const exists = db.prepare("SELECT 1 FROM members WHERE group_id=? AND zalo_uid=?").get(targetGroupId, m.zalo_uid);
+      const exists = m.global_id
+        ? db.prepare("SELECT 1 FROM members WHERE group_id=? AND (zalo_uid=? OR global_id=?)").get(targetGroupId, m.zalo_uid, m.global_id)
+        : db.prepare("SELECT 1 FROM members WHERE group_id=? AND zalo_uid=?").get(targetGroupId, m.zalo_uid);
       if (!exists) {
-        db.prepare("INSERT INTO members(id,group_id,zalo_uid,phone,display_name,avatar,alias,points,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
-          .run(uid(), targetGroupId, m.zalo_uid, m.phone, m.display_name, m.avatar, m.alias, m.points, m.created_at, m.updated_at);
+        db.prepare("INSERT INTO members(id,group_id,zalo_uid,phone,display_name,avatar,alias,points,global_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+          .run(uid(), targetGroupId, m.zalo_uid, m.phone, m.display_name, m.avatar, m.alias, m.points, m.global_id || null, m.created_at, m.updated_at);
       }
     }
     db.prepare("DELETE FROM members WHERE group_id=?").run(sourceGroupId);
@@ -584,17 +588,32 @@ export function listMembersWithYesterday(groupId) {
 export function getMemberByZaloUid(groupId, zaloUid) {
   return db.prepare("SELECT * FROM members WHERE group_id=? AND zalo_uid=?").get(groupId, zaloUid);
 }
-export function upsertMember(groupId, zaloUid, { phone, display_name, avatar } = {}) {
+export function upsertMember(groupId, zaloUid, { phone, display_name, avatar, global_id } = {}) {
+  const now_ = now();
+  // Nếu biết global_id: tìm member đã tồn tại qua global_id (phòng trùng khi đổi account Zalo)
+  if (global_id) {
+    const byGlobal = db.prepare("SELECT id FROM members WHERE group_id=? AND global_id=?").get(groupId, global_id);
+    if (byGlobal) {
+      db.prepare(`UPDATE members SET zalo_uid=?, global_id=?,
+          phone=COALESCE(?,phone), display_name=COALESCE(?,display_name),
+          avatar=COALESCE(?,avatar), is_out=0, updated_at=? WHERE id=?`)
+        .run(zaloUid, global_id, phone||null, display_name||null, avatar||null, now_, byGlobal.id);
+      return byGlobal.id;
+    }
+  }
+  // Upsert theo zalo_uid
   const existing = getMemberByZaloUid(groupId, zaloUid);
   if (existing) {
-    db.prepare("UPDATE members SET phone=COALESCE(?,phone), display_name=COALESCE(?,display_name), avatar=COALESCE(?,avatar), is_out=0, updated_at=? WHERE id=?")
-      .run(phone || null, display_name || null, avatar || null, now(), existing.id);
+    db.prepare(`UPDATE members SET global_id=COALESCE(?,global_id),
+        phone=COALESCE(?,phone), display_name=COALESCE(?,display_name),
+        avatar=COALESCE(?,avatar), is_out=0, updated_at=? WHERE id=?`)
+      .run(global_id||null, phone||null, display_name||null, avatar||null, now_, existing.id);
     return existing.id;
   }
-  const id = uid();
-  db.prepare("INSERT INTO members(id,group_id,zalo_uid,phone,display_name,avatar,points,is_out,created_at,updated_at) VALUES(?,?,?,?,?,?,0,0,?,?)")
-    .run(id, groupId, zaloUid, phone || null, display_name || null, avatar || null, now(), now());
-  return id;
+  const id_ = uid();
+  db.prepare("INSERT INTO members(id,group_id,zalo_uid,global_id,phone,display_name,avatar,points,is_out,created_at,updated_at) VALUES(?,?,?,?,?,?,?,0,0,?,?)")
+    .run(id_, groupId, zaloUid, global_id||null, phone||null, display_name||null, avatar||null, now_, now_);
+  return id_;
 }
 export function setMemberAlias(groupId, zaloUid, alias) {
   db.prepare("UPDATE members SET alias=?, updated_at=? WHERE group_id=? AND zalo_uid=?")
@@ -664,6 +683,13 @@ export function getTransactionsByConfirmMsgId(groupId, confirmMsgId) {
 export function addBaremMsgRef(groupId, msgId, tripMsgId) {
   if (!msgId || !tripMsgId) return;
   db.prepare("INSERT OR IGNORE INTO barem_msg_refs(group_id,msg_id,trip_msg_id,created_at) VALUES(?,?,?,?)").run(groupId, msgId, tripMsgId, Date.now());
+}
+// Atomic claim: session đầu tiên gọi hàm này với tripMsgId sẽ nhận true và được quyền tính điểm.
+// Session thứ 2 (cùng nhóm, cùng cuốc) nhận false → bỏ qua, tránh double-scoring.
+export function claimBaremScoring(groupId, tripMsgId) {
+  const r = db.prepare("INSERT OR IGNORE INTO barem_msg_refs(group_id,msg_id,trip_msg_id,created_at) VALUES(?,?,?,?)")
+    .run(groupId, tripMsgId + "__claim", tripMsgId, Date.now());
+  return r.changes > 0;
 }
 export function getBaremMsgRefTripMsgId(groupId, msgId) {
   return db.prepare("SELECT trip_msg_id FROM barem_msg_refs WHERE group_id=? AND msg_id=?").get(groupId, msgId)?.trip_msg_id || null;

@@ -16,8 +16,9 @@ import { hashPassword, verifyPassword, isLegacyHash, encryptSecret, decryptSecre
 const { Pool } = pg;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: Number(process.env.PG_POOL_MAX || 20),     // số kết nối tối đa trong pool
+  max: Number(process.env.PG_POOL_MAX || 20),
   idleTimeoutMillis: 30000,
+  ssl: process.env.DATABASE_URL?.includes("sslmode=require") ? { rejectUnauthorized: false } : false,
 });
 
 const sha = (s) => crypto.createHash("sha256").update(String(s)).digest("hex");
@@ -174,6 +175,10 @@ export async function ensureSeed() {
   // Migration: thêm cột public_visible nếu chưa có
   await q("ALTER TABLE accountant_groups ADD COLUMN IF NOT EXISTS public_visible INTEGER NOT NULL DEFAULT 1").catch(() => {});
   await q("ALTER TABLE accountant_groups ADD COLUMN IF NOT EXISTS zalo_group_id TEXT").catch(() => {});
+  // Migration: global_id để định danh user canonical (không phụ thuộc Zalo account nào đang lắng nghe)
+  await q("ALTER TABLE members ADD COLUMN IF NOT EXISTS global_id TEXT");
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS idx_members_global_id
+           ON members(group_id, global_id) WHERE global_id IS NOT NULL`).catch(() => {});
 }
 
 // ---------- Auth ----------
@@ -466,18 +471,32 @@ export async function getMemberByZaloUid(groupId, zaloUid) {
   const r = await q("SELECT * FROM members WHERE group_id=$1 AND zalo_uid=$2", [groupId, zaloUid]);
   return r.rows[0] || null;
 }
-export async function upsertMember(groupId, zaloUid, { phone, display_name, avatar } = {}) {
+export async function upsertMember(groupId, zaloUid, { phone, display_name, avatar, global_id } = {}) {
+  const now_ = now();
+  // Nếu biết global_id: thử tìm member đã tồn tại qua global_id (phòng trùng khi đổi account Zalo)
+  if (global_id) {
+    const found = await q(
+      `UPDATE members SET zalo_uid=$1, global_id=$2,
+          phone=COALESCE($3,phone), display_name=COALESCE($4,display_name),
+          avatar=COALESCE($5,avatar), is_out=0, updated_at=$6
+       WHERE group_id=$7 AND global_id=$2 RETURNING id`,
+      [zaloUid, global_id, phone||null, display_name||null, avatar||null, now_, groupId]
+    );
+    if (found.rows.length) return found.rows[0].id;
+  }
+  // Upsert theo zalo_uid (tạo mới hoặc update member đã có từ trước)
   const r = await q(`
-    INSERT INTO members(id,group_id,zalo_uid,phone,display_name,avatar,points,is_out,created_at,updated_at)
-    VALUES($1,$2,$3,$4,$5,$6,0,0,$7,$7)
+    INSERT INTO members(id,group_id,zalo_uid,global_id,phone,display_name,avatar,points,is_out,created_at,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,0,0,$8,$8)
     ON CONFLICT(group_id,zalo_uid) DO UPDATE
-      SET phone=COALESCE($4,members.phone),
-          display_name=COALESCE($5,members.display_name),
-          avatar=COALESCE($6,members.avatar),
+      SET global_id=COALESCE(EXCLUDED.global_id,members.global_id),
+          phone=COALESCE(EXCLUDED.phone,members.phone),
+          display_name=COALESCE(EXCLUDED.display_name,members.display_name),
+          avatar=COALESCE(EXCLUDED.avatar,members.avatar),
           is_out=0,
-          updated_at=$7
+          updated_at=EXCLUDED.updated_at
     RETURNING id`,
-    [uid(), groupId, zaloUid, phone || null, display_name || null, avatar || null, now()]);
+    [uid(), groupId, zaloUid, global_id||null, phone||null, display_name||null, avatar||null, now_]);
   return r.rows[0].id;
 }
 export async function setMemberAlias(groupId, zaloUid, alias) {
@@ -550,6 +569,14 @@ export async function getTransactionsByConfirmMsgId(groupId, confirmMsgId) {
 export async function addBaremMsgRef(groupId, msgId, tripMsgId) {
   if (!msgId || !tripMsgId) return;
   await q("INSERT INTO barem_msg_refs(group_id,msg_id,trip_msg_id,created_at) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", [groupId, msgId, tripMsgId, Date.now()]);
+}
+export async function claimBaremScoring(groupId, tripMsgId) {
+  const r = await q(
+    "INSERT INTO barem_msg_refs(group_id,msg_id,trip_msg_id,created_at) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",
+    [groupId, tripMsgId + "__claim", tripMsgId, Date.now()]
+  );
+  return r.rowCount > 0;
+}
 }
 export async function getBaremMsgRefTripMsgId(groupId, msgId) {
   const r = await q("SELECT trip_msg_id FROM barem_msg_refs WHERE group_id=$1 AND msg_id=$2", [groupId, msgId]);
@@ -699,11 +726,16 @@ export async function mergeGroups(sourceGroupId, targetGroupId) {
   if (!hasSource.rows.length) throw new Error("Nhóm nguồn không tồn tại");
   // Di chuyển members chưa có trong target
   await q(`
-    INSERT INTO members(id,group_id,zalo_uid,phone,display_name,avatar,alias,points,created_at,updated_at)
-    SELECT gen_random_uuid(), $2, s.zalo_uid, s.phone, s.display_name, s.avatar, s.alias, s.points, s.created_at, s.updated_at
+    INSERT INTO members(id,group_id,zalo_uid,global_id,phone,display_name,avatar,alias,points,created_at,updated_at)
+    SELECT gen_random_uuid(), $2, s.zalo_uid, s.global_id, s.phone, s.display_name, s.avatar, s.alias, s.points, s.created_at, s.updated_at
     FROM members s
     WHERE s.group_id=$1
-      AND NOT EXISTS (SELECT 1 FROM members t WHERE t.group_id=$2 AND t.zalo_uid=s.zalo_uid)
+      AND NOT EXISTS (
+        SELECT 1 FROM members t WHERE t.group_id=$2 AND (
+          t.zalo_uid=s.zalo_uid OR
+          (s.global_id IS NOT NULL AND t.global_id=s.global_id)
+        )
+      )
   `, [sourceGroupId, targetGroupId]);
   await q("DELETE FROM members WHERE group_id=$1", [sourceGroupId]);
   // Di chuyển transactions
