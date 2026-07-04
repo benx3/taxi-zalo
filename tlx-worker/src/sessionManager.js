@@ -396,7 +396,8 @@ async function onMessage(sess, msg) {
     // Lưu dưới CẢ 2 key (glob+cli) của bản thân, value = mảng [globId, cliId] của cha
     const _qraw = msg.data?.quote;
     if (_qraw) {
-      const _pg = _qraw.globalMsgId != null ? String(_qraw.globalMsgId) : null;
+      // globalMsgId trong tin nhắn nhóm Zalo = threadId (ID nhóm), không phải ID tin nhắn duy nhất
+      const _pg = _qraw.globalMsgId != null && String(_qraw.globalMsgId) !== groupId ? String(_qraw.globalMsgId) : null;
       const _pc = _qraw.cliMsgId   != null ? String(_qraw.cliMsgId)   : null;
       const _parents = [_pg, _pc].filter(Boolean);
       if (_parents.length) {
@@ -635,7 +636,8 @@ async function onMessage(sess, msg) {
         const quoteOwnerId = String(qd.ownerId || "");
         // TQuote không có msgId — chỉ có cliMsgId (number) và globalMsgId (number)
         const qCliId = qd.cliMsgId != null ? String(qd.cliMsgId) : "";
-        const qGlobId = qd.globalMsgId != null ? String(qd.globalMsgId) : "";
+        // globalMsgId trong tin nhóm Zalo = threadId (ID nhóm), lọc ra để tránh nhầm với ID tin nhắn
+        const qGlobId = qd.globalMsgId != null && String(qd.globalMsgId) !== groupId ? String(qd.globalMsgId) : "";
         let cachedTrip = sess.tripMsgCache.get(qCliId) || (qGlobId ? sess.tripMsgCache.get(qGlobId) : null);
         // Fallback DB nếu cache bị evict (cuốc đăng sáng, "Ok" chiều)
         if (!cachedTrip) {
@@ -677,7 +679,8 @@ async function onMessage(sess, msg) {
       if (qd) {
         if (process.env.DEBUG_BAREM) console.log(`[BAREM_CONFIRM] from=${senderId} quote=`, JSON.stringify(qd)?.slice(0, 300));
         const qCliId2  = qd.cliMsgId != null ? String(qd.cliMsgId) : "";
-        const qGlobId2 = qd.globalMsgId != null ? String(qd.globalMsgId) : "";
+        // globalMsgId trong tin nhóm Zalo = threadId (ID nhóm), lọc ra để tránh nhầm với ID tin nhắn
+        const qGlobId2 = qd.globalMsgId != null && String(qd.globalMsgId) !== groupId ? String(qd.globalMsgId) : "";
         let cachedClaim = sess.claimCache.get(qCliId2) || (qGlobId2 ? sess.claimCache.get(qGlobId2) : null);
         // Fallback DB nếu cache bị evict
         if (!cachedClaim) {
@@ -779,7 +782,8 @@ async function onMessage(sess, msg) {
         const action = detectBaremAction(text) || (parsedBonus > 0 ? { type: 'adjust', points: parsedBonus } : null);
         if (!action) console.log(`[BAREM_E] ⚠️ ktMentioned=true nhưng không detect action | text="${text.slice(0,80)}"`);
         if (action) {
-          const qGlobId = qd.globalMsgId != null ? String(qd.globalMsgId) : "";
+          // globalMsgId trong tin nhóm Zalo = threadId (ID nhóm), lọc ra để tránh nhầm với ID tin nhắn
+          const qGlobId = qd.globalMsgId != null && String(qd.globalMsgId) !== groupId ? String(qd.globalMsgId) : "";
           const qCliId  = qd.cliMsgId   != null ? String(qd.cliMsgId)   : "";
           Promise.resolve((async () => {
             let txs = [];
@@ -806,6 +810,30 @@ async function onMessage(sess, msg) {
                 } catch {}
               }
               if (txs.length) foundTier = 3;
+            }
+            // Tầng 3.5: quoteChain walk-up — leo ngược chuỗi reply tối đa 4 bước
+            if (!txs.length) {
+              const _visited = new Set([qGlobId, qCliId].filter(Boolean));
+              let _toCheck = [..._visited];
+              for (let _d = 0; _d < 4 && !txs.length && _toCheck.length; _d++) {
+                const _next = [];
+                for (const _mid of _toCheck) {
+                  const _parents = sess.quoteChain.get(_mid);
+                  if (!_parents) continue;
+                  for (const _p of _parents) {
+                    if (!_p || _visited.has(_p)) continue;
+                    _visited.add(_p);
+                    _next.push(_p);
+                    try {
+                      const _refId = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, _p));
+                      if (_refId) { txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, _refId)); if (txs.length) break; }
+                    } catch {}
+                  }
+                  if (txs.length) break;
+                }
+                _toCheck = _next;
+              }
+              if (txs.length) foundTier = "3.5";
             }
             // Tầng 4: fallback theo UID người gửi — lấy barem gần nhất trong 48h
             if (!txs.length) {
