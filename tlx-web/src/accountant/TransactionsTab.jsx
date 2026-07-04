@@ -61,10 +61,10 @@ function groupTransactions(txs) {
         points: Number(posterTx.points),
         posterName: posterTx.to_member_name || posterTx.to_member || "",
         takerName: takerTx.to_member_name || takerTx.to_member || "",
-        raw_text: tx1.raw_text || tx2.raw_text || null,
-        reason: tx1.reason || tx2.reason || null,
-        created_at: tx1.created_at,
-        status: tx1.status || "approved",
+        raw_text: posterTx.raw_text || takerTx.raw_text || null,
+        reason: posterTx.reason || takerTx.reason || null,
+        created_at: posterTx.created_at,
+        status: posterTx.status || "approved",
         type: "barem",
       });
     } else {
