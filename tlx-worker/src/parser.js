@@ -2,7 +2,7 @@
 // parser.js — bóc tách tin nhắn cuốc xe thành object có cấu trúc
 // ============================================================
 
-const CLAIM_RE = /\b([o0]k[ie]{0,2}|[o0]kib|[o0]kp|[o0]kay|ib)\b/i;
+const CLAIM_RE = /\b([o0]k[ie]{0,2}|[o0]kib|[o0]kp|[o0]kay|[o0]k[o0]k|[o0]kk+|ib)\b/i;
 const NOISE_RE = /(lịch hủy|huỷ lịch|hủy lịch|đã có ng|đã có người|đã bay|bay rồi|sản giúp|san giúp|san hộ|san ho|sản hộ|lưu ý|luu y|dbcl|cảm ơn|cám ơn|thank|ck rồi|đã ck|nhận luôn|nhan luon|máu ko|máu không)/i;
 
 export function isConfirmMessage(text) {

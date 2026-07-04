@@ -206,10 +206,9 @@ function TxRow({ tx, onEdit, onDelete, onApprove, onReject }) {
   const receiver = tx.to_member_name || tx.to_member;
   const sender   = tx.from_member_name || tx.from_member;
   const isDeduction = !!tx.from_member && !tx.to_member;
-  const effectivePts = isDeduction ? -abspts : abspts;
   const ptsStr = abspts % 1 === 0 ? abspts.toFixed(0) : abspts.toFixed(2);
-  const ptsColor = effectivePts >= 0 ? "#34d399" : "#f87171";
-  const ptsSign  = effectivePts >= 0 ? "+" : "-";
+  const ptsColor = isDeduction ? "#f87171" : "#34d399";
+  const ptsSign  = isDeduction ? "-" : "+";
   const status   = tx.status || "approved";
   const sCfg     = STATUS_CFG[status] || STATUS_CFG.approved;
   const isPending = status === "pending";
@@ -274,7 +273,9 @@ function TxRow({ tx, onEdit, onDelete, onApprove, onReject }) {
 
 function EditTxModal({ tx, onClose, onDone }) {
   const [reason, setReason] = useState(tx.reason || "");
-  const [points, setPoints] = useState(String(tx.points));
+  const isDeduction = !!tx.from_member && !tx.to_member;
+  const initPts = isDeduction ? -Math.abs(Number(tx.points)) : Math.abs(Number(tx.points));
+  const [points, setPoints] = useState(String(initPts));
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -296,7 +297,9 @@ function EditTxModal({ tx, onClose, onDone }) {
           <span style={{ fontWeight: 700, fontSize: 15 }}>Sửa giao dịch</span>
           <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)" }}><X size={18} /></button>
         </div>
-        <label style={{ display: "block", fontSize: 12, color: "var(--ink-dim)", marginBottom: 4 }}>Số điểm</label>
+        <label style={{ display: "block", fontSize: 12, color: "var(--ink-dim)", marginBottom: 4 }}>
+          Số điểm <span style={{ fontSize: 11, color: "var(--ink-dim)", fontWeight: 400 }}>(âm = trừ điểm, đổi chiều giao dịch)</span>
+        </label>
         <input type="number" step="0.5" value={points} onChange={e => setPoints(e.target.value)}
           style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", fontSize: 13, outline: "none", marginBottom: 12 }} />
         <label style={{ display: "block", fontSize: 12, color: "var(--ink-dim)", marginBottom: 4 }}>Lý do</label>

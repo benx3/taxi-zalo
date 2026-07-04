@@ -805,8 +805,16 @@ async function onMessage(sess, msg) {
               }
               if (txs.length) foundTier = 3;
             }
+            // Tầng 4: fallback theo UID người gửi — lấy barem gần nhất trong 48h
             if (!txs.length) {
-              console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy tx | quoted glob=${qGlobId} cli=${qCliId} | group=${dbGroupId}`);
+              try {
+                const latestRef = await Promise.resolve(dbm.getLatestBaremTripMsgId(dbGroupId, senderId));
+                if (latestRef) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, latestRef));
+              } catch {}
+              if (txs.length) foundTier = 4;
+            }
+            if (!txs.length) {
+              console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy tx | quoted glob=${qGlobId} cli=${qCliId} | sender=${senderId} | group=${dbGroupId}`);
               return;
             }
             console.log(`[${sess.userId}] (E) barem ${action.type}: found ${txs.length} tx via tier${foundTier} | glob=${qGlobId} cli=${qCliId}`);
