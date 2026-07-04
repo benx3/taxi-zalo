@@ -170,7 +170,10 @@ function ConvoThread({ raw }) {
         {(c.adjustHistory || []).map((h, i) =>
           h?.cancelText ? <div key={i} style={{ display: "flex", gap: 6, marginBottom: 3 }}>
             <span style={{ fontSize: 10, color: "var(--ink-dim)", whiteSpace: "nowrap", paddingTop: 1 }}>{h.cancelTime}</span>
-            <span style={{ fontSize: 11, color: "#fbbf24" }}><b style={{ color: "var(--ink)", marginRight: 4 }}>{h.canceller}:</b>{h.cancelText}</span>
+            <span style={{ fontSize: 11, color: h.adjFrom != null ? "#a78bfa" : "#fbbf24" }}>
+              {h.adjFrom != null && <span style={{ marginRight: 4, opacity: 0.75 }}>[{h.adjFrom}đ→{h.adjTo}đ]</span>}
+              <b style={{ color: "var(--ink)", marginRight: 4 }}>{h.canceller}:</b>{h.cancelText}
+            </span>
           </div> : null
         )}
         {c.cancelText  && row(c.cancelTime,   c.canceller,     c.cancelText,  "#fbbf24")}

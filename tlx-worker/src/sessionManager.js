@@ -924,7 +924,7 @@ async function onMessage(sess, msg) {
               const prevEvents = [];
               if (baseConvo?.cancelText) prevEvents.push({ cancelTime: baseConvo.cancelTime, canceller: baseConvo.canceller, cancelText: baseConvo.cancelText });
               else if (baseConvo?.freeText) prevEvents.push({ cancelTime: baseConvo.freeTime, canceller: baseConvo.freePoster, cancelText: `[Free] ${baseConvo.freeText}` });
-              const newEntry = { cancelTime: time, canceller: senderName, cancelText: text };
+              const newEntry = { cancelTime: time, canceller: senderName, cancelText: text, adjFrom: currentPts, adjTo: action.points };
               const newAdjHistory = [...adjustHistory, ...prevEvents, newEntry];
               // Xóa cancelText/freeText cũ khỏi base (đã hấp thụ vào adjustHistory)
               const { cancelText: _ct, cancelTime: _cT, canceller: _c, freeText: _ft, freeTime: _fT, freePoster: _fp, adjustHistory: _ah, ...cleanBase } = baseConvo || {};
