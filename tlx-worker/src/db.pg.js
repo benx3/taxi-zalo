@@ -577,7 +577,6 @@ export async function claimBaremScoring(groupId, tripMsgId) {
   );
   return r.rowCount > 0;
 }
-}
 export async function getBaremMsgRefTripMsgId(groupId, msgId) {
   const r = await q("SELECT trip_msg_id FROM barem_msg_refs WHERE group_id=$1 AND msg_id=$2", [groupId, msgId]);
   return r.rows[0]?.trip_msg_id || null;
