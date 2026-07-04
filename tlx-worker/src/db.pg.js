@@ -613,6 +613,29 @@ export async function updateTransaction(id, { reason, points, raw_text }) {
   await q("UPDATE point_transactions SET reason=COALESCE($1,reason), points=COALESCE($2,points), raw_text=COALESCE($3,raw_text) WHERE id=$4",
     [reason || null, points !== undefined ? points : null, raw_text || null, id]);
 }
+export async function updateBaremPair(id1, id2, { points, reason }) {
+  const [r1, r2] = await Promise.all([
+    q("SELECT * FROM point_transactions WHERE id=$1", [id1]),
+    q("SELECT * FROM point_transactions WHERE id=$1", [id2]),
+  ]);
+  const tx1 = r1.rows[0], tx2 = r2.rows[0];
+  if (!tx1 || !tx2) throw new Error("Không tìm thấy giao dịch");
+  const oldPts = Number(tx1.points);
+  const newPts = points !== undefined ? Number(points) : oldPts;
+  const diff = newPts - oldPts;
+  if (diff !== 0) {
+    // id1 = poster: luôn +diff bất kể to/from_member trong DB
+    const posterUid = tx1.to_member || tx1.from_member;
+    // id2 = taker: luôn -diff (xử lý đúng kể cả khi pts=0 lưu to_member do bug JS -0>=0)
+    const takerUid = tx2.from_member || tx2.to_member;
+    if (posterUid) await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
+      [diff, now(), tx1.group_id, posterUid]);
+    if (takerUid) await q("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
+      [diff, now(), tx1.group_id, takerUid]);
+  }
+  await q("UPDATE point_transactions SET reason=COALESCE($1,reason), points=COALESCE($2,points) WHERE id=$3 OR id=$4",
+    [reason || null, points !== undefined ? newPts : null, id1, id2]);
+}
 export async function deleteTransaction(id) {
   const r = await q("SELECT * FROM point_transactions WHERE id=$1", [id]);
   const tx = r.rows[0]; if (!tx) throw new Error("Không tìm thấy giao dịch");

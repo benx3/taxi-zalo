@@ -402,8 +402,11 @@ function EditTxModal({ tx, onClose, onDone }) {
     if (isNaN(p)) { setErr("Nhập số điểm hợp lệ"); return; }
     setSaving(true); setErr("");
     try {
-      await api.updateTransaction(tx.id, { reason, points: p });
-      if (isPaired) await api.updateTransaction(tx.id2, { reason, points: p });
+      if (isPaired) {
+        await api.updateBaremPair(tx.id, tx.id2, { reason, points: p });
+      } else {
+        await api.updateTransaction(tx.id, { reason, points: p });
+      }
       onDone();
     } catch (e) { setErr(e.message); setSaving(false); }
   };

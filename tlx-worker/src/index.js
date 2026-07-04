@@ -402,6 +402,13 @@ app.patch("/api/accountant/transactions/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
+app.patch("/api/accountant/barem-pair/:id1/:id2", async (req, res) => {
+  try {
+    const a = await requireAccountant(req, res); if (!a) return;
+    await dbm.updateBaremPair(req.params.id1, req.params.id2, req.body);
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
 app.delete("/api/accountant/transactions/:id", async (req, res) => {
   try {
     const a = await requireAccountant(req, res); if (!a) return;

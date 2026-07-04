@@ -61,6 +61,7 @@ export const api = {
   },
   adjustPoints: (b) => req("/api/accountant/adjust-points", b),
   updateTransaction: (id, b) => req(`/api/accountant/transactions/${id}`, b, "PATCH"),
+  updateBaremPair: (id1, id2, b) => req(`/api/accountant/barem-pair/${id1}/${id2}`, b, "PATCH"),
   deleteTransaction: (id) => req(`/api/accountant/transactions/${id}`, null, "DELETE"),
 
   // San điểm — giao dịch chờ duyệt

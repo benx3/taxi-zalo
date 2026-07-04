@@ -56,7 +56,7 @@ export const {
   getPrimaryAccountantSelfIdForGroup, getMembersByDisplayName,
   adjustPoints, getTransactionsByTripMsgId, getTransactionsByConfirmMsgId,
   addBaremMsgRef, getBaremMsgRefTripMsgId, getLatestBaremTripMsgId,
-  listTransactions, updateTransaction, deleteTransaction,
+  listTransactions, updateTransaction, updateBaremPair, deleteTransaction,
   addBaremPending,
   createPendingTransfer, listPendingTransfers, approvePendingTransfer, rejectPendingTransfer,
   lockAccountantGroups, isGroupsLocked,

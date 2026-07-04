@@ -728,6 +728,24 @@ export function updateTransaction(id, { reason, points, raw_text }) {
   db.prepare("UPDATE point_transactions SET reason=COALESCE(?,reason), points=COALESCE(?,points), raw_text=COALESCE(?,raw_text) WHERE id=?")
     .run(reason || null, points !== undefined ? points : null, raw_text || null, id);
 }
+export function updateBaremPair(id1, id2, { points, reason }) {
+  const tx1 = db.prepare("SELECT * FROM point_transactions WHERE id=?").get(id1);
+  const tx2 = db.prepare("SELECT * FROM point_transactions WHERE id=?").get(id2);
+  if (!tx1 || !tx2) throw new Error("Không tìm thấy giao dịch");
+  const oldPts = Number(tx1.points);
+  const newPts = points !== undefined ? Number(points) : oldPts;
+  const diff = newPts - oldPts;
+  if (diff !== 0) {
+    const posterUid = tx1.to_member || tx1.from_member;
+    const takerUid = tx2.from_member || tx2.to_member;
+    if (posterUid) db.prepare("UPDATE members SET points=ROUND(points+?,10),updated_at=? WHERE group_id=? AND zalo_uid=?")
+      .run(diff, now(), tx1.group_id, posterUid);
+    if (takerUid) db.prepare("UPDATE members SET points=ROUND(points-?,10),updated_at=? WHERE group_id=? AND zalo_uid=?")
+      .run(diff, now(), tx1.group_id, takerUid);
+  }
+  db.prepare("UPDATE point_transactions SET reason=COALESCE(?,reason), points=COALESCE(?,points) WHERE id=? OR id=?")
+    .run(reason || null, points !== undefined ? newPts : null, id1, id2);
+}
 export function deleteTransaction(id) {
   const tx = db.prepare("SELECT * FROM point_transactions WHERE id=?").get(id);
   if (!tx) throw new Error("Không tìm thấy giao dịch");
