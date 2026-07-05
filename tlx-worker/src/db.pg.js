@@ -468,19 +468,21 @@ export async function listMembersWithYesterday(groupId) {
   return r.rows;
 }
 export async function getMemberByZaloUid(groupId, zaloUid) {
-  const r = await q("SELECT * FROM members WHERE group_id=$1 AND zalo_uid=$2", [groupId, zaloUid]);
+  // Tìm theo zalo_uid trước, fallback sang global_id (dùng khi failover sang account khác)
+  const r = await q("SELECT * FROM members WHERE group_id=$1 AND (zalo_uid=$2 OR global_id=$2) LIMIT 1", [groupId, zaloUid]);
   return r.rows[0] || null;
 }
 export async function upsertMember(groupId, zaloUid, { phone, display_name, avatar, global_id } = {}) {
   const now_ = now();
   // Nếu biết global_id: thử tìm member đã tồn tại qua global_id (phòng trùng khi đổi account Zalo)
+  // KHÔNG ghi đè zalo_uid — giữ nguyên local UID của primary session để getMemberByZaloUid hoạt động
   if (global_id) {
     const found = await q(
-      `UPDATE members SET zalo_uid=$1, global_id=$2,
-          phone=COALESCE($3,phone), display_name=COALESCE($4,display_name),
-          avatar=COALESCE($5,avatar), is_out=0, updated_at=$6
-       WHERE group_id=$7 AND global_id=$2 RETURNING id`,
-      [zaloUid, global_id, phone||null, display_name||null, avatar||null, now_, groupId]
+      `UPDATE members SET global_id=$1,
+          phone=COALESCE($2,phone), display_name=COALESCE($3,display_name),
+          avatar=COALESCE($4,avatar), is_out=0, updated_at=$5
+       WHERE group_id=$6 AND global_id=$1 RETURNING id`,
+      [global_id, phone||null, display_name||null, avatar||null, now_, groupId]
     );
     if (found.rows.length) return found.rows[0].id;
   }

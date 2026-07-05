@@ -586,18 +586,20 @@ export function listMembersWithYesterday(groupId) {
   `).all(todayStartMs, groupId);
 }
 export function getMemberByZaloUid(groupId, zaloUid) {
-  return db.prepare("SELECT * FROM members WHERE group_id=? AND zalo_uid=?").get(groupId, zaloUid);
+  // Tìm theo zalo_uid trước, fallback sang global_id (dùng khi failover sang account khác)
+  return db.prepare("SELECT * FROM members WHERE group_id=? AND (zalo_uid=? OR global_id=?) LIMIT 1").get(groupId, zaloUid, zaloUid);
 }
 export function upsertMember(groupId, zaloUid, { phone, display_name, avatar, global_id } = {}) {
   const now_ = now();
   // Nếu biết global_id: tìm member đã tồn tại qua global_id (phòng trùng khi đổi account Zalo)
+  // KHÔNG ghi đè zalo_uid — giữ nguyên local UID của primary session để getMemberByZaloUid hoạt động
   if (global_id) {
     const byGlobal = db.prepare("SELECT id FROM members WHERE group_id=? AND global_id=?").get(groupId, global_id);
     if (byGlobal) {
-      db.prepare(`UPDATE members SET zalo_uid=?, global_id=?,
+      db.prepare(`UPDATE members SET global_id=?,
           phone=COALESCE(?,phone), display_name=COALESCE(?,display_name),
           avatar=COALESCE(?,avatar), is_out=0, updated_at=? WHERE id=?`)
-        .run(zaloUid, global_id, phone||null, display_name||null, avatar||null, now_, byGlobal.id);
+        .run(global_id, phone||null, display_name||null, avatar||null, now_, byGlobal.id);
       return byGlobal.id;
     }
   }
