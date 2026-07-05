@@ -22,7 +22,25 @@ const yieldLoop = () => new Promise(r => setImmediate(r));
 // userId -> phiên
 const sessions = new Map();
 
+// Leader election: chỉ 1 kế toán chính xử lý barem/san tại một thời điểm
+// Khi primary chết → tự động bầu kế toán tiếp theo còn session sống
+let primaryAccountantId = null;
 
+function electNewPrimary(excludeUserId = null) {
+  for (const [uid, s] of sessions) {
+    if (uid === excludeUserId) continue;
+    if (s.isAccountant) {
+      primaryAccountantId = uid;
+      console.log(`[KT-election] Kế toán chính mới: ${uid}`);
+      return uid;
+    }
+  }
+  primaryAccountantId = null;
+  console.log(`[KT-election] Không còn kế toán nào sống`);
+  return null;
+}
+
+export function getPrimaryAccountantId() { return primaryAccountantId; }
 
 export function getSession(userId) { return sessions.get(userId); }
 export function hasSession(userId) { return sessions.has(userId); }
@@ -121,7 +139,7 @@ function attach(userId, api, onEvent) {
   };
   // Đánh dấu role để onMessage biết có thu thập member hay không
   // Dùng await (hoạt động với cả SQLite sync và PostgreSQL async)
-  ;(async () => { try { const u = await dbm.getUserPublic(userId); if (u?.role === "accountant") sess.isAccountant = true; } catch {} })();
+  ;(async () => { try { const u = await dbm.getUserPublic(userId); if (u?.role === "accountant") { sess.isAccountant = true; if (!primaryAccountantId) { primaryAccountantId = userId; console.log(`[KT-election] Kế toán chính: ${userId}`); } } } catch {} })();
   sessions.set(userId, sess);
 
   api.listener.on("message", (msg) => { sess.lastMsgAt = Date.now(); onMessage(sess, msg); });
@@ -141,6 +159,7 @@ function attach(userId, api, onEvent) {
     // Lưu cookies mới nhất trước khi tắt session (có thể đã được Zalo refresh)
     await persistCookies(userId, api).catch(() => {});
     sessions.delete(userId);
+    if (primaryAccountantId === userId) electNewPrimary(userId);
     try {
       await sleep(3000);
       await startSessionFromStored(userId, onEvent);
@@ -490,7 +509,7 @@ async function onMessage(sess, msg) {
     }
 
     // (A.0b) KT tự gửi san: "San cho @A Xd @B Yd" — kế toán là người chuyển
-    if (sess.isAccountant && senderId === String(sess.selfId) && /\bsan\b/i.test(text)) {
+    if (sess.isAccountant && sess.userId === primaryAccountantId && senderId === String(sess.selfId) && /\bsan\b/i.test(text)) {
       const mentions = msg.data?.mentions || [];
       if (mentions.length > 0) {
         const sanResults = detectSanDiem(text, mentions, null);
@@ -527,7 +546,7 @@ async function onMessage(sess, msg) {
     // A.0a: Tài xế tag chỉ KT → tài xế bán/tặng điểm ngược cho KT ("San @KT 15d")
     // A.0c: Chính KT nhóm gửi lệnh san trực tiếp cho người khác
     // A.1 : Người khác tag KT + người nhận trong cùng tin
-    if (sess.isAccountant && senderId !== String(sess.selfId) && /\bsan\b/i.test(text)) {
+    if (sess.isAccountant && sess.userId === primaryAccountantId && senderId !== String(sess.selfId) && /\bsan\b/i.test(text)) {
       const mentions = msg.data?.mentions || [];
       if (mentions.length > 0) {
         Promise.resolve((async () => {
@@ -629,7 +648,7 @@ async function onMessage(sess, msg) {
     }
 
     // (C) Kế toán: phát hiện người nhận cuốc reply "Ok" quoting trip → lưu claim
-    if (sess.isAccountant && senderId !== String(sess.selfId)) {
+    if (sess.isAccountant && sess.userId === primaryAccountantId && senderId !== String(sess.selfId)) {
       const qd = msg.data?.quote;
       if (qd && (isClaimMessage(text) || isConfirmMessage(text))) {
         if (process.env.DEBUG_BAREM) console.log(`[BAREM_CLAIM] from=${senderId} quote=`, JSON.stringify(qd)?.slice(0, 300));
@@ -674,7 +693,7 @@ async function onMessage(sess, msg) {
     }
 
     // (D) Kế toán: chủ cuốc xác nhận "ok ib" cho người nhận → áp dụng barem
-    if (sess.isAccountant && senderId !== String(sess.selfId) && isConfirmMessage(text)) {
+    if (sess.isAccountant && sess.userId === primaryAccountantId && senderId !== String(sess.selfId) && isConfirmMessage(text)) {
       const qd = msg.data?.quote;
       if (qd) {
         if (process.env.DEBUG_BAREM) console.log(`[BAREM_CONFIRM] from=${senderId} quote=`, JSON.stringify(qd)?.slice(0, 300));
@@ -764,7 +783,7 @@ async function onMessage(sess, msg) {
     // TH1: "lịch -+N @kế toán" → thỏa thuận điểm mới
     // TH2: "lịch hủy @kế toán"  → đảo ngược hoàn toàn
     // TH3: "lịch free @kế toán" → không tính điểm, đảo ngược
-    if (sess.isAccountant && senderId !== String(sess.selfId)) {
+    if (sess.isAccountant && sess.userId === primaryAccountantId && senderId !== String(sess.selfId)) {
       const qd = msg.data?.quote;
       const mentions = msg.data?.mentions || [];
       let ktMentioned = mentions.some(m => String(m.uid) === String(sess.selfId));
@@ -980,7 +999,7 @@ async function onMessage(sess, msg) {
     if (trips.length > 0) {
       cacheRawMsg(sess, msgId, msg);
       // Kế toán: lưu cuốc vào tripMsgCache để (C) phát hiện claim sau
-      if (sess.isAccountant) {
+      if (sess.isAccountant && sess.userId === primaryAccountantId) {
         const pricedTrips = trips.filter(t => t.price);
         if (pricedTrips.length > 0) {
           const primary = pricedTrips[0];
@@ -1510,7 +1529,7 @@ const CATCHUP_INTERVAL = 10 * 60 * 1000;
 const CATCHUP_SKIP_IF_RECENT = 5 * 60 * 1000;
 setInterval(async () => {
   for (const [userId, sess] of sessions.entries()) {
-    if (!sess.isAccountant) continue;
+    if (!sess.isAccountant || sess.userId !== primaryAccountantId) continue;
     const silent = Date.now() - sess.lastMsgAt;
     if (silent < CATCHUP_SKIP_IF_RECENT) continue; // WS vẫn đang nhận tin → bỏ qua
     try {
