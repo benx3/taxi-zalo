@@ -501,36 +501,6 @@ export async function upsertMember(groupId, zaloUid, { phone, display_name, avat
     [uid(), groupId, zaloUid, global_id||null, phone||null, display_name||null, avatar||null, now_]);
   return r.rows[0].id;
 }
-export async function mergeGroupMemberDuplicates(groupId) {
-  const dupes = await q(`
-    SELECT display_name FROM members
-    WHERE group_id=$1 AND display_name IS NOT NULL AND display_name != ''
-    GROUP BY display_name HAVING COUNT(*) > 1
-  `, [groupId]);
-  let merged = 0;
-  for (const { display_name } of dupes.rows) {
-    const rows = await q(`
-      SELECT * FROM members WHERE group_id=$1 AND display_name=$2
-      ORDER BY ABS(points) DESC, CASE WHEN phone IS NOT NULL THEN 0 ELSE 1 END ASC, created_at ASC
-    `, [groupId, display_name]);
-    const rr = rows.rows;
-    if (rr.length < 2) continue;
-    const [main, ...extras] = rr;
-    const totalPts = rr.reduce((s, r) => s + Number(r.points || 0), 0);
-    const bestPhone  = rr.find(r => r.phone)?.phone;
-    const bestAvatar = rr.find(r => r.avatar)?.avatar;
-    const bestGlobal = rr.find(r => r.global_id)?.global_id;
-    await q(`UPDATE members SET points=ROUND($1::numeric,10), phone=COALESCE($2,phone), avatar=COALESCE($3,avatar), global_id=COALESCE($4,global_id), updated_at=$5 WHERE id=$6`,
-      [totalPts, bestPhone||null, bestAvatar||null, bestGlobal||null, now(), main.id]);
-    for (const extra of extras) {
-      await q("UPDATE point_transactions SET from_member=$1 WHERE group_id=$2 AND from_member=$3", [main.zalo_uid, groupId, extra.zalo_uid]);
-      await q("UPDATE point_transactions SET to_member=$1   WHERE group_id=$2 AND to_member=$3  ", [main.zalo_uid, groupId, extra.zalo_uid]);
-      await q("DELETE FROM members WHERE id=$1", [extra.id]);
-      merged++;
-    }
-  }
-  return merged;
-}
 export async function setMemberAlias(groupId, zaloUid, alias) {
   await q("UPDATE members SET alias=$1, updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
     [alias || null, now(), groupId, zaloUid]);

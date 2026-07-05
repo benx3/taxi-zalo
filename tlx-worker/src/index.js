@@ -438,16 +438,6 @@ app.post("/api/accountant/sync-members", async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message || String(e) }); }
 });
 
-// Gộp thành viên trùng tên trong nhóm (xảy ra khi nhiều KT account cùng watch)
-app.post("/api/accountant/merge-member-duplicates", async (req, res) => {
-  const a = await requireAccountant(req, res); if (!a) return;
-  const { groupId } = req.body;
-  if (!groupId) return res.status(400).json({ error: "Thiếu groupId" });
-  try {
-    const merged = await dbm.mergeGroupMemberDuplicates(groupId);
-    res.json({ ok: true, merged });
-  } catch (e) { res.status(400).json({ error: e.message || String(e) }); }
-});
 
 app.get("/api/accountant/lookup-user", async (req, res) => {
   const a = await requireAccountant(req, res); if (!a) return;
