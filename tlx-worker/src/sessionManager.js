@@ -1225,7 +1225,8 @@ async function importGroupMembers(sess, zaloGroupId, canonicalGroupId = null) {
       const uid = String(m?.id || "");
       if (!uid) continue;
       const { globalId, phone } = globalIdMap[uid] || {};
-      await dbm.upsertMember(dbGroupId, uid, {
+      const canonicalUid = globalId || uid;
+      await dbm.upsertMember(dbGroupId, canonicalUid, {
         display_name: m.displayName || null,
         avatar: m.avatar || null,
         global_id: globalId || undefined,
@@ -1409,16 +1410,17 @@ async function fullSyncGroupMembers(sess, groupId) {
   for (const m of memberList) {
     const uid = String(m?.id || "");
     if (!uid) continue;
-    const existing = await dbm.getMemberByZaloUid(groupId, uid);
-    if (!existing) added++;
     const { globalId, phone } = globalIdMap[uid] || {};
-    await dbm.upsertMember(groupId, uid, {
+    const canonicalUid = globalId || uid;
+    const existing = await dbm.getMemberByZaloUid(groupId, canonicalUid);
+    if (!existing) added++;
+    await dbm.upsertMember(groupId, canonicalUid, {
       display_name: m.displayName || null,
       avatar: m.avatar || null,
       global_id: globalId || undefined,
       phone: phone || undefined,
     });
-    activeUids.push(uid);
+    activeUids.push(canonicalUid);
     if (++i % 10 === 0) await yieldLoop();
   }
   // Tự upsert chính mình — Zalo không echo tin nhắn của bot về chính nó
