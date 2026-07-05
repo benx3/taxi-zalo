@@ -457,10 +457,10 @@ async function onMessage(sess, msg) {
       if (sess.processedMsgIds.size > 5000) sess.processedMsgIds.clear();
     }
 
-    // Thu thập thành viên thụ động: dùng globalId làm key — stable dù account nào đang watch
+    // Thu thập thành viên thụ động: zalo_uid = senderId (local UID của session), global_id để dedup
     if (senderId && sess.isAccountant) {
       resolveGlobalId(sess, senderId).then(({ globalId, phone }) =>
-        dbm.upsertMember(dbGroupId, globalId || senderId, {
+        dbm.upsertMember(dbGroupId, senderId, {
           display_name: senderName !== "Không rõ" ? senderName : null,
           global_id: globalId || undefined,
           phone: phone || undefined,
