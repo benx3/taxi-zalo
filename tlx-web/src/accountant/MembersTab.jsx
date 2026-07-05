@@ -56,6 +56,20 @@ export default function MembersTab({ groupId }) {
   useEffect(() => { reload(); }, [groupId]);
   useEffect(() => { setPage(1); setInlineEdit(null); }, [q, groupId, sortBy]);
 
+  const mergeDuplicates = async () => {
+    if (!groupId) return;
+    setSyncing(true); setSyncMsg({ ok: null, text: "" });
+    try {
+      const r = await api.mergeMemberDuplicates(groupId);
+      await api.listMembers(groupId).then(setMembers);
+      setSyncMsg({ ok: true, text: r.merged ? `Đã gộp ${r.merged} bản trùng` : "Không có bản trùng" });
+      setTimeout(() => setSyncMsg({ ok: null, text: "" }), 5000);
+    } catch (e) {
+      setSyncMsg({ ok: false, text: e.message });
+      setTimeout(() => setSyncMsg({ ok: null, text: "" }), 5000);
+    } finally { setSyncing(false); }
+  };
+
   const syncFromZalo = async () => {
     setSyncing(true); setSyncMsg({ ok: null, text: "" });
     try {
@@ -232,6 +246,9 @@ export default function MembersTab({ groupId }) {
         <button onClick={syncFromZalo} disabled={syncing || enriching} title="Cập nhật thành viên từ Zalo: thêm mới + xóa người đã rời nhóm" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid var(--line)", background: "transparent", color: syncing ? "var(--ink-dim)" : "#60a5fa", fontWeight: 700, fontSize: 13, cursor: (syncing || enriching) ? "default" : "pointer", whiteSpace: "nowrap" }}>
           <RefreshCw size={14} style={{ animation: syncing ? "spin 1s linear infinite" : "none" }} />
           {syncing ? "Đang cập nhật…" : "Cập nhật"}
+        </button>
+        <button onClick={mergeDuplicates} disabled={syncing || enriching || !groupId} title="Gộp thành viên trùng tên thành 1 (cộng điểm, giữ dữ liệu đầy đủ nhất)" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid rgba(251,113,133,.4)", background: "rgba(251,113,133,.08)", color: (syncing || enriching) ? "var(--ink-dim)" : "#fb7185", fontWeight: 700, fontSize: 13, cursor: (syncing || enriching || !groupId) ? "default" : "pointer", whiteSpace: "nowrap" }}>
+          <X size={14} /> Gộp trùng
         </button>
         <button onClick={enrichNames} disabled={syncing || enriching} title="Lấy tên Zalo cho các thành viên chưa có tên (batch 50/lần, ~30s cho 1000 người)" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid rgba(167,139,250,.4)", background: "rgba(167,139,250,.1)", color: enriching ? "var(--ink-dim)" : "#a78bfa", fontWeight: 700, fontSize: 13, cursor: (syncing || enriching) ? "default" : "pointer", whiteSpace: "nowrap" }}>
           <RefreshCw size={14} style={{ animation: enriching ? "spin 1s linear infinite" : "none" }} />

@@ -615,6 +615,35 @@ export function upsertMember(groupId, zaloUid, { phone, display_name, avatar, gl
     .run(id_, groupId, zaloUid, global_id||null, phone||null, display_name||null, avatar||null, now_, now_);
   return id_;
 }
+export function mergeGroupMemberDuplicates(groupId) {
+  const dupes = db.prepare(`
+    SELECT display_name FROM members
+    WHERE group_id=? AND display_name IS NOT NULL AND display_name != ''
+    GROUP BY display_name HAVING COUNT(*) > 1
+  `).all(groupId);
+  let merged = 0;
+  for (const { display_name } of dupes) {
+    const rows = db.prepare(`
+      SELECT * FROM members WHERE group_id=? AND display_name=?
+      ORDER BY ABS(points) DESC, CASE WHEN phone IS NOT NULL THEN 0 ELSE 1 END ASC, created_at ASC
+    `).all(groupId, display_name);
+    if (rows.length < 2) continue;
+    const [main, ...extras] = rows;
+    const totalPts = rows.reduce((s, r) => s + (r.points || 0), 0);
+    const bestPhone  = rows.find(r => r.phone)?.phone;
+    const bestAvatar = rows.find(r => r.avatar)?.avatar;
+    const bestGlobal = rows.find(r => r.global_id)?.global_id;
+    db.prepare(`UPDATE members SET points=ROUND(?,10), phone=COALESCE(?,phone), avatar=COALESCE(?,avatar), global_id=COALESCE(?,global_id), updated_at=? WHERE id=?`)
+      .run(totalPts, bestPhone||null, bestAvatar||null, bestGlobal||null, now(), main.id);
+    for (const extra of extras) {
+      db.prepare("UPDATE point_transactions SET from_member=? WHERE group_id=? AND from_member=?").run(main.zalo_uid, groupId, extra.zalo_uid);
+      db.prepare("UPDATE point_transactions SET to_member=?   WHERE group_id=? AND to_member=?  ").run(main.zalo_uid, groupId, extra.zalo_uid);
+      db.prepare("DELETE FROM members WHERE id=?").run(extra.id);
+      merged++;
+    }
+  }
+  return merged;
+}
 export function setMemberAlias(groupId, zaloUid, alias) {
   db.prepare("UPDATE members SET alias=?, updated_at=? WHERE group_id=? AND zalo_uid=?")
     .run(alias || null, now(), groupId, zaloUid);

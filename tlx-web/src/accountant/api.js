@@ -42,6 +42,7 @@ export const api = {
   upsertMember: (b) => req("/api/accountant/members", b),
   setAlias: (b) => req("/api/accountant/members/alias", b, "PATCH"),
   syncMembers: () => req("/api/accountant/sync-members", {}),
+  mergeMemberDuplicates: (groupId) => req("/api/accountant/merge-member-duplicates", { groupId }),
   enrichMemberNames: (groupId) => req(`/api/accountant/groups/${encodeURIComponent(groupId)}/enrich-members`, {}),
   setGroupPublicVisible: (groupId, visible) => req(`/api/accountant/groups/${encodeURIComponent(groupId)}/public-visible`, { visible }, "PATCH"),
   lookupUser: (phone) => req(`/api/accountant/lookup-user?phone=${encodeURIComponent(phone)}`, null, "GET"),

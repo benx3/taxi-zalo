@@ -457,10 +457,10 @@ async function onMessage(sess, msg) {
       if (sess.processedMsgIds.size > 5000) sess.processedMsgIds.clear();
     }
 
-    // Thu thập thành viên thụ động: mỗi tin nhắn trong nhóm được theo dõi → lưu sender
+    // Thu thập thành viên thụ động: dùng globalId làm key — stable dù account nào đang watch
     if (senderId && sess.isAccountant) {
       resolveGlobalId(sess, senderId).then(({ globalId, phone }) =>
-        dbm.upsertMember(dbGroupId, senderId, {
+        dbm.upsertMember(dbGroupId, globalId || senderId, {
           display_name: senderName !== "Không rõ" ? senderName : null,
           global_id: globalId || undefined,
           phone: phone || undefined,
