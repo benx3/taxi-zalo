@@ -954,11 +954,10 @@ const STATUS_COLORS={active:"#34d399",pending:"#f59e0b",expired:"#94a3b8",banned
 function SessionHealthTab() {
   const [data, setData] = useState(null);
   const [err, setErr]   = useState("");
-  const [ts, setTs]     = useState(Date.now());
 
   const load = () => {
     setErr("");
-    api.sessionHealth().then(d => { setData(d); setTs(Date.now()); }).catch(e => setErr(e.message));
+    api.sessionHealth().then(d => setData(d)).catch(e => setErr(e.message));
   };
   useEffect(() => { load(); const t = setInterval(load, 30000); return () => clearInterval(t); }, []);
 
@@ -969,18 +968,22 @@ function SessionHealthTab() {
     if (s < 3600) return `${Math.floor(s/60)}p trước`;
     return `${Math.floor(s/3600)}h trước`;
   };
-  const statusOf = (lastMsgAt) => {
+  const statusOf = (isLive, lastMsgAt) => {
+    if (!isLive) return { dot: "#6b7280", label: "Offline" };
     const s = (Date.now() - lastMsgAt) / 1000;
-    if (s < 300)   return { dot: "#34d399", label: "Tốt" };
-    if (s < 1800)  return { dot: "#f59e0b", label: "Chậm" };
-    return           { dot: "#f87171",  label: "Mất kết nối?" };
+    if (s < 300)  return { dot: "#34d399", label: "Tốt" };
+    if (s < 1800) return { dot: "#f59e0b", label: "Chậm" };
+    return               { dot: "#f87171", label: "Mất kết nối?" };
   };
+
+  const accountants = data?.accountants || [];
+  const sessions    = data?.sessions    || [];
 
   return (
     <div style={{ maxWidth: 760 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
         <Activity size={18} color="var(--accent)" />
-        <span style={{ fontWeight: 700, fontSize: 16 }}>Session Zalo đang chạy</span>
+        <span style={{ fontWeight: 700, fontSize: 16 }}>Session Zalo</span>
         <button onClick={load} style={{ marginLeft: "auto", padding: "6px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "none", color: "var(--ink-dim)", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12 }}>
           <RefreshCw size={12} /> Làm mới
         </button>
@@ -989,45 +992,79 @@ function SessionHealthTab() {
 
       {err && <div style={{ color: "#f87171", fontSize: 13, marginBottom: 10 }}>Lỗi: {err}</div>}
       {!data && !err && <div style={{ color: "var(--ink-dim)", fontSize: 13 }}>Đang tải…</div>}
-      {data && data.length === 0 && (
-        <div style={{ color: "var(--ink-dim)", fontSize: 14, padding: "30px 0" }}>
-          Chưa có phiên Zalo nào đang chạy.
+
+      {/* ===== Kế toán ===== */}
+      {accountants.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-dim)", letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>
+            Kế toán ({accountants.filter(s => s.isLive).length}/{accountants.length} online)
+          </div>
+          {accountants.map(s => {
+            const st = statusOf(s.isLive, s.lastMsgAt);
+            return (
+              <div key={s.userId} style={{
+                background: "var(--card)",
+                border: `1px solid ${s.isPrimary ? "rgba(167,139,250,.4)" : "var(--line)"}`,
+                borderRadius: 12, padding: "12px 16px", marginBottom: 8,
+                opacity: s.isLive ? 1 : 0.55,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: st.dot, flexShrink: 0 }} />
+                  <span style={{ fontWeight: 700, fontSize: 14, flex: 1 }}>
+                    {s.phone}
+                    {s.selfName && s.selfName !== s.phone && (
+                      <span style={{ fontWeight: 400, color: "var(--ink-dim)", fontSize: 12, marginLeft: 6 }}>({s.selfName})</span>
+                    )}
+                  </span>
+                  {s.isPrimary && (
+                    <span style={{ fontSize: 11, color: "#a78bfa", background: "rgba(167,139,250,.15)", padding: "2px 8px", borderRadius: 99, fontWeight: 700 }}>KT Chính</span>
+                  )}
+                  <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: st.dot + "22", color: st.dot, fontWeight: 700 }}>{st.label}</span>
+                </div>
+                {s.isLive && (
+                  <div style={{ display: "flex", gap: 16, fontSize: 12, color: "var(--ink-dim)", marginTop: 7 }}>
+                    <span><b style={{ color: "var(--ink)" }}>Tin cuối:</b> {fmtAgo(s.lastMsgAt)}</span>
+                    <span><b style={{ color: "var(--ink)" }}>Nhóm theo dõi:</b> {s.selected?.length || 0}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {data && data.map(s => {
-        const st = statusOf(s.lastMsgAt);
-        return (
-          <div key={s.userId} style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: "16px 20px", marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              <span style={{ width: 10, height: 10, borderRadius: "50%", background: st.dot, flexShrink: 0 }} />
-              <span style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>{s.selfName || s.userId}</span>
-              <span style={{ fontSize: 12, padding: "2px 10px", borderRadius: 99, background: st.dot + "22", color: st.dot, fontWeight: 700 }}>{st.label}</span>
-              {s.isAccountant && <span style={{ fontSize: 11, color: "#a78bfa", background: "rgba(167,139,250,.12)", padding: "2px 8px", borderRadius: 99 }}>Kế toán</span>}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13, color: "var(--ink-dim)" }}>
-              <div><b style={{ color: "var(--ink)" }}>Tin cuối:</b> {fmtAgo(s.lastMsgAt)}</div>
-              <div><b style={{ color: "var(--ink)" }}>Zalo UID:</b> {s.selfId || "—"}</div>
-              <div><b style={{ color: "var(--ink)" }}>Nhóm theo dõi:</b> {s.selected.length} nhóm</div>
-              <div><b style={{ color: "var(--ink)" }}>Tổng nhóm Zalo:</b> {s.groupCount}</div>
-            </div>
-            {s.selected.length > 0 && (
-              <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {s.selected.map(gId => (
-                  <span key={gId} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: "rgba(52,211,153,.08)", border: "1px solid rgba(52,211,153,.2)", color: "var(--accent)" }}>
-                    {gId.slice(-8)}
-                  </span>
-                ))}
-              </div>
-            )}
+      {/* ===== Sessions khác (tài xế / admin) ===== */}
+      {sessions.length > 0 && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-dim)", letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>
+            Session khác
           </div>
-        );
-      })}
+          {sessions.map(s => {
+            const st = statusOf(true, s.lastMsgAt);
+            return (
+              <div key={s.userId} style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 12, padding: "14px 18px", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: st.dot, flexShrink: 0 }} />
+                  <span style={{ fontWeight: 700, fontSize: 14, flex: 1 }}>{s.selfName || s.userId}</span>
+                  <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: st.dot + "22", color: st.dot, fontWeight: 700 }}>{st.label}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 12, color: "var(--ink-dim)" }}>
+                  <span><b style={{ color: "var(--ink)" }}>Tin cuối:</b> {fmtAgo(s.lastMsgAt)}</span>
+                  <span><b style={{ color: "var(--ink)" }}>Nhóm theo dõi:</b> {s.selected?.length || 0}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {data && accountants.length === 0 && sessions.length === 0 && (
+        <div style={{ color: "var(--ink-dim)", fontSize: 14, padding: "30px 0" }}>Chưa có phiên Zalo nào.</div>
+      )}
 
       <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 10, background: "rgba(245,158,11,.06)", border: "1px solid rgba(245,158,11,.2)", fontSize: 12, color: "var(--ink-dim)", lineHeight: 1.6 }}>
-        <b style={{ color: "#f59e0b" }}>Chú thích:</b> Tốt = tin cuối &lt; 5p · Chậm = 5–30p · Mất kết nối? = &gt; 30p im lặng.<br/>
-        Nếu trạng thái "Mất kết nối?" nhưng nhóm vẫn đang chat → WS bị drop âm thầm, cần restart service.
-        Hệ thống tự catchup tin bị sót mỗi 10 phút (nếu im lặng &gt; 5p).
+        <b style={{ color: "#f59e0b" }}>Chú thích:</b> Tốt = tin cuối &lt; 5p · Chậm = 5–30p · Mất kết nối? = &gt;30p im lặng · Offline = session chết.<br/>
+        KT Chính = account đang xử lý barem/san điểm. Khi chết → tự động bầu account tiếp theo.
       </div>
     </div>
   );

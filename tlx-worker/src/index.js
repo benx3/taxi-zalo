@@ -99,7 +99,19 @@ app.post("/api/admin/set-role", async (req, res) => {
 });
 app.get("/api/admin/session-health", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
-  res.json(sm.getSessionsHealth());
+  const liveHealth = sm.getSessionsHealth();
+  const primaryId  = sm.getPrimaryAccountantId();
+  const liveByUid  = new Map(liveHealth.map(s => [s.userId, s]));
+
+  const allUsers    = await dbm.listUsers().catch(() => []);
+  const accountants = allUsers.filter(u => u.role === "accountant").map(u => {
+    const live = liveByUid.get(u.id);
+    return live
+      ? { ...live, phone: u.phone, name: u.name, isPrimary: u.id === primaryId, isLive: true }
+      : { userId: u.id, phone: u.phone, name: u.name, isAccountant: true, isLive: false, isPrimary: false };
+  });
+
+  res.json({ sessions: liveHealth.filter(s => !s.isAccountant), accountants });
 });
 app.get("/api/admin/groups", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
