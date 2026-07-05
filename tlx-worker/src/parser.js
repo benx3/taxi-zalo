@@ -111,8 +111,8 @@ export function parsePrice(t) {
   // hoặc theo sau là khoảng trắng/chữ số/cuối chuỗi — tránh match "200 Trần" (đường phố).
   const tr = t.match(/(\d)\s*(?:triệu|tr(?=[\s\d]|$))\s*(\d{0,3})/i);
   if (tr) return parseInt(tr[1]) * 1000 + (tr[2] ? parseInt(tr[2].padEnd(3, "0")) : 0);
-  // 200k / 350 k
-  const k = t.match(/(\d{2,4})\s*k\b/i);
+  // 200k / 350 k / 700kkk (nhiều k liên tiếp do gõ nhanh)
+  const k = t.match(/(\d{2,4})\s*k+\b/i);
   if (k) return parseInt(k[1]);
   // 200.000đ / 200.000 đ / 1.300.000đ  → quy về "k"
   const dong = t.match(/(\d{1,3}(?:[.,]\d{3})+)\s*đ?/);
