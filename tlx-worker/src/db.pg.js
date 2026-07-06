@@ -188,9 +188,10 @@ export async function ensureSeed() {
   await q(`CREATE UNIQUE INDEX IF NOT EXISTS idx_members_global_id
            ON members(group_id, global_id) WHERE global_id IS NOT NULL`).catch(() => {});
 
-  // Migration v2: old-format group_ids (thuần số) → ${accountantId}_${zaloId}
+  // Migration v2: old-format group_ids (Zalo ID trực tiếp) → ${accountantId}_${zaloId}
+  // Detect: zalo_group_id IS NULL (chưa set = old format) HOẶC group_id = zalo_group_id (old code set cùng giá trị)
   const _oldRows = await q(
-    "SELECT DISTINCT group_id FROM accountant_groups WHERE group_id NOT LIKE '%-%' AND group_id NOT LIKE '%\\_%' ESCAPE '\\'"
+    "SELECT DISTINCT group_id FROM accountant_groups WHERE zalo_group_id IS NULL OR group_id = zalo_group_id"
   );
   const _oldIds = _oldRows.rows.map(r => r.group_id);
   if (_oldIds.length > 0) {

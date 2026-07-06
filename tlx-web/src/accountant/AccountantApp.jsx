@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Users, Clock, BarChart2, User, LogOut, KeyRound, X, Check,
-         Wifi, WifiOff, QrCode, Bell, Lock, Search, RefreshCw, Eye, EyeOff, FileUp, Menu } from "lucide-react";
+         Wifi, WifiOff, QrCode, Bell, Lock, Search, RefreshCw, FileUp, Menu } from "lucide-react";
 import { api } from "./api.js";
 import MembersTab from "./MembersTab.jsx";
 import TransactionsTab from "./TransactionsTab.jsx";
@@ -78,26 +78,16 @@ export default function AccountantApp({ me: initMe, onLogout, worker }) {
           </div>
           {dbGroups.length === 0
             ? <div style={{ fontSize: 12, color: "var(--ink-dim)", padding: "6px 0" }}>Chưa chọn nhóm</div>
-            : dbGroups.map(g => {
-              const isPublic = g.public_visible !== 0;
-              return (
-                <div key={g.group_id} style={{ display: "flex", alignItems: "center", gap: 2, marginBottom: 2 }}>
-                  <button onClick={() => setActiveGroup(g)} title={`ID: ${g.group_id}`} style={{ flex: 1, minWidth: 0, padding: "8px 10px", borderRadius: 8, border: "none", textAlign: "left", cursor: "pointer", background: activeGroup?.group_id === g.group_id ? "rgba(52,211,153,.15)" : "transparent", color: activeGroup?.group_id === g.group_id ? "var(--accent)" : "var(--ink)", fontWeight: activeGroup?.group_id === g.group_id ? 700 : 400, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                    {activeGroup?.group_id === g.group_id && <Check size={12} color="var(--accent)" />}
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.group_name || g.group_id}</span>
-                  </button>
-                  <button
-                    title={isPublic ? "Đang hiện trên trang công khai — nhấn để ẩn" : "Đang ẩn trên trang công khai — nhấn để hiện"}
-                    onClick={async () => {
-                      await api.setGroupPublicVisible(g.group_id, !isPublic).catch(() => {});
-                      setDbGroups(prev => prev.map(x => x.group_id === g.group_id ? { ...x, public_visible: isPublic ? 0 : 1 } : x));
-                    }}
-                    style={{ flexShrink: 0, padding: "6px", borderRadius: 7, border: "none", background: "transparent", cursor: "pointer", color: isPublic ? "var(--accent)" : "var(--ink-dim)", display: "flex", alignItems: "center" }}>
-                    {isPublic ? <Eye size={14} /> : <EyeOff size={14} />}
-                  </button>
-                </div>
-              );
-            })
+            : dbGroups.map(g => (
+                <button key={g.group_id} onClick={() => setActiveGroup(g)} title={`ID: ${g.group_id}`}
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "none", textAlign: "left", cursor: "pointer", marginBottom: 2,
+                    background: activeGroup?.group_id === g.group_id ? "rgba(52,211,153,.15)" : "transparent",
+                    color: activeGroup?.group_id === g.group_id ? "var(--accent)" : "var(--ink)",
+                    fontWeight: activeGroup?.group_id === g.group_id ? 700 : 400, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                  {activeGroup?.group_id === g.group_id && <Check size={12} color="var(--accent)" />}
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.group_name || g.group_id}</span>
+                </button>
+              ))
           }
           {/* Zalo connect button */}
           <button onClick={() => setShowZaloPanel(true)} style={{ width: "100%", marginTop: 6, padding: "7px 10px", borderRadius: 8, border: "1px dashed var(--line)", background: "transparent", color: zaloConnected ? "#34d399" : sessionExpired ? "#f59e0b" : "var(--ink-dim)", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}>

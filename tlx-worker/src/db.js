@@ -193,10 +193,10 @@ export async function ensureSeed() {
   )`);
   try { db.exec("CREATE INDEX IF NOT EXISTS idx_ucm_primary ON uid_cross_map(group_id, uid_primary)"); } catch {}
 
-  // Migration v2: old-format group_ids (thuần số = Zalo ID) → ${accountantId}_${zaloId}
-  // Detect: group_id không có dấu '-' và không có dấu '_' → old format
+  // Migration v2: old-format group_ids (Zalo ID trực tiếp) → ${accountantId}_${zaloId}
+  // Detect: zalo_group_id IS NULL (chưa set = old format) HOẶC group_id = zalo_group_id (old code set cùng giá trị)
   const _oldGroupIds = db.prepare(
-    "SELECT DISTINCT group_id FROM accountant_groups WHERE group_id NOT LIKE '%-%' AND group_id NOT LIKE '%\\_%' ESCAPE '\\'"
+    "SELECT DISTINCT group_id FROM accountant_groups WHERE zalo_group_id IS NULL OR group_id = zalo_group_id"
   ).all().map(r => r.group_id);
   if (_oldGroupIds.length > 0) {
     console.log(`[Migration v2] Đổi ${_oldGroupIds.length} group_id sang instance format...`);

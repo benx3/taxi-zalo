@@ -915,7 +915,7 @@ function AdminGroupPointsTab() {
                                 {fmtPts(m.points)}
                               </td>
                               <td style={{ ...td, textAlign: "right", color: "var(--ink-dim)", fontVariantNumeric: "tabular-nums" }}>
-                                {m.yesterday_points != null ? fmtPts(m.yesterday_points) : "—"}
+                                {m.points_yesterday != null ? fmtPts(m.points_yesterday) : "—"}
                               </td>
                               <td style={{ ...td, textAlign: "right" }}>
                                 <button

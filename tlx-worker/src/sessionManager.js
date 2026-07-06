@@ -113,6 +113,7 @@ function attach(userId, api, onEvent) {
     sentOks: new Map(),         // msgId cuốc -> {groupId, sent, savedId} (để thu hồi khi huỷ)
     tripMsgCache: new Map(),    // msgId → {type, price, senderId} — cuốc gần đây (barem tracking)
     claimCache: new Map(),      // claimMsgId → {tripPosterId, takerId, takerName, tripType, tripPrice}
+    _importingInstances: new Set(), // guard tránh import cùng instance song song
     onEvent,
     lastMsgAt: Date.now(),      // timestamp tin nhắn cuối (để phát hiện session chết)
     isAccountant: false,        // set sau khi getUserPublic
@@ -318,10 +319,16 @@ async function loadGroups(sess) {
         if (ag.zalo_group_id && ag.zalo_group_id !== ag.group_id) {
           sess.groupIdMap.set(ag.zalo_group_id, ag.group_id);
         }
-        // Auto-import chỉ khi chưa có thành viên
+        // Auto-import khi instance chưa có thành viên (sau migration hoặc import lần đầu)
+        // Guard tránh chạy song song với setWatchedGroups
         const zaloId = ag.zalo_group_id || ag.group_id;
         const cnt = await dbm.countMembers(ag.group_id);
-        if (cnt === 0) importGroupMembers(sess, zaloId, ag.group_id).catch(() => {});
+        if (cnt === 0 && !sess._importingInstances.has(ag.group_id)) {
+          sess._importingInstances.add(ag.group_id);
+          importGroupMembers(sess, zaloId, ag.group_id)
+            .finally(() => sess._importingInstances.delete(ag.group_id))
+            .catch(() => {});
+        }
       }
       // Cập nhật sess.selected từ DB (dùng zalo_group_id để Zalo nhận đúng message)
       sess.selected = new Set(acctGroups.map(ag => ag.zalo_group_id || ag.group_id));
@@ -1271,8 +1278,12 @@ export async function setWatchedGroups(userId, groupIds) {
         sess.groupIdMap.set(gId, instanceId);
         await dbm.addAccountantGroup(userId, instanceId, groupName, gId);
         // Import thành viên từ Zalo API (mỗi instance độc lập, không share)
-        importGroupMembers(sess, gId, instanceId)
-          .catch(e => console.warn(`[${userId}] importGroupMembers ${instanceId}:`, e?.message || e));
+        if (!sess._importingInstances.has(instanceId)) {
+          sess._importingInstances.add(instanceId);
+          importGroupMembers(sess, gId, instanceId)
+            .finally(() => sess._importingInstances.delete(instanceId))
+            .catch(e => console.warn(`[${userId}] importGroupMembers ${instanceId}:`, e?.message || e));
+        }
       }
 
       // Xóa nhóm không còn được chọn
