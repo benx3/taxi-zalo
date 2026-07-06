@@ -1501,27 +1501,35 @@ async function fullSyncGroupMembers(sess, groupId, { zaloGroupId = null, skipRem
       ? await dbm.getMemberByZaloUid(groupId, globalId)
       : await dbm.getMemberByZaloUid(groupId, uid);
 
-    // Priority 2: fallback avatar hash (non-contact, uid khác nhau giữa các account)
-    if (!existingRow && !globalId) {
+    // Priority 2: fallback avatar hash — thử bất cứ khi nào chưa tìm được row
+    if (!existingRow) {
       const hash = extractAvatarHash(m.avatar);
       if (hash) {
         existingRow = await dbm.getMemberByAvatarHash(groupId, hash);
-        if (existingRow && existingRow.zalo_uid !== uid) {
-          // Ghi mapping: uid canonical của account A ↔ uid của account đang sync
-          await dbm.insertUidMapping(groupId, existingRow.zalo_uid, uid);
-        }
       }
     }
 
-    if (!existingRow) added++;
-
-    if (existingRow && existingRow.zalo_uid !== uid && !globalId) {
-      // Tìm được qua avatar hash: chỉ update avatar (refresh URL) + tên, KHÔNG đổi zalo_uid
+    if (!existingRow) {
+      // Thành viên thực sự mới — tạo row với uid của account đang sync
+      added++;
+      await dbm.upsertMember(groupId, uid, {
+        display_name: m.displayName || null,
+        avatar: m.avatar || null,
+        global_id: globalId || undefined,
+        phone: phone || undefined,
+      });
+    } else if (existingRow.zalo_uid !== uid) {
+      // Tìm được row của account A (qua globalId hoặc avatar hash), uid B ≠ uid A
+      // → ghi mapping + update row canonical, KHÔNG tạo row mới
+      await dbm.insertUidMapping(groupId, existingRow.zalo_uid, uid);
       await dbm.upsertMember(groupId, existingRow.zalo_uid, {
         display_name: m.displayName || null,
         avatar: m.avatar || null,
+        global_id: globalId || undefined,
+        phone: phone || undefined,
       });
     } else {
+      // uid khớp trực tiếp — chỉ update thông tin
       await dbm.upsertMember(groupId, uid, {
         display_name: m.displayName || null,
         avatar: m.avatar || null,
