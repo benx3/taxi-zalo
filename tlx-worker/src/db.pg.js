@@ -485,6 +485,22 @@ export async function addAccountantGroup(accountantId, groupId, groupName, zaloG
 export async function removeAccountantGroup(accountantId, groupId) {
   await q("DELETE FROM accountant_groups WHERE accountant_id=$1 AND group_id=$2", [accountantId, groupId]);
 }
+export async function migrateGroupInstanceForAccountant(accountantId, oldGroupId, newGroupId, zaloGroupId) {
+  if (oldGroupId === newGroupId) return;
+  const oldRow = await q("SELECT * FROM accountant_groups WHERE accountant_id=$1 AND group_id=$2", [accountantId, oldGroupId]);
+  const old = oldRow.rows[0];
+  if (!old) return;
+  const countRow = await q("SELECT COUNT(*) AS c FROM members WHERE group_id=$1", [oldGroupId]);
+  const memberCount = Number(countRow.rows[0]?.c || 0);
+  await q("DELETE FROM accountant_groups WHERE accountant_id=$1 AND group_id=$2", [accountantId, oldGroupId]);
+  await q("INSERT INTO accountant_groups(accountant_id,group_id,group_name,zalo_group_id,public_visible) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
+    [accountantId, newGroupId, old.group_name || newGroupId, zaloGroupId, old.public_visible ?? 0]);
+  if (memberCount > 0) {
+    for (const tbl of ['members','point_transactions','point_rules','barem_trip_log','barem_claim_log','barem_msg_refs','pending_transfers','raw_messages','uid_cross_map']) {
+      await q(`UPDATE ${tbl} SET group_id=$1 WHERE group_id=$2`, [newGroupId, oldGroupId]).catch(() => {});
+    }
+  }
+}
 
 // --- Merge group instances ---
 function _extractAvatarHash(url) {

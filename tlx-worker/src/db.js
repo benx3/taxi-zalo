@@ -611,6 +611,24 @@ export function addAccountantGroup(accountantId, groupId, groupName, zaloGroupId
 export function removeAccountantGroup(accountantId, groupId) {
   db.prepare("DELETE FROM accountant_groups WHERE accountant_id=? AND group_id=?").run(accountantId, groupId);
 }
+// Lazy migration: đổi old-format group_id → per-accountant instanceId mà không cần restart
+// "First caller" lấy toàn bộ dữ liệu cũ; caller sau nhận instance rỗng (sẽ auto-import)
+export function migrateGroupInstanceForAccountant(accountantId, oldGroupId, newGroupId, zaloGroupId) {
+  if (oldGroupId === newGroupId) return;
+  db.transaction(() => {
+    const old = db.prepare("SELECT * FROM accountant_groups WHERE accountant_id=? AND group_id=?").get(accountantId, oldGroupId);
+    if (!old) return;
+    const memberCount = db.prepare("SELECT COUNT(*) AS c FROM members WHERE group_id=?").get(oldGroupId)?.c || 0;
+    db.prepare("DELETE FROM accountant_groups WHERE accountant_id=? AND group_id=?").run(accountantId, oldGroupId);
+    db.prepare("INSERT OR IGNORE INTO accountant_groups(accountant_id,group_id,group_name,zalo_group_id,public_visible) VALUES(?,?,?,?,?)")
+      .run(accountantId, newGroupId, old.group_name || newGroupId, zaloGroupId, old.public_visible ?? 0);
+    if (memberCount > 0) {
+      for (const tbl of ['members','point_transactions','point_rules','barem_trip_log','barem_claim_log','barem_msg_refs','pending_transfers','raw_messages','uid_cross_map']) {
+        try { db.prepare(`UPDATE ${tbl} SET group_id=? WHERE group_id=?`).run(newGroupId, oldGroupId); } catch {}
+      }
+    }
+  })();
+}
 
 // --- Helper nội bộ: extract avatar hash để match member khi merge ---
 function _extractAvatarHash(url) {

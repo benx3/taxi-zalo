@@ -50,7 +50,7 @@ export const {
   saveZaloSession, getZaloSession, clearZaloSession,
   saveTrip, markTripWon, deleteSavedTrip, listSavedTrips, purgeOld,
   getSetting, setSetting,
-  getAccountantGroups, getAccountantGroupsForAdmin, getGroupAccountants, getGroupZaloOwner, addAccountantGroup, removeAccountantGroup, setGroupPublicVisible, mergeGroupInstancesPreview, mergeGroupInstancesExecute,
+  getAccountantGroups, getAccountantGroupsForAdmin, getGroupAccountants, getGroupZaloOwner, addAccountantGroup, removeAccountantGroup, migrateGroupInstanceForAccountant, setGroupPublicVisible, mergeGroupInstancesPreview, mergeGroupInstancesExecute,
   countMembers, listMembers, listMembersWithYesterday, getMemberByZaloUid, upsertMember, markRemovedMembers, deleteRemovedMembers, deleteMember, mergeTempMember, setMemberAlias,
   saveTripLog, getTripLog, saveClaimLog, getClaimLog, deleteClaimLog, purgeBaremLogs, clearBaremLogs, claimBaremScoring,
   getPrimaryAccountantSelfIdForGroup, getMembersByDisplayName,

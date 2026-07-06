@@ -315,13 +315,21 @@ async function loadGroups(sess) {
     if (u?.role === "accountant") {
       const acctGroups = await dbm.getAccountantGroups(sess.userId);
       for (const ag of acctGroups) {
+        const zaloId = ag.zalo_group_id || ag.group_id;
+        // Lazy migration: old-format (group_id = zalo_group_id) → per-accountant instanceId
+        if (ag.group_id === zaloId) {
+          const newInstanceId = `${sess.userId}_${zaloId}`;
+          await dbm.migrateGroupInstanceForAccountant(sess.userId, ag.group_id, newInstanceId, zaloId);
+          ag.group_id = newInstanceId;
+          ag.zalo_group_id = zaloId;
+          console.log(`[${sess.userId}] loadGroups lazy migrate ${zaloId} → ${newInstanceId}`);
+        }
         // Khôi phục mapping zalo_group_id → canonical group_id
         if (ag.zalo_group_id && ag.zalo_group_id !== ag.group_id) {
           sess.groupIdMap.set(ag.zalo_group_id, ag.group_id);
         }
         // Auto-import khi instance chưa có thành viên (sau migration hoặc import lần đầu)
         // Guard tránh chạy song song với setWatchedGroups
-        const zaloId = ag.zalo_group_id || ag.group_id;
         const cnt = await dbm.countMembers(ag.group_id);
         if (cnt === 0 && !sess._importingInstances.has(ag.group_id)) {
           sess._importingInstances.add(ag.group_id);
@@ -1261,9 +1269,17 @@ export async function setWatchedGroups(userId, groupIds) {
 
       // current: các nhóm đã được lưu trong DB cho kế toán này
       const current = await dbm.getAccountantGroups(userId);
-      // zaloId → instanceId mapping đã có trong DB
+      // Lazy migration + khôi phục groupIdMap
       for (const g of current) {
         const zaloId = g.zalo_group_id || g.group_id;
+        // Old-format: group_id = zaloId → migrate sang per-accountant instanceId
+        if (g.group_id === zaloId) {
+          const newInstanceId = `${userId}_${zaloId}`;
+          await dbm.migrateGroupInstanceForAccountant(userId, g.group_id, newInstanceId, zaloId);
+          g.group_id = newInstanceId;
+          g.zalo_group_id = zaloId;
+          console.log(`[${userId}] setWatchedGroups lazy migrate ${zaloId} → ${newInstanceId}`);
+        }
         sess.groupIdMap.set(zaloId, g.group_id);
       }
 
