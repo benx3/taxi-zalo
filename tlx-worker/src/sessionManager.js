@@ -124,6 +124,7 @@ function attach(userId, api, onEvent) {
     selected: new Set(),        // nhóm theo dõi (rỗng = tất cả)
     groupIdMap: new Map(),      // zalo_group_id → canonical group_id (khi 2 account có ID khác nhau)
     uidGlobalIdCache: new Map(), // zalo_uid → { globalId, phone } — tránh gọi getUserInfo lặp lại
+    uidMappingAttempted: new Set(), // UIDs đã thử getGroupMembersInfo (tránh gọi lặp lại)
     groupNameById: new Map(),
     claims: new Map(),          // `${groupId}:${ownerId}` -> {savedId, msgId, text}
     rawMsgById: new Map(),      // msgId -> object message gốc (để reply đúng tin)
@@ -267,6 +268,14 @@ async function batchResolveGlobalIds(sess, uids) {
     if (i + BATCH < toFetch.length) await new Promise(r => setTimeout(r, 200));
   }
   return result;
+}
+
+// Resolve về zalo_uid canonical trong DB (qua uid_cross_map nếu cần).
+// Dùng trước mọi DB write liên quan đến UID để đảm bảo luôn dùng UID của account chính.
+async function resolveCanonicalUid(groupId, uid) {
+  if (!uid) return uid;
+  const member = await dbm.getMemberByZaloUid(groupId, uid);
+  return member?.zalo_uid || uid;
 }
 
 // Bắt kịp tin nhắn bị bỏ sót trong thời gian service down
@@ -465,16 +474,52 @@ async function onMessage(sess, msg) {
       if (sess.processedMsgIds.size > 5000) sess.processedMsgIds.clear();
     }
 
-    // Thu thập thành viên thụ động: chỉ upsert khi biết globalId để dedup cross-account
-    // Không có globalId → bỏ qua, tránh tạo bản sao từ account phụ có senderId khác
+    // Thu thập thành viên thụ động
     if (senderId && sess.isAccountant) {
-      resolveGlobalId(sess, senderId).then(({ globalId, phone }) => {
-        if (!globalId) return;
-        dbm.upsertMember(dbGroupId, senderId, {
-          display_name: senderName !== "Không rõ" ? senderName : null,
-          global_id: globalId,
-          phone: phone || undefined,
-        });
+      resolveGlobalId(sess, senderId).then(async ({ globalId, phone }) => {
+        if (globalId) {
+          // Contact: upsert bình thường
+          dbm.upsertMember(dbGroupId, senderId, {
+            display_name: senderName !== "Không rõ" ? senderName : null,
+            global_id: globalId,
+            phone: phone || undefined,
+          });
+          return;
+        }
+        // Non-contact: kiểm tra đã có mapping chưa (trực tiếp hoặc qua uid_cross_map)
+        const existing = await dbm.getMemberByZaloUid(dbGroupId, senderId);
+        if (existing) {
+          // Đã có hoặc đã map → chỉ cập nhật tên nếu có
+          if (senderName && senderName !== "Không rõ")
+            dbm.upsertMember(dbGroupId, existing.zalo_uid, { display_name: senderName }).catch(() => {});
+          return;
+        }
+        // Chưa có mapping — thử lấy avatar để tìm member qua hash (1 lần per UID)
+        if (sess.uidMappingAttempted.has(senderId)) return;
+        sess.uidMappingAttempted.add(senderId);
+        try {
+          const r = await sess.api.getGroupMembersInfo([senderId]);
+          const p = r?.profiles?.[senderId] || r?.profiles?.[`${senderId}_0`] || {};
+          const avatarUrl = p.avatar || null;
+          const hash = extractAvatarHash(avatarUrl);
+          if (hash) {
+            const byHash = await dbm.getMemberByAvatarHash(dbGroupId, hash);
+            if (byHash && byHash.zalo_uid !== senderId) {
+              // Tìm thấy qua avatar hash → lưu mapping + refresh avatar
+              await dbm.insertUidMapping(dbGroupId, byHash.zalo_uid, senderId);
+              await dbm.upsertMember(dbGroupId, byHash.zalo_uid, {
+                display_name: senderName !== "Không rõ" ? senderName : null,
+                avatar: avatarUrl,
+              });
+              return;
+            }
+          }
+          // Thành viên thật sự mới hoặc avatar mặc định
+          await dbm.upsertMember(dbGroupId, senderId, {
+            display_name: senderName !== "Không rõ" ? senderName : null,
+            avatar: avatarUrl,
+          });
+        } catch {}
       }).catch(() => {});
       // Lưu cả những người bị tag trong tin nhắn (kể cả khi họ chưa chat lần nào)
       const mentioned = msg.data?.mentions || [];
@@ -494,25 +539,25 @@ async function onMessage(sess, msg) {
         for (const sr of sanResults) {
           if (!sr.toUid) continue;
           if (sr.toName) Promise.resolve(dbm.upsertMember(dbGroupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
-          Promise.resolve(dbm.createPendingTransfer(
-            dbGroupId, senderId, sr.toUid, sr.amount, text, msgId
-          )).then(async txId => {
+          Promise.resolve((async () => {
             const senderMember = await dbm.getMemberByZaloUid(dbGroupId, senderId);
+            const senderCanon = senderMember?.zalo_uid || senderId;
             const senderPts = Number(senderMember?.points ?? 0);
+            const txId = await dbm.createPendingTransfer(dbGroupId, senderCanon, sr.toUid, sr.amount, text, msgId);
             if (senderPts >= sr.amount) {
               await dbm.approvePendingTransfer(txId);
-              console.log(`[${sess.userId}] ✅ San auto-duyệt (đủ điểm ${senderPts}): ${senderId} → ${sr.toUid} ${sr.amount}đ`);
+              console.log(`[${sess.userId}] ✅ San auto-duyệt (đủ điểm ${senderPts}): ${senderCanon} → ${sr.toUid} ${sr.amount}đ`);
               return;
             }
-            console.log(`[${sess.userId}] 📋 San pending (thiếu điểm ${senderPts}/${sr.amount}): ${senderId} → ${sr.toUid}`);
+            console.log(`[${sess.userId}] 📋 San pending (thiếu điểm ${senderPts}/${sr.amount}): ${senderCanon} → ${sr.toUid}`);
             sess.onEvent(sess.userId, {
               type: "pending_transfer", txId,
               groupId: dbGroupId, groupName,
-              fromUid: senderId, fromName: senderName,
+              fromUid: senderCanon, fromName: senderName,
               toUid: sr.toUid, toName: sr.toName,
               points: sr.amount, rawText: text,
             });
-          }).catch(e => console.error(`[${sess.userId}] san điểm:`, e?.message || e));
+          })()).catch(e => console.error(`[${sess.userId}] san điểm:`, e?.message || e));
         }
         return;
       }
@@ -527,11 +572,11 @@ async function onMessage(sess, msg) {
           for (const sr of sanResults) {
             if (!sr.toUid) continue;
             if (sr.toName) Promise.resolve(dbm.upsertMember(dbGroupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
-            Promise.resolve(dbm.createPendingTransfer(
-              dbGroupId, senderId, sr.toUid, sr.amount, text, msgId
-            )).then(async txId => {
+            Promise.resolve((async () => {
               const senderMember = await dbm.getMemberByZaloUid(dbGroupId, senderId);
+              const senderCanon = senderMember?.zalo_uid || senderId;
               const senderPts = Number(senderMember?.points ?? 0);
+              const txId = await dbm.createPendingTransfer(dbGroupId, senderCanon, sr.toUid, sr.amount, text, msgId);
               if (senderPts >= sr.amount) {
                 await dbm.approvePendingTransfer(txId);
                 console.log(`[${sess.userId}] ✅ San (self) auto-duyệt (đủ điểm ${senderPts}): → ${sr.toUid} ${sr.amount}đ`);
@@ -541,11 +586,11 @@ async function onMessage(sess, msg) {
               sess.onEvent(sess.userId, {
                 type: "pending_transfer", txId,
                 groupId: dbGroupId, groupName,
-                fromUid: senderId, fromName: senderName,
+                fromUid: senderCanon, fromName: senderName,
                 toUid: sr.toUid, toName: sr.toName || "",
                 points: sr.amount, rawText: text,
               });
-            }).catch(e => console.error(`[${sess.userId}] san điểm (self):`, e?.message || e));
+            })()).catch(e => console.error(`[${sess.userId}] san điểm (self):`, e?.message || e));
           }
           return;
         }
@@ -572,16 +617,17 @@ async function onMessage(sess, msg) {
               if (!sr.toUid) continue;
               if (sr.toName) Promise.resolve(dbm.upsertMember(dbGroupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
               const senderMember = await dbm.getMemberByZaloUid(dbGroupId, senderId);
+              const senderCanon = senderMember?.zalo_uid || senderId;
               const senderPts = Number(senderMember?.points ?? 0);
-              const txId = await dbm.createPendingTransfer(dbGroupId, senderId, sr.toUid, sr.amount, text, msgId);
+              const txId = await dbm.createPendingTransfer(dbGroupId, senderCanon, sr.toUid, sr.amount, text, msgId);
               if (senderPts >= sr.amount) {
                 await dbm.approvePendingTransfer(txId);
-                console.log(`[${sess.userId}] ✅ KT san auto-duyệt (đủ điểm ${senderPts}): ${senderId} → ${sr.toUid} ${sr.amount}đ nhóm=${dbGroupId}`);
+                console.log(`[${sess.userId}] ✅ KT san auto-duyệt (đủ điểm ${senderPts}): ${senderCanon} → ${sr.toUid} ${sr.amount}đ nhóm=${dbGroupId}`);
               } else {
-                console.log(`[${sess.userId}] 📋 KT san pending (thiếu điểm ${senderPts}/${sr.amount}): ${senderId} → ${sr.toUid} nhóm=${dbGroupId}`);
+                console.log(`[${sess.userId}] 📋 KT san pending (thiếu điểm ${senderPts}/${sr.amount}): ${senderCanon} → ${sr.toUid} nhóm=${dbGroupId}`);
                 sess.onEvent(sess.userId, {
                   type: "pending_transfer", txId, groupId: dbGroupId, groupName,
-                  fromUid: senderId, fromName: senderName,
+                  fromUid: senderCanon, fromName: senderName,
                   toUid: sr.toUid, toName: sr.toName || "", points: sr.amount, rawText: text,
                 });
               }
@@ -603,16 +649,17 @@ async function onMessage(sess, msg) {
             const toMName = toM.display_name || toM.dName || "";
             if (toMName) Promise.resolve(dbm.upsertMember(dbGroupId, String(toM.uid), { display_name: toMName })).catch(() => {});
             const senderMember = await dbm.getMemberByZaloUid(dbGroupId, senderId);
+            const senderCanon = senderMember?.zalo_uid || senderId;
             const senderPts = Number(senderMember?.points ?? 0);
-            const txId = await dbm.createPendingTransfer(dbGroupId, senderId, String(toM.uid), amounts[0], text, msgId);
+            const txId = await dbm.createPendingTransfer(dbGroupId, senderCanon, String(toM.uid), amounts[0], text, msgId);
             if (senderPts >= amounts[0]) {
               await dbm.approvePendingTransfer(txId);
-              console.log(`[${sess.userId}] ✅ Driver→KT san auto-duyệt (đủ điểm ${senderPts}): ${senderId} → ${toM.uid} ${amounts[0]}đ nhóm=${dbGroupId}`);
+              console.log(`[${sess.userId}] ✅ Driver→KT san auto-duyệt (đủ điểm ${senderPts}): ${senderCanon} → ${toM.uid} ${amounts[0]}đ nhóm=${dbGroupId}`);
             } else {
-              console.log(`[${sess.userId}] 📋 Driver→KT san pending (thiếu điểm ${senderPts}/${amounts[0]}): ${senderId} → ${toM.uid} nhóm=${dbGroupId}`);
+              console.log(`[${sess.userId}] 📋 Driver→KT san pending (thiếu điểm ${senderPts}/${amounts[0]}): ${senderCanon} → ${toM.uid} nhóm=${dbGroupId}`);
               sess.onEvent(sess.userId, {
                 type: "pending_transfer", txId, groupId: dbGroupId, groupName,
-                fromUid: senderId, fromName: senderName,
+                fromUid: senderCanon, fromName: senderName,
                 toUid: String(toM.uid), toName: toM.display_name || toM.dName || "",
                 points: amounts[0], rawText: text,
               });
@@ -628,16 +675,17 @@ async function onMessage(sess, msg) {
               if (!sr.toUid) continue;
               if (sr.toName) Promise.resolve(dbm.upsertMember(dbGroupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
               const senderMember = await dbm.getMemberByZaloUid(dbGroupId, senderId);
+              const senderCanon = senderMember?.zalo_uid || senderId;
               const senderPts = Number(senderMember?.points ?? 0);
-              const txId = await dbm.createPendingTransfer(dbGroupId, senderId, sr.toUid, sr.amount, text, msgId);
+              const txId = await dbm.createPendingTransfer(dbGroupId, senderCanon, sr.toUid, sr.amount, text, msgId);
               if (senderPts >= sr.amount) {
                 await dbm.approvePendingTransfer(txId);
-                console.log(`[${sess.userId}] ✅ San auto-duyệt (đủ điểm ${senderPts}): ${senderId} → ${sr.toUid} ${sr.amount}đ nhóm=${dbGroupId}`);
+                console.log(`[${sess.userId}] ✅ San auto-duyệt (đủ điểm ${senderPts}): ${senderCanon} → ${sr.toUid} ${sr.amount}đ nhóm=${dbGroupId}`);
               } else {
-                console.log(`[${sess.userId}] 📋 San pending (thiếu điểm ${senderPts}/${sr.amount}): ${senderId} → ${sr.toUid} nhóm=${dbGroupId}`);
+                console.log(`[${sess.userId}] 📋 San pending (thiếu điểm ${senderPts}/${sr.amount}): ${senderCanon} → ${sr.toUid} nhóm=${dbGroupId}`);
                 sess.onEvent(sess.userId, {
                   type: "pending_transfer", txId, groupId: dbGroupId, groupName,
-                  fromUid: senderId, fromName: senderName,
+                  fromUid: senderCanon, fromName: senderName,
                   toUid: sr.toUid, toName: sr.toName || "", points: sr.amount, rawText: text,
                 });
               }
@@ -768,16 +816,19 @@ async function onMessage(sess, msg) {
               confirmTime: time, confirmPoster: senderName, confirmText: text,
               multiTrips: cachedClaim.allTrips || null,
             });
+            // Resolve về canonical UID (account A) phòng trường hợp account B đang xử lý
+            const posterCanon = await resolveCanonicalUid(dbGroupId, cachedClaim.tripPosterId);
+            const takerCanon  = await resolveCanonicalUid(dbGroupId, cachedClaim.takerId);
             if (cachedClaim.allTrips) {
-              await dbm.addBaremPending(dbGroupId, cachedClaim.tripPosterId, cachedClaim.takerId, pts, msgId, convo);
+              await dbm.addBaremPending(dbGroupId, posterCanon, takerCanon, pts, msgId, convo);
               console.log(`[${sess.userId}] ⏳ Barem pending [${cachedClaim.allTrips.length} cuốc]: ${pts}đ — chờ kế toán duyệt`);
             } else {
               const reason = pts === 0 ? 'Lịch free' : (confirmPts > 0 ? `Chốt ${pts}đ (thỏa thuận)` : `Barem ${cachedClaim.tripType} ${cachedClaim.tripPrice}k`);
               const txMsgId = cachedClaim.tripMsgId || msgId;
               // Truyền explicit from/to_member để tránh bug -0 >= 0 === true trong JS
               // (khi pts=0, delta âm vẫn >= 0 nên DB lưu to_member thay vì from_member cho taker)
-              await dbm.adjustPoints(dbGroupId, cachedClaim.tripPosterId, +pts, reason, 'barem', txMsgId, null, cachedClaim.tripPosterId, convo);
-              await dbm.adjustPoints(dbGroupId, cachedClaim.takerId,      -pts, reason, 'barem', txMsgId, cachedClaim.takerId, null, convo);
+              await dbm.adjustPoints(dbGroupId, posterCanon, +pts, reason, 'barem', txMsgId, null, posterCanon, convo);
+              await dbm.adjustPoints(dbGroupId, takerCanon,  -pts, reason, 'barem', txMsgId, takerCanon, null, convo);
               // Lưu mapping msg → trip_msg_id để Section E tìm được sau khi restart
               // confirmCliMsgId đảm bảo cover cả trường hợp msg.data.msgId ≠ msg.data.cliMsgId
               for (const mid of [msgId, confirmCliMsgId, qCliId2, qGlobId2, cachedClaim.tripMsgId].filter(Boolean))
@@ -963,8 +1014,10 @@ async function onMessage(sess, msg) {
                 if (tx.type === 'barem') await dbm.updateTransaction(tx.id, { raw_text: adjConvo });
               }
               // Tạo adj txs với full snapshot (context đầy đủ cho ConvoThread)
-              await dbm.adjustPoints(dbGroupId, posterUid,  diff, reason, 'barem_adjust', origTripMsgId, null, null, adjConvo);
-              await dbm.adjustPoints(dbGroupId, takerUid,  -diff, reason, 'barem_adjust', origTripMsgId, null, null, adjConvo);
+              const posterC = await resolveCanonicalUid(dbGroupId, posterUid);
+              const takerC  = await resolveCanonicalUid(dbGroupId, takerUid);
+              await dbm.adjustPoints(dbGroupId, posterC,  diff, reason, 'barem_adjust', origTripMsgId, null, null, adjConvo);
+              await dbm.adjustPoints(dbGroupId, takerC,  -diff, reason, 'barem_adjust', origTripMsgId, null, null, adjConvo);
               console.log(`[${sess.userId}] 📝 Barem adjust: ${currentPts}→${action.points}đ diff=${diff} | poster=${posterUid} taker=${takerUid}`);
             }
           })()).catch(e => console.error(`[${sess.userId}] barem action (E):`, e?.message || e));
