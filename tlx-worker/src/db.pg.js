@@ -187,6 +187,34 @@ export async function ensureSeed() {
   await q("ALTER TABLE members ADD COLUMN IF NOT EXISTS global_id TEXT");
   await q(`CREATE UNIQUE INDEX IF NOT EXISTS idx_members_global_id
            ON members(group_id, global_id) WHERE global_id IS NOT NULL`).catch(() => {});
+
+  // Migration v2: old-format group_ids (thuần số) → ${accountantId}_${zaloId}
+  const _oldRows = await q(
+    "SELECT DISTINCT group_id FROM accountant_groups WHERE group_id NOT LIKE '%-%' AND group_id NOT LIKE '%\\_%' ESCAPE '\\'"
+  );
+  const _oldIds = _oldRows.rows.map(r => r.group_id);
+  if (_oldIds.length > 0) {
+    console.log(`[Migration v2] Đổi ${_oldIds.length} group_id sang instance format...`);
+    for (const oldId of _oldIds) {
+      const acctRows = await q("SELECT * FROM accountant_groups WHERE group_id=$1 ORDER BY accountant_id ASC", [oldId]);
+      const accts = acctRows.rows;
+      if (!accts.length) continue;
+      const first = accts[0];
+      const firstNew = `${first.accountant_id}_${oldId}`;
+      await q("UPDATE accountant_groups SET group_id=$1, zalo_group_id=$2 WHERE accountant_id=$3 AND group_id=$4",
+        [firstNew, first.zalo_group_id || oldId, first.accountant_id, oldId]);
+      for (const tbl of ['members','point_transactions','point_rules','barem_trip_log','barem_claim_log','barem_msg_refs','pending_transfers','raw_messages','uid_cross_map']) {
+        await q(`UPDATE ${tbl} SET group_id=$1 WHERE group_id=$2`, [firstNew, oldId]).catch(() => {});
+      }
+      for (let i = 1; i < accts.length; i++) {
+        const a = accts[i];
+        const newId = `${a.accountant_id}_${oldId}`;
+        await q("UPDATE accountant_groups SET group_id=$1, zalo_group_id=$2 WHERE accountant_id=$3 AND group_id=$4",
+          [newId, a.zalo_group_id || oldId, a.accountant_id, oldId]);
+      }
+    }
+    console.log(`[Migration v2] Xong.`);
+  }
 }
 
 // ---------- Auth ----------
@@ -401,7 +429,23 @@ export async function setSetting(key, value) {
 
 // ---------- Kế toán: nhóm phụ trách ----------
 export async function listPublicGroups() {
-  const r = await q("SELECT group_id, MAX(group_name) as group_name FROM accountant_groups WHERE public_visible=1 GROUP BY group_id ORDER BY MAX(group_name) ASC");
+  const r = await q(`
+    SELECT ag.group_id, ag.group_name, ag.accountant_id, ag.zalo_group_id, u.name AS accountant_name
+    FROM accountant_groups ag
+    JOIN users u ON u.id = ag.accountant_id
+    WHERE ag.public_visible=1
+    ORDER BY ag.group_name ASC
+  `);
+  return r.rows;
+}
+export async function getAccountantGroupsForAdmin() {
+  const r = await q(`
+    SELECT ag.*, u.name AS accountant_name,
+      (SELECT COUNT(*) FROM members m WHERE m.group_id=ag.group_id AND (m.is_out IS NULL OR m.is_out=0)) AS member_count
+    FROM accountant_groups ag
+    JOIN users u ON u.id = ag.accountant_id
+    ORDER BY ag.group_name ASC, u.name ASC
+  `);
   return r.rows;
 }
 export async function getAccountantGroups(accountantId) {
@@ -430,14 +474,8 @@ export async function getGroupZaloOwner(groupId, excludeAccountantId) {
   `, [groupId, excludeAccountantId]);
   return r.rows[0] || null;
 }
-export async function setGroupPublicVisible(accountantId, groupId, visible) {
-  await q("UPDATE accountant_groups SET public_visible=$1 WHERE accountant_id=$2 AND group_id=$3",
-    [visible ? 1 : 0, accountantId, groupId]);
-}
-export async function findGroupByName(name) {
-  if (!name) return null;
-  const r = await q("SELECT group_id FROM accountant_groups WHERE LOWER(TRIM(group_name))=LOWER(TRIM($1)) LIMIT 1", [name]);
-  return r.rows[0] || null;
+export async function setGroupPublicVisible(groupId, visible) {
+  await q("UPDATE accountant_groups SET public_visible=$1 WHERE group_id=$2", [visible ? 1 : 0, groupId]);
 }
 export async function addAccountantGroup(accountantId, groupId, groupName, zaloGroupId = null) {
   await q("INSERT INTO accountant_groups(accountant_id,group_id,group_name,zalo_group_id) VALUES($1,$2,$3,$4) ON CONFLICT(accountant_id,group_id) DO UPDATE SET group_name=$3, zalo_group_id=$4",
@@ -445,6 +483,67 @@ export async function addAccountantGroup(accountantId, groupId, groupName, zaloG
 }
 export async function removeAccountantGroup(accountantId, groupId) {
   await q("DELETE FROM accountant_groups WHERE accountant_id=$1 AND group_id=$2", [accountantId, groupId]);
+}
+
+// --- Merge group instances ---
+function _extractAvatarHash(url) {
+  const m = url?.match(/\/([0-9a-f]{32})\.jpg/i);
+  return m ? m[1] : null;
+}
+export async function mergeGroupInstancesPreview(sourceId, targetId) {
+  const [srcR, tgtR] = await Promise.all([
+    q("SELECT * FROM members WHERE group_id=$1 AND (is_out IS NULL OR is_out=0)", [sourceId]),
+    q("SELECT * FROM members WHERE group_id=$1 AND (is_out IS NULL OR is_out=0)", [targetId]),
+  ]);
+  const srcMembers = srcR.rows;
+  const tgtMembers = tgtR.rows;
+  const tgtByHash = new Map();
+  const tgtByName = new Map();
+  for (const m of tgtMembers) {
+    const h = _extractAvatarHash(m.avatar);
+    if (h) tgtByHash.set(h, m);
+    const n = (m.display_name || '').trim().toLowerCase();
+    if (n) tgtByName.set(n, m);
+  }
+  const matched = [], unmatched = [];
+  for (const src of srcMembers) {
+    const hash = _extractAvatarHash(src.avatar);
+    let tgt = hash ? tgtByHash.get(hash) : null;
+    let matchType = tgt ? 'hash' : null;
+    if (!tgt) {
+      const n = (src.display_name || '').trim().toLowerCase();
+      tgt = n ? tgtByName.get(n) : null;
+      if (tgt) matchType = 'name';
+    }
+    if (tgt) {
+      matched.push({ src: { uid: src.zalo_uid, name: src.display_name, points: src.points, avatar: src.avatar }, tgt: { uid: tgt.zalo_uid, name: tgt.display_name, points: tgt.points }, matchType });
+    } else {
+      unmatched.push({ uid: src.zalo_uid, name: src.display_name, points: src.points });
+    }
+  }
+  return { matched, unmatched, targetMemberCount: tgtMembers.length };
+}
+export async function mergeGroupInstancesExecute(sourceId, targetId) {
+  const { matched } = await mergeGroupInstancesPreview(sourceId, targetId);
+  const nowMs = now();
+  for (const pair of matched) {
+    if (!pair.src.points) continue;
+    await q("UPDATE members SET points=ROUND((points+$1)::numeric,10), updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
+      [pair.src.points, nowMs, targetId, pair.tgt.uid]);
+    const txR = await q("SELECT * FROM point_transactions WHERE group_id=$1 AND (from_member=$2 OR to_member=$2) ORDER BY created_at ASC",
+      [sourceId, pair.src.uid]);
+    for (const tx of txR.rows) {
+      await q(`INSERT INTO point_transactions(id,group_id,trip_msg_id,from_member,to_member,points,reason,type,status,raw_text,created_at)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING`,
+        [uid(), targetId, tx.trip_msg_id,
+          tx.from_member === pair.src.uid ? pair.tgt.uid : tx.from_member,
+          tx.to_member   === pair.src.uid ? pair.tgt.uid : tx.to_member,
+          tx.points, `[Merged] ${tx.reason || ''}`.trim(), tx.type, tx.status || 'approved', tx.raw_text, tx.created_at]);
+    }
+  }
+  await q("UPDATE accountant_groups SET public_visible=0 WHERE group_id=$1", [sourceId]);
+  await q("UPDATE accountant_groups SET public_visible=1 WHERE group_id=$1", [targetId]);
+  return { merged: matched.length };
 }
 
 // ---------- Kế toán: thành viên ----------
@@ -476,29 +575,8 @@ export async function listMembersWithYesterday(groupId) {
   return r.rows;
 }
 export async function getMemberByZaloUid(groupId, zaloUid) {
-  // 1. Tìm trực tiếp qua zalo_uid hoặc global_id
   const r = await q("SELECT * FROM members WHERE group_id=$1 AND (zalo_uid=$2 OR global_id=$2) LIMIT 1", [groupId, zaloUid]);
-  if (r.rows[0]) return r.rows[0];
-  // 2. Fallback: uid_cross_map — uid của account phụ → uid canonical của account chính
-  const m = await q(`
-    SELECT mem.* FROM members mem
-    JOIN uid_cross_map ucm ON ucm.group_id=mem.group_id AND ucm.uid_primary=mem.zalo_uid
-    WHERE ucm.group_id=$1 AND ucm.uid_alt=$2 LIMIT 1
-  `, [groupId, zaloUid]);
-  return m.rows[0] || null;
-}
-export async function getMemberByAvatarHash(groupId, hash) {
-  if (!hash) return null;
-  const r = await q("SELECT * FROM members WHERE group_id=$1 AND avatar LIKE $2 LIMIT 1", [groupId, `%${hash}%`]);
   return r.rows[0] || null;
-}
-export async function insertUidMapping(groupId, uidPrimary, uidAlt) {
-  if (!groupId || !uidPrimary || !uidAlt || uidPrimary === uidAlt) return;
-  await q(`
-    INSERT INTO uid_cross_map(group_id, uid_primary, uid_alt, created_at)
-    VALUES($1,$2,$3,$4)
-    ON CONFLICT(group_id,uid_alt) DO UPDATE SET uid_primary=EXCLUDED.uid_primary, created_at=EXCLUDED.created_at
-  `, [groupId, uidPrimary, uidAlt, now()]);
 }
 export async function upsertMember(groupId, zaloUid, { phone, display_name, avatar, global_id } = {}) {
   const now_ = now();

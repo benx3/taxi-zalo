@@ -3,7 +3,7 @@ import {
   Shield, CreditCard, Ban, RefreshCw, X, User, TrendingUp,
   Users, CheckCircle2, Lock, AlertTriangle, LogOut, Settings,
   Search, Phone, Mic, Eye, EyeOff, GitMerge, UserPlus, Activity, Bot,
-  Database, Trash2, Menu
+  Database, Trash2, Menu, Award
 } from "lucide-react";
 import { api, getToken, setToken } from "./api.js";
 
@@ -442,6 +442,8 @@ function AdminApp({ me, onLogout }) {
   const TABS=[
     {key:"users",icon:Users,label:"Tài khoản"},
     {key:"groups",icon:GitMerge,label:"Cài đặt nhóm"},
+    {key:"accountant-groups",icon:CreditCard,label:"Nhóm KT"},
+    {key:"group-points",icon:Award,label:"Điểm nhóm"},
     {key:"health",icon:Activity,label:"Sức khỏe"},
     {key:"stats",icon:TrendingUp,label:"Thống kê"},
     {key:"settings",icon:Settings,label:"Cài đặt"},
@@ -497,6 +499,8 @@ function AdminApp({ me, onLogout }) {
         </header>
         <div style={{flex:1,overflowY:"auto"}}>
           {adminTab==="groups"&&<div style={{padding:"20px 24px"}}><AdminGroupsTab/></div>}
+          {adminTab==="accountant-groups"&&<div style={{padding:"20px 24px"}}><AccountantGroupsTab/></div>}
+          {adminTab==="group-points"&&<div style={{padding:"20px 24px"}}><AdminGroupPointsTab/></div>}
           {adminTab==="health"&&<div style={{padding:"20px 24px"}}><SessionHealthTab/></div>}
           {adminTab==="stats"&&<div style={{padding:"20px 24px"}}><AdminStatsTab/></div>}
           {adminTab==="settings"&&<div style={{padding:"20px 24px",maxWidth:560}}><AdminSettingsTab/></div>}
@@ -727,6 +731,487 @@ function GroupAccessModal({ group, onClose }) {
         </div>
         <button onClick={onClose} style={{ marginTop: 16, padding: "9px 0", borderRadius: 10, border: "1px solid var(--line)", background: "none", color: "var(--ink-dim)", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Đóng</button>
       </div>
+    </div>
+  );
+}
+
+/* ===== Admin: Xem & chỉnh điểm bất kỳ nhóm ===== */
+function AdminGroupPointsTab() {
+  const [instances, setInstances] = useState(null);
+  const [selectedId, setSelectedId] = useState("");
+  const [subTab, setSubTab] = useState("members");
+  const [members, setMembers] = useState(null);
+  const [txs, setTxs] = useState(null);
+  const [pending, setPending] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [adjustTarget, setAdjustTarget] = useState(null);
+  const [adjustDelta, setAdjustDelta] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
+  const [adjusting, setAdjusting] = useState(false);
+  const [deletingTx, setDeletingTx] = useState(null);
+
+  const flash = (ok, text) => { setMsg({ ok, text }); setTimeout(() => setMsg(null), 3500); };
+  const fmtPts = (n) => Number(n || 0).toLocaleString("vi-VN", { maximumFractionDigits: 2 });
+  const fmtDate = (ms) => {
+    if (!ms) return "—";
+    return new Date(Number(ms)).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour12: false, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  };
+
+  useEffect(() => {
+    api.listAccountantGroups().then(g => {
+      setInstances(g);
+      if (g.length === 1) setSelectedId(g[0].group_id);
+    }).catch(() => setInstances([]));
+  }, []);
+
+  const selected = instances?.find(g => g.group_id === selectedId);
+
+  const loadMembers  = () => { setMembers(null);  api.adminGetMembers(selectedId).then(setMembers).catch(() => setMembers([])); };
+  const loadTxs      = () => { setTxs(null);      api.adminGetTransactions(selectedId).then(setTxs).catch(() => setTxs([])); };
+  const loadPending  = () => { setPending(null);   api.adminGetPendingTransfers(selectedId).then(setPending).catch(() => setPending([])); };
+
+  useEffect(() => {
+    if (!selectedId) { setMembers(null); setTxs(null); setPending(null); return; }
+    if (subTab === "members")      loadMembers();
+    else if (subTab === "transactions") loadTxs();
+    else if (subTab === "pending") loadPending();
+  }, [selectedId, subTab]);
+
+  const doAdjust = async () => {
+    const delta = parseFloat(adjustDelta);
+    if (!delta || isNaN(delta) || !adjustTarget) return;
+    setAdjusting(true);
+    try {
+      await api.adminAdjustPoints({ groupId: selectedId, zaloUid: adjustTarget.uid, delta, reason: adjustReason.trim() || "Admin chỉnh tay" });
+      flash(true, `Đã chỉnh ${delta > 0 ? "+" : ""}${delta}đ cho ${adjustTarget.name}`);
+      setAdjustTarget(null); setAdjustDelta(""); setAdjustReason("");
+      loadMembers();
+    } catch (e) { flash(false, e.message); }
+    finally { setAdjusting(false); }
+  };
+
+  const doDeleteTx = async (id) => {
+    if (!confirm("Xóa giao dịch này? Không thể hoàn tác.")) return;
+    setDeletingTx(id);
+    try { await api.adminDeleteTransaction(id); flash(true, "Đã xóa giao dịch"); loadTxs(); }
+    catch (e) { flash(false, e.message); }
+    finally { setDeletingTx(null); }
+  };
+
+  const doApproveTransfer = async (id) => {
+    try { await api.adminApproveTransfer(id); flash(true, "Đã duyệt san điểm"); loadPending(); }
+    catch (e) { flash(false, e.message); }
+  };
+  const doRejectTransfer = async (id) => {
+    try { await api.adminRejectTransfer(id); flash(true, "Đã từ chối san điểm"); loadPending(); }
+    catch (e) { flash(false, e.message); }
+  };
+
+  const cardStyle = { background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden" };
+  const SUB_TABS = [
+    { key: "members",      label: "Thành viên & Điểm" },
+    { key: "transactions", label: "Giao dịch" },
+    { key: "pending",      label: "San điểm chờ duyệt" },
+  ];
+
+  return (
+    <div style={{ maxWidth: 980 }}>
+      {/* Group selector */}
+      <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: "14px 18px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <Award size={17} color="var(--accent)" />
+        <span style={{ fontWeight: 700, fontSize: 15, flexShrink: 0 }}>Chọn nhóm</span>
+        <select value={selectedId} onChange={e => { setSelectedId(e.target.value); setAdjustTarget(null); }}
+          style={{ flex: 1, minWidth: 240, padding: "8px 12px", borderRadius: 10, border: "1px solid var(--line)", background: "var(--bg)", color: "var(--ink)", fontSize: 13, outline: "none" }}>
+          <option value="">— Chọn nhóm kế toán —</option>
+          {(instances || []).map(g => (
+            <option key={g.group_id} value={g.group_id}>{g.group_name} ({g.accountant_name})</option>
+          ))}
+        </select>
+        {selected && (
+          <span style={{ fontSize: 12, color: "var(--ink-dim)", flexShrink: 0 }}>
+            {selected.member_count} TV ·{" "}
+            <span style={{ color: selected.public_visible ? "#34d399" : "var(--ink-dim)" }}>
+              {selected.public_visible ? "Công khai" : "Ẩn"}
+            </span>
+          </span>
+        )}
+      </div>
+
+      {selectedId && (
+        <>
+          {/* Sub-tabs */}
+          <div style={{ display: "flex", gap: 2, marginBottom: 14, borderBottom: "1px solid var(--line)" }}>
+            {SUB_TABS.map(t => (
+              <button key={t.key} onClick={() => setSubTab(t.key)} style={{
+                padding: "9px 18px", border: "none", cursor: "pointer", fontWeight: subTab === t.key ? 700 : 400, fontSize: 13, background: "transparent",
+                color: subTab === t.key ? "var(--accent)" : "var(--ink-dim)",
+                borderBottom: subTab === t.key ? "2px solid var(--accent)" : "2px solid transparent",
+                marginBottom: -1,
+              }}>{t.label}</button>
+            ))}
+          </div>
+
+          {/* MEMBERS */}
+          {subTab === "members" && (
+            <>
+              {adjustTarget && (
+                <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 12, padding: "14px 18px", marginBottom: 14 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                    <Award size={15} color="var(--accent)" />
+                    <span style={{ fontWeight: 700, fontSize: 14 }}>Chỉnh điểm: {adjustTarget.name}</span>
+                    <span style={{ fontSize: 12, color: "var(--ink-dim)", marginLeft: 4 }}>hiện tại <b style={{ color: "var(--ink)" }}>{fmtPts(adjustTarget.points)}đ</b></span>
+                    <button onClick={() => { setAdjustTarget(null); setAdjustDelta(""); setAdjustReason(""); }}
+                      style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)" }}><X size={15} /></button>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <input type="number" step="0.5" value={adjustDelta} onChange={e => setAdjustDelta(e.target.value)}
+                      placeholder="+1 hoặc -2.5" autoFocus
+                      style={{ flex: "0 0 130px", padding: "8px 12px", borderRadius: 10, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", fontSize: 13, outline: "none" }}
+                      onKeyDown={e => e.key === "Enter" && doAdjust()} />
+                    <input type="text" value={adjustReason} onChange={e => setAdjustReason(e.target.value)}
+                      placeholder="Lý do (tùy chọn)"
+                      style={{ flex: 1, minWidth: 160, padding: "8px 12px", borderRadius: 10, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", fontSize: 13, outline: "none" }}
+                      onKeyDown={e => e.key === "Enter" && doAdjust()} />
+                    <button onClick={doAdjust} disabled={adjusting || !adjustDelta}
+                      style={{ padding: "8px 20px", borderRadius: 10, border: "none", cursor: adjusting || !adjustDelta ? "default" : "pointer", fontWeight: 700, fontSize: 13, background: "rgba(52,211,153,.2)", color: "#34d399", opacity: adjusting || !adjustDelta ? 0.5 : 1 }}>
+                      {adjusting ? "Đang lưu…" : "Lưu"}
+                    </button>
+                  </div>
+                  {adjustDelta && !isNaN(parseFloat(adjustDelta)) && (
+                    <div style={{ fontSize: 12, color: "var(--ink-dim)", marginTop: 8 }}>
+                      Kết quả: <b style={{ color: "var(--ink)" }}>{fmtPts(adjustTarget.points)}đ</b>
+                      {" → "}
+                      <b style={{ color: parseFloat(adjustDelta) > 0 ? "#34d399" : "#f87171" }}>{fmtPts(Number(adjustTarget.points) + parseFloat(adjustDelta))}đ</b>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div style={cardStyle}>
+                <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 8 }}>
+                  <Users size={14} color="var(--accent)" />
+                  <span style={{ fontWeight: 700, fontSize: 14 }}>Thành viên</span>
+                  <button onClick={loadMembers} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)" }}><RefreshCw size={13} /></button>
+                </div>
+                {!members
+                  ? <div style={{ padding: 24, textAlign: "center", color: "var(--ink-dim)" }}>Đang tải…</div>
+                  : <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                        <thead><tr style={{ color: "var(--ink-dim)", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", textAlign: "left" }}>
+                          <th style={th}>#</th>
+                          <th style={th}>Tên</th>
+                          <th style={th}>UID</th>
+                          <th style={{ ...th, textAlign: "right" }}>Điểm</th>
+                          <th style={{ ...th, textAlign: "right" }}>Hôm qua</th>
+                          <th style={{ ...th, textAlign: "right" }}>Chỉnh điểm</th>
+                        </tr></thead>
+                        <tbody>
+                          {members.length === 0 && <tr><td colSpan={6} style={{ ...td, textAlign: "center", color: "var(--ink-dim)" }}>Chưa có thành viên</td></tr>}
+                          {members.map((m, i) => (
+                            <tr key={m.zalo_uid} style={{ borderTop: "1px solid var(--line)", background: adjustTarget?.uid === m.zalo_uid ? "rgba(52,211,153,.05)" : "transparent" }}>
+                              <td style={{ ...td, color: "var(--ink-dim)", fontSize: 11 }}>{i + 1}</td>
+                              <td style={{ ...td, fontWeight: 600 }}>{m.alias || m.display_name || <span style={{ color: "var(--ink-dim)", fontStyle: "italic", fontWeight: 400 }}>Chưa có tên</span>}</td>
+                              <td style={{ ...td, fontFamily: "monospace", fontSize: 10, color: "var(--ink-dim)" }}>{m.zalo_uid}</td>
+                              <td style={{ ...td, textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: Number(m.points) > 0 ? "#34d399" : Number(m.points) < 0 ? "#f87171" : "var(--ink-dim)" }}>
+                                {fmtPts(m.points)}
+                              </td>
+                              <td style={{ ...td, textAlign: "right", color: "var(--ink-dim)", fontVariantNumeric: "tabular-nums" }}>
+                                {m.yesterday_points != null ? fmtPts(m.yesterday_points) : "—"}
+                              </td>
+                              <td style={{ ...td, textAlign: "right" }}>
+                                <button
+                                  onClick={() => { setAdjustTarget({ uid: m.zalo_uid, name: m.alias || m.display_name || m.zalo_uid, points: m.points }); setAdjustDelta(""); setAdjustReason(""); }}
+                                  style={{ ...miniBtn("#60a5fa"), fontSize: 11, display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                  <Award size={10} /> Chỉnh
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                }
+              </div>
+            </>
+          )}
+
+          {/* TRANSACTIONS */}
+          {subTab === "transactions" && (
+            <div style={cardStyle}>
+              <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 8 }}>
+                <TrendingUp size={14} color="var(--accent)" />
+                <span style={{ fontWeight: 700, fontSize: 14 }}>Giao dịch gần nhất (150)</span>
+                <button onClick={loadTxs} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)" }}><RefreshCw size={13} /></button>
+              </div>
+              {!txs
+                ? <div style={{ padding: 24, textAlign: "center", color: "var(--ink-dim)" }}>Đang tải…</div>
+                : <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      <thead><tr style={{ color: "var(--ink-dim)", fontSize: 11, textTransform: "uppercase", textAlign: "left" }}>
+                        <th style={th}>Thời gian</th>
+                        <th style={th}>Loại</th>
+                        <th style={th}>To / From</th>
+                        <th style={{ ...th, textAlign: "right" }}>Điểm</th>
+                        <th style={th}>Lý do</th>
+                        <th style={{ ...th, textAlign: "right" }}>Xóa</th>
+                      </tr></thead>
+                      <tbody>
+                        {txs.length === 0 && <tr><td colSpan={6} style={{ ...td, textAlign: "center", color: "var(--ink-dim)" }}>Chưa có giao dịch</td></tr>}
+                        {txs.map(tx => (
+                          <tr key={tx.id} style={{ borderTop: "1px solid var(--line)", opacity: deletingTx === tx.id ? 0.4 : 1 }}>
+                            <td style={{ ...td, color: "var(--ink-dim)", whiteSpace: "nowrap", fontSize: 11 }}>{fmtDate(tx.created_at)}</td>
+                            <td style={{ ...td }}>
+                              <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 6, background: tx.type === "barem" ? "rgba(167,139,250,.15)" : tx.type === "manual" ? "rgba(96,165,250,.15)" : "rgba(100,116,139,.12)", color: tx.type === "barem" ? "#a78bfa" : tx.type === "manual" ? "#60a5fa" : "var(--ink-dim)" }}>
+                                {tx.type}
+                              </span>
+                            </td>
+                            <td style={{ ...td, fontFamily: "monospace", fontSize: 10, color: "var(--ink-dim)" }}>
+                              {tx.to_member ? `→${tx.to_member.slice(-6)}` : tx.from_member ? `←${tx.from_member.slice(-6)}` : "—"}
+                            </td>
+                            <td style={{ ...td, textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: Number(tx.points) >= 0 ? "#34d399" : "#f87171" }}>
+                              {Number(tx.points) > 0 ? "+" : ""}{fmtPts(tx.points)}
+                            </td>
+                            <td style={{ ...td, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ink-dim)" }} title={tx.reason}>{tx.reason || "—"}</td>
+                            <td style={{ ...td, textAlign: "right" }}>
+                              <button onClick={() => doDeleteTx(tx.id)} disabled={deletingTx === tx.id}
+                                style={{ ...miniBtn("#f87171"), fontSize: 11, display: "inline-flex", alignItems: "center", gap: 3, opacity: deletingTx === tx.id ? 0.5 : 1 }}>
+                                <Trash2 size={10} /> Xóa
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+              }
+            </div>
+          )}
+
+          {/* PENDING */}
+          {subTab === "pending" && (
+            <div style={cardStyle}>
+              <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 8 }}>
+                <AlertTriangle size={14} color="#f59e0b" />
+                <span style={{ fontWeight: 700, fontSize: 14 }}>San điểm chờ duyệt</span>
+                <button onClick={loadPending} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)" }}><RefreshCw size={13} /></button>
+              </div>
+              {!pending
+                ? <div style={{ padding: 24, textAlign: "center", color: "var(--ink-dim)" }}>Đang tải…</div>
+                : pending.length === 0
+                  ? <div style={{ padding: 24, textAlign: "center", color: "var(--ink-dim)" }}>Không có san điểm chờ duyệt</div>
+                  : <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                        <thead><tr style={{ color: "var(--ink-dim)", fontSize: 11, textTransform: "uppercase", textAlign: "left" }}>
+                          <th style={th}>Từ</th>
+                          <th style={th}>Đến</th>
+                          <th style={{ ...th, textAlign: "right" }}>Điểm</th>
+                          <th style={th}>Lý do</th>
+                          <th style={{ ...th, textAlign: "right" }}>Thao tác</th>
+                        </tr></thead>
+                        <tbody>
+                          {pending.map(p => (
+                            <tr key={p.id} style={{ borderTop: "1px solid var(--line)" }}>
+                              <td style={{ ...td, fontWeight: 600 }}>{p.from_name || <span style={{ fontFamily: "monospace", fontSize: 11 }}>{p.from_member}</span>}</td>
+                              <td style={{ ...td, fontWeight: 600 }}>{p.to_name || <span style={{ fontFamily: "monospace", fontSize: 11 }}>{p.to_member}</span>}</td>
+                              <td style={{ ...td, textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "#f59e0b" }}>{fmtPts(p.points)}</td>
+                              <td style={{ ...td, color: "var(--ink-dim)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.raw_text}>{p.raw_text || "—"}</td>
+                              <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
+                                <button onClick={() => doApproveTransfer(p.id)} style={{ ...miniBtn("#34d399"), marginRight: 4, fontSize: 11 }}>Duyệt</button>
+                                <button onClick={() => doRejectTransfer(p.id)} style={{ ...miniBtn("#f87171"), fontSize: 11 }}>Từ chối</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+              }
+            </div>
+          )}
+        </>
+      )}
+
+      {msg && <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: msg.ok ? "rgba(52,211,153,.12)" : "rgba(239,68,68,.12)", color: msg.ok ? "#34d399" : "#f87171", border: "1px solid " + (msg.ok ? "#34d39944" : "#f8717144") }}>{msg.text}</div>}
+    </div>
+  );
+}
+
+/* ===== Admin: Nhóm Kế Toán (per-instance) ===== */
+function AccountantGroupsTab() {
+  const [groups, setGroups] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [toggling, setToggling] = useState(null);
+  const [mergeSource, setMergeSource] = useState(null);
+  const [mergeTarget, setMergeTarget] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [executing, setExecuting] = useState(false);
+
+  const load = () => api.listAccountantGroups().then(setGroups).catch(() => setGroups([]));
+  useEffect(() => { load(); }, []);
+
+  const flash = (ok, text) => { setMsg({ ok, text }); setTimeout(() => setMsg(null), 4000); };
+
+  const togglePublic = async (g) => {
+    setToggling(g.group_id);
+    try {
+      const next = !(g.public_visible === 1 || g.public_visible === true);
+      await api.setInstancePublicVisible(g.group_id, next);
+      setGroups(prev => prev.map(x => x.group_id === g.group_id ? { ...x, public_visible: next ? 1 : 0 } : x));
+      flash(true, `Nhóm "${g.group_name}" ${next ? "đã hiện" : "đã ẩn"} trên trang công khai.`);
+    } catch (e) { flash(false, e.message); }
+    finally { setToggling(null); }
+  };
+
+  const doPreview = async () => {
+    if (!mergeSource || !mergeTarget) return;
+    setPreviewing(true); setPreview(null);
+    try {
+      setPreview(await api.mergeInstancesPreview(mergeSource.group_id, mergeTarget.group_id));
+    } catch (e) { flash(false, e.message); }
+    finally { setPreviewing(false); }
+  };
+
+  const doExecute = async () => {
+    if (!mergeSource || !mergeTarget || !preview) return;
+    if (!confirm(`Merge điểm từ "${mergeSource.accountant_name} / ${mergeSource.group_name}" sang "${mergeTarget.accountant_name} / ${mergeTarget.group_name}"?\n\nHành động KHÔNG THỂ HOÀN TÁC.`)) return;
+    setExecuting(true);
+    try {
+      await api.mergeInstancesExecute(mergeSource.group_id, mergeTarget.group_id);
+      flash(true, "Merge thành công! Nhóm nguồn đã ẩn, nhóm đích đã hiện.");
+      setMergeSource(null); setMergeTarget(null); setPreview(null);
+      load();
+    } catch (e) { flash(false, e.message); }
+    finally { setExecuting(false); }
+  };
+
+  const cardStyle = { background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden", marginBottom: 20 };
+
+  return (
+    <div style={{ maxWidth: 980 }}>
+      <div style={{ background: "rgba(96,165,250,.08)", border: "1px solid rgba(96,165,250,.2)", borderRadius: 12, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "var(--ink-dim)", lineHeight: 1.6 }}>
+        <b style={{ color: "#60a5fa" }}>Nhóm Kế Toán:</b> Mỗi dòng là một cặp (kế toán × nhóm Zalo) — hoàn toàn độc lập. Bật <b>Công khai</b> để hiện điểm nhóm đó ra trang public. Khi một kế toán tạm offline, dùng <b>Merge</b> để chuyển điểm sang instance của kế toán khác (dùng avatar hash + tên để khớp thành viên).
+      </div>
+
+      <div style={cardStyle}>
+        <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+          <CreditCard size={16} color="var(--accent)" />
+          <span style={{ fontWeight: 700, fontSize: 15 }}>Tất cả instance kế toán</span>
+          <button onClick={load} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)" }}><RefreshCw size={14} /></button>
+        </div>
+        {!groups
+          ? <div style={{ padding: 24, textAlign: "center", color: "var(--ink-dim)" }}>Đang tải…</div>
+          : <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead><tr style={{ color: "var(--ink-dim)", fontSize: 11.5, textTransform: "uppercase", letterSpacing: ".05em", textAlign: "left" }}>
+                  <th style={th}>#</th>
+                  <th style={th}>Kế toán</th>
+                  <th style={th}>Tên nhóm</th>
+                  <th style={th}>Instance ID</th>
+                  <th style={th}>TV</th>
+                  <th style={{ ...th, textAlign: "center" }}>Công khai</th>
+                  <th style={{ ...th, textAlign: "right" }}>Merge</th>
+                </tr></thead>
+                <tbody>
+                  {groups.length === 0 && <tr><td colSpan={7} style={{ ...td, textAlign: "center", color: "var(--ink-dim)" }}>Chưa có instance nào.</td></tr>}
+                  {groups.map((g, i) => {
+                    const isSrc = mergeSource?.group_id === g.group_id;
+                    const isTgt = mergeTarget?.group_id === g.group_id;
+                    const isToggling2 = toggling === g.group_id;
+                    const isPublic = g.public_visible === 1 || g.public_visible === true;
+                    return (
+                      <tr key={g.group_id} style={{ borderTop: "1px solid var(--line)", background: isSrc ? "rgba(239,68,68,.06)" : isTgt ? "rgba(52,211,153,.06)" : "transparent" }}>
+                        <td style={{ ...td, color: "var(--ink-dim)", fontSize: 12 }}>{i + 1}</td>
+                        <td style={{ ...td, fontWeight: 600 }}>{g.accountant_name || g.accountant_id}</td>
+                        <td style={td}>{g.group_name || g.zalo_group_id}</td>
+                        <td style={{ ...td, fontFamily: "monospace", fontSize: 11, color: "var(--ink-dim)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.group_id}</td>
+                        <td style={{ ...td, color: "var(--ink-dim)" }}>{g.member_count ?? "—"}</td>
+                        <td style={{ ...td, textAlign: "center" }}>
+                          <button onClick={() => !isToggling2 && togglePublic(g)} disabled={isToggling2}
+                            style={{ padding: "4px 12px", borderRadius: 99, cursor: isToggling2 ? "default" : "pointer", fontWeight: 700, fontSize: 12,
+                              background: isPublic ? "rgba(52,211,153,.15)" : "rgba(100,116,139,.12)",
+                              color: isPublic ? "#34d399" : "var(--ink-dim)",
+                              border: "1px solid " + (isPublic ? "#34d39955" : "var(--line)") }}>
+                            {isToggling2 ? "…" : isPublic ? "Hiện" : "Ẩn"}
+                          </button>
+                        </td>
+                        <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
+                          <button onClick={() => { setMergeSource(isSrc ? null : g); setPreview(null); }} style={{ ...miniBtn(isSrc ? "#ef4444" : "#94a3b8"), marginRight: 4 }}>
+                            {isSrc ? "✓ Nguồn" : "Nguồn"}
+                          </button>
+                          <button onClick={() => { setMergeTarget(isTgt ? null : g); setPreview(null); }} style={miniBtn(isTgt ? "#34d399" : "#94a3b8")}>
+                            {isTgt ? "✓ Đích" : "Đích"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+        }
+      </div>
+
+      {(mergeSource || mergeTarget) && (
+        <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: "16px 20px", marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Merge instance</div>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+            <div style={{ flex: 1, minWidth: 180, padding: "10px 14px", borderRadius: 10, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)" }}>
+              <div style={{ fontSize: 11, color: "#f87171", fontWeight: 700, marginBottom: 4 }}>NGUỒN (điểm chuyển đi, ẩn sau merge)</div>
+              {mergeSource ? <><div style={{ fontWeight: 700 }}>{mergeSource.accountant_name}</div><div style={{ fontSize: 12, color: "var(--ink-dim)" }}>{mergeSource.group_name}</div></> : <div style={{ color: "var(--ink-dim)", fontSize: 13 }}>Chưa chọn</div>}
+            </div>
+            <div style={{ paddingTop: 14 }}><GitMerge size={20} color="var(--ink-dim)" /></div>
+            <div style={{ flex: 1, minWidth: 180, padding: "10px 14px", borderRadius: 10, background: "rgba(52,211,153,.08)", border: "1px solid rgba(52,211,153,.2)" }}>
+              <div style={{ fontSize: 11, color: "#34d399", fontWeight: 700, marginBottom: 4 }}>ĐÍCH (nhận điểm, hiện sau merge)</div>
+              {mergeTarget ? <><div style={{ fontWeight: 700 }}>{mergeTarget.accountant_name}</div><div style={{ fontSize: 12, color: "var(--ink-dim)" }}>{mergeTarget.group_name}</div></> : <div style={{ color: "var(--ink-dim)", fontSize: 13 }}>Chưa chọn</div>}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: preview ? 14 : 0 }}>
+            <button onClick={doPreview} disabled={!mergeSource || !mergeTarget || previewing || executing}
+              style={{ padding: "9px 20px", borderRadius: 10, border: "none", cursor: (mergeSource && mergeTarget && !previewing && !executing) ? "pointer" : "default", fontWeight: 700, fontSize: 13, background: "rgba(96,165,250,.15)", color: "#60a5fa", opacity: (!mergeSource || !mergeTarget || previewing || executing) ? 0.5 : 1 }}>
+              {previewing ? "Đang xem trước…" : "Xem trước"}
+            </button>
+            {preview && (
+              <button onClick={doExecute} disabled={executing}
+                style={{ padding: "9px 20px", borderRadius: 10, border: "none", cursor: executing ? "default" : "pointer", fontWeight: 800, fontSize: 13, background: "rgba(239,68,68,.2)", color: "#ef4444", opacity: executing ? 0.6 : 1 }}>
+                {executing ? "Đang merge…" : "Merge ngay"}
+              </button>
+            )}
+          </div>
+
+          {preview && (
+            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+              <div style={{ fontSize: 12, color: "var(--ink-dim)", marginBottom: 8 }}>
+                Khớp <b style={{ color: "var(--ink)" }}>{preview.matched?.length || 0}</b> thành viên ·
+                Không khớp <b style={{ color: "#f59e0b" }}>{preview.unmatched?.length || 0}</b> (bỏ qua) ·
+                TV nhóm đích: <b style={{ color: "var(--ink)" }}>{preview.targetMemberCount}</b>
+              </div>
+              {(preview.matched?.length > 0) && (
+                <div style={{ overflowX: "auto", marginBottom: 8 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead><tr style={{ color: "var(--ink-dim)", textAlign: "left", fontSize: 11, textTransform: "uppercase" }}>
+                      <th style={th}>Nguồn</th><th style={th}>Đích</th><th style={{ ...th, textAlign: "right" }}>Điểm cộng</th>
+                    </tr></thead>
+                    <tbody>{preview.matched.map((m, i) => (
+                      <tr key={i} style={{ borderTop: "1px solid var(--line)" }}>
+                        <td style={td}>{m.src?.name}</td>
+                        <td style={td}>{m.tgt?.name}</td>
+                        <td style={{ ...td, textAlign: "right", color: "#34d399", fontWeight: 700 }}>+{m.src?.points ?? 0}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+              {(preview.unmatched?.length > 0) && (
+                <div style={{ fontSize: 12, color: "#f59e0b" }}>
+                  Không tìm thấy đối ứng (bỏ qua): {preview.unmatched.map(u => u.name || u.uid).join(", ")}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {msg && <div style={{ padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: msg.ok ? "rgba(52,211,153,.12)" : "rgba(239,68,68,.12)", color: msg.ok ? "#34d399" : "#f87171", border: "1px solid " + (msg.ok ? "#34d39944" : "#f8717144") }}>{msg.text}</div>}
     </div>
   );
 }
@@ -1004,7 +1489,7 @@ function SessionHealthTab() {
             return (
               <div key={s.userId} style={{
                 background: "var(--card)",
-                border: `1px solid ${s.isPrimary ? "rgba(167,139,250,.4)" : "var(--line)"}`,
+                border: "1px solid var(--line)",
                 borderRadius: 12, padding: "12px 16px", marginBottom: 8,
                 opacity: s.isLive ? 1 : 0.55,
               }}>
@@ -1016,9 +1501,6 @@ function SessionHealthTab() {
                       <span style={{ fontWeight: 400, color: "var(--ink-dim)", fontSize: 12, marginLeft: 6 }}>({s.selfName})</span>
                     )}
                   </span>
-                  {s.isPrimary && (
-                    <span style={{ fontSize: 11, color: "#a78bfa", background: "rgba(167,139,250,.15)", padding: "2px 8px", borderRadius: 99, fontWeight: 700 }}>KT Chính</span>
-                  )}
                   <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: st.dot + "22", color: st.dot, fontWeight: 700 }}>{st.label}</span>
                 </div>
                 {s.isLive && (
@@ -1064,7 +1546,7 @@ function SessionHealthTab() {
 
       <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 10, background: "rgba(245,158,11,.06)", border: "1px solid rgba(245,158,11,.2)", fontSize: 12, color: "var(--ink-dim)", lineHeight: 1.6 }}>
         <b style={{ color: "#f59e0b" }}>Chú thích:</b> Tốt = tin cuối &lt; 5p · Chậm = 5–30p · Mất kết nối? = &gt;30p im lặng · Offline = session chết.<br/>
-        KT Chính = account đang xử lý barem/san điểm. Khi chết → tự động bầu account tiếp theo.
+        Mỗi kế toán xử lý barem/san điểm độc lập trên nhóm của mình.
       </div>
     </div>
   );

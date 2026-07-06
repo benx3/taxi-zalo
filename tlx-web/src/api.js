@@ -50,6 +50,17 @@ export const api = {
   setAccountantGroup: (accountantId, groupId, groupName, action) => req("/api/admin/accountant-groups", { accountantId, groupId, groupName, action }),
   getDataStats: () => req("/api/admin/data-stats", null, "GET"),
   purgeTable: (table, days) => req("/api/admin/purge", { table, days }),
+  listAccountantGroups: () => req("/api/admin/accountant-groups", null, "GET"),
+  adminGetMembers: (groupId) => req(`/api/accountant/members?groupId=${encodeURIComponent(groupId)}`, null, "GET"),
+  adminAdjustPoints: (body) => req("/api/accountant/adjust-points", body),
+  adminGetTransactions: (groupId, limit = 150) => req(`/api/accountant/transactions?groupId=${encodeURIComponent(groupId)}&limit=${limit}`, null, "GET"),
+  adminDeleteTransaction: (id) => req(`/api/accountant/transactions/${id}`, null, "DELETE"),
+  adminGetPendingTransfers: (groupId) => req(`/api/accountant/pending-transfers?groupId=${encodeURIComponent(groupId)}`, null, "GET"),
+  adminApproveTransfer: (id) => req(`/api/accountant/pending-transfers/${id}/approve`, {}),
+  adminRejectTransfer: (id) => req(`/api/accountant/pending-transfers/${id}/reject`, {}),
+  setInstancePublicVisible: (instanceId, visible) => req(`/api/admin/accountant-groups/${encodeURIComponent(instanceId)}/public-visible`, { visible }, "PATCH"),
+  mergeInstancesPreview: (sourceId, targetId) => req("/api/admin/accountant-groups/merge/preview", { sourceInstanceId: sourceId, targetInstanceId: targetId }),
+  mergeInstancesExecute: (sourceId, targetId) => req("/api/admin/accountant-groups/merge/execute", { sourceInstanceId: sourceId, targetInstanceId: targetId }),
 };
 
 const _cfgWs = import.meta.env?.VITE_WS_BASE || "ws://localhost:8082/ws";

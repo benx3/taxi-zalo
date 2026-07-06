@@ -100,15 +100,14 @@ app.post("/api/admin/set-role", async (req, res) => {
 app.get("/api/admin/session-health", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   const liveHealth = sm.getSessionsHealth();
-  const primaryId  = sm.getPrimaryAccountantId();
   const liveByUid  = new Map(liveHealth.map(s => [s.userId, s]));
 
   const allUsers    = await dbm.listUsers().catch(() => []);
   const accountants = allUsers.filter(u => u.role === "accountant").map(u => {
     const live = liveByUid.get(u.id);
     return live
-      ? { ...live, phone: u.phone, name: u.name, isPrimary: u.id === primaryId, isLive: true }
-      : { userId: u.id, phone: u.phone, name: u.name, isAccountant: true, isLive: false, isPrimary: false };
+      ? { ...live, phone: u.phone, name: u.name, isLive: true }
+      : { userId: u.id, phone: u.phone, name: u.name, isAccountant: true, isLive: false };
   });
 
   res.json({ sessions: liveHealth.filter(s => !s.isAccountant), accountants });
@@ -122,6 +121,36 @@ app.post("/api/admin/groups/merge", async (req, res) => {
   const { sourceGroupId, targetGroupId } = req.body;
   if (!sourceGroupId || !targetGroupId) return res.status(400).json({ error: "Thiếu sourceGroupId hoặc targetGroupId" });
   try { res.json(await dbm.mergeGroups(sourceGroupId, targetGroupId)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ---------- Quản lý nhóm kế toán (admin) ----------
+app.get("/api/admin/accountant-groups", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try { res.json(await dbm.getAccountantGroupsForAdmin()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.patch("/api/admin/accountant-groups/:instanceId/public-visible", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { visible } = req.body;
+  if (typeof visible !== "boolean") return res.status(400).json({ error: "visible phải là boolean" });
+  try {
+    await dbm.setGroupPublicVisible(req.params.instanceId, visible);
+    res.json({ ok: true, visible });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post("/api/admin/accountant-groups/merge/preview", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { sourceInstanceId, targetInstanceId } = req.body;
+  if (!sourceInstanceId || !targetInstanceId) return res.status(400).json({ error: "Thiếu sourceInstanceId hoặc targetInstanceId" });
+  try { res.json(await dbm.mergeGroupInstancesPreview(sourceInstanceId, targetInstanceId)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post("/api/admin/accountant-groups/merge/execute", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { sourceInstanceId, targetInstanceId } = req.body;
+  if (!sourceInstanceId || !targetInstanceId) return res.status(400).json({ error: "Thiếu sourceInstanceId hoặc targetInstanceId" });
+  try { res.json(await dbm.mergeGroupInstancesExecute(sourceInstanceId, targetInstanceId)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 app.post("/api/admin/groups/:id/reset", async (req, res) => {
@@ -446,16 +475,6 @@ app.get("/api/accountant/lookup-user", async (req, res) => {
   try {
     const user = await sm.lookupUserByPhone(a.userId, phone);
     res.json(user);
-  } catch (e) { res.status(400).json({ error: e.message || String(e) }); }
-});
-
-app.patch("/api/accountant/groups/:groupId/public-visible", async (req, res) => {
-  const a = await requireAccountant(req, res); if (!a) return;
-  const { visible } = req.body;
-  if (typeof visible !== "boolean") return res.status(400).json({ error: "visible phải là boolean" });
-  try {
-    await dbm.setGroupPublicVisible(a.userId, req.params.groupId, visible);
-    res.json({ ok: true, visible });
   } catch (e) { res.status(400).json({ error: e.message || String(e) }); }
 });
 

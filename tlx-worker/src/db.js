@@ -192,6 +192,37 @@ export async function ensureSeed() {
     PRIMARY KEY (group_id, uid_alt)
   )`);
   try { db.exec("CREATE INDEX IF NOT EXISTS idx_ucm_primary ON uid_cross_map(group_id, uid_primary)"); } catch {}
+
+  // Migration v2: old-format group_ids (thuần số = Zalo ID) → ${accountantId}_${zaloId}
+  // Detect: group_id không có dấu '-' và không có dấu '_' → old format
+  const _oldGroupIds = db.prepare(
+    "SELECT DISTINCT group_id FROM accountant_groups WHERE group_id NOT LIKE '%-%' AND group_id NOT LIKE '%\\_%' ESCAPE '\\'"
+  ).all().map(r => r.group_id);
+  if (_oldGroupIds.length > 0) {
+    console.log(`[Migration v2] Đổi ${_oldGroupIds.length} group_id sang instance format...`);
+    db.transaction(() => {
+      for (const oldId of _oldGroupIds) {
+        const accts = db.prepare("SELECT * FROM accountant_groups WHERE group_id=? ORDER BY accountant_id ASC").all(oldId);
+        if (!accts.length) continue;
+        const first = accts[0];
+        const firstNew = `${first.accountant_id}_${oldId}`;
+        // First accountant gets all data
+        db.prepare("UPDATE accountant_groups SET group_id=?, zalo_group_id=? WHERE accountant_id=? AND group_id=?")
+          .run(firstNew, first.zalo_group_id || oldId, first.accountant_id, oldId);
+        for (const tbl of ['members','point_transactions','point_rules','barem_trip_log','barem_claim_log','barem_msg_refs','pending_transfers','raw_messages','uid_cross_map']) {
+          try { db.prepare(`UPDATE ${tbl} SET group_id=? WHERE group_id=?`).run(firstNew, oldId); } catch {}
+        }
+        // Other accountants: rename their record only (no data to migrate)
+        for (let i = 1; i < accts.length; i++) {
+          const a = accts[i];
+          const newId = `${a.accountant_id}_${oldId}`;
+          db.prepare("UPDATE accountant_groups SET group_id=?, zalo_group_id=? WHERE accountant_id=? AND group_id=?")
+            .run(newId, a.zalo_group_id || oldId, a.accountant_id, oldId);
+        }
+      }
+    })();
+    console.log(`[Migration v2] Xong — ${_oldGroupIds.length} nhóm đã chuyển sang instance format.`);
+  }
 }
 
 // ---------- Auth ----------
@@ -529,9 +560,22 @@ export function purgeOld() {
 
 // ---------- Kế toán: nhóm phụ trách ----------
 export function listPublicGroups() {
-  return db.prepare(
-    "SELECT group_id, MAX(group_name) as group_name FROM accountant_groups WHERE public_visible=1 GROUP BY group_id ORDER BY MAX(group_name) COLLATE NOCASE ASC"
-  ).all();
+  return db.prepare(`
+    SELECT ag.group_id, ag.group_name, ag.accountant_id, ag.zalo_group_id, u.name AS accountant_name
+    FROM accountant_groups ag
+    JOIN users u ON u.id = ag.accountant_id
+    WHERE ag.public_visible=1
+    ORDER BY ag.group_name COLLATE NOCASE ASC
+  `).all();
+}
+export function getAccountantGroupsForAdmin() {
+  return db.prepare(`
+    SELECT ag.*, u.name AS accountant_name,
+      (SELECT COUNT(*) FROM members m WHERE m.group_id=ag.group_id AND (m.is_out IS NULL OR m.is_out=0)) AS member_count
+    FROM accountant_groups ag
+    JOIN users u ON u.id = ag.accountant_id
+    ORDER BY ag.group_name COLLATE NOCASE ASC, u.name COLLATE NOCASE ASC
+  `).all();
 }
 export function getAccountantGroups(accountantId) {
   return db.prepare("SELECT * FROM accountant_groups WHERE accountant_id=?").all(accountantId);
@@ -556,13 +600,9 @@ export function getGroupZaloOwner(groupId, excludeAccountantId) {
     ORDER BY zs.zalo_uid ASC LIMIT 1
   `).get(groupId, excludeAccountantId) || null;
 }
-export function setGroupPublicVisible(accountantId, groupId, visible) {
-  db.prepare("UPDATE accountant_groups SET public_visible=? WHERE accountant_id=? AND group_id=?")
-    .run(visible ? 1 : 0, accountantId, groupId);
-}
-export function findGroupByName(name) {
-  if (!name) return null;
-  return db.prepare("SELECT group_id FROM accountant_groups WHERE LOWER(TRIM(group_name))=LOWER(TRIM(?)) LIMIT 1").get(name) || null;
+export function setGroupPublicVisible(groupId, visible) {
+  db.prepare("UPDATE accountant_groups SET public_visible=? WHERE group_id=?")
+    .run(visible ? 1 : 0, groupId);
 }
 export function addAccountantGroup(accountantId, groupId, groupName, zaloGroupId = null) {
   db.prepare("INSERT OR REPLACE INTO accountant_groups(accountant_id,group_id,group_name,zalo_group_id) VALUES(?,?,?,?)")
@@ -570,6 +610,75 @@ export function addAccountantGroup(accountantId, groupId, groupName, zaloGroupId
 }
 export function removeAccountantGroup(accountantId, groupId) {
   db.prepare("DELETE FROM accountant_groups WHERE accountant_id=? AND group_id=?").run(accountantId, groupId);
+}
+
+// --- Helper nội bộ: extract avatar hash để match member khi merge ---
+function _extractAvatarHash(url) {
+  const m = url?.match(/\/([0-9a-f]{32})\.jpg/i);
+  return m ? m[1] : null;
+}
+
+// Tính toán preview merge: so khớp member từ nguồn → đích bằng avatar hash (P1) + tên (P2)
+export function mergeGroupInstancesPreview(sourceId, targetId) {
+  const srcMembers = db.prepare("SELECT * FROM members WHERE group_id=? AND (is_out IS NULL OR is_out=0)").all(sourceId);
+  const tgtMembers = db.prepare("SELECT * FROM members WHERE group_id=? AND (is_out IS NULL OR is_out=0)").all(targetId);
+
+  // Build lookup maps for target
+  const tgtByHash = new Map(); // hash → member
+  const tgtByName = new Map(); // normalized name → member
+  for (const m of tgtMembers) {
+    const h = _extractAvatarHash(m.avatar);
+    if (h) tgtByHash.set(h, m);
+    const n = (m.display_name || '').trim().toLowerCase();
+    if (n) tgtByName.set(n, m);
+  }
+
+  const matched = [];
+  const unmatched = [];
+  for (const src of srcMembers) {
+    const hash = _extractAvatarHash(src.avatar);
+    let tgt = hash ? tgtByHash.get(hash) : null;
+    let matchType = tgt ? 'hash' : null;
+    if (!tgt) {
+      const n = (src.display_name || '').trim().toLowerCase();
+      tgt = n ? tgtByName.get(n) : null;
+      if (tgt) matchType = 'name';
+    }
+    if (tgt) {
+      matched.push({ src: { uid: src.zalo_uid, name: src.display_name, points: src.points, avatar: src.avatar }, tgt: { uid: tgt.zalo_uid, name: tgt.display_name, points: tgt.points }, matchType });
+    } else {
+      unmatched.push({ uid: src.zalo_uid, name: src.display_name, points: src.points });
+    }
+  }
+  return { matched, unmatched, targetMemberCount: tgtMembers.length };
+}
+
+// Thực thi merge: cộng điểm + copy transactions, swap public_visible
+export function mergeGroupInstancesExecute(sourceId, targetId) {
+  const { matched } = mergeGroupInstancesPreview(sourceId, targetId);
+  const nowMs = now();
+  db.transaction(() => {
+    for (const pair of matched) {
+      if (!pair.src.points) continue;
+      // Cộng điểm vào target member
+      db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
+        .run(pair.src.points, nowMs, targetId, pair.tgt.uid);
+      // Copy transactions từ source → target (đổi from/to uid sang target uid)
+      const srcTxs = db.prepare("SELECT * FROM point_transactions WHERE group_id=? AND (from_member=? OR to_member=?) ORDER BY created_at ASC").all(sourceId, pair.src.uid, pair.src.uid);
+      for (const tx of srcTxs) {
+        db.prepare(`INSERT OR IGNORE INTO point_transactions(id,group_id,trip_msg_id,from_member,to_member,points,reason,type,status,raw_text,created_at)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
+          .run(uid(), targetId, tx.trip_msg_id,
+            tx.from_member === pair.src.uid ? pair.tgt.uid : tx.from_member,
+            tx.to_member   === pair.src.uid ? pair.tgt.uid : tx.to_member,
+            tx.points, `[Merged] ${tx.reason || ''}`.trim(), tx.type, tx.status || 'approved', tx.raw_text, tx.created_at);
+      }
+    }
+    // Swap public visibility
+    db.prepare("UPDATE accountant_groups SET public_visible=0 WHERE group_id=?").run(sourceId);
+    db.prepare("UPDATE accountant_groups SET public_visible=1 WHERE group_id=?").run(targetId);
+  })();
+  return { merged: matched.length };
 }
 
 // ---------- Kế toán: thành viên ----------
@@ -598,15 +707,7 @@ export function listMembersWithYesterday(groupId) {
   `).all(todayStartMs, groupId);
 }
 export function getMemberByZaloUid(groupId, zaloUid) {
-  // 1. Tìm trực tiếp qua zalo_uid hoặc global_id
-  const direct = db.prepare("SELECT * FROM members WHERE group_id=? AND (zalo_uid=? OR global_id=?) LIMIT 1").get(groupId, zaloUid, zaloUid);
-  if (direct) return direct;
-  // 2. Fallback: uid_cross_map — uid của account phụ → uid canonical của account chính
-  return db.prepare(`
-    SELECT mem.* FROM members mem
-    JOIN uid_cross_map ucm ON ucm.group_id=mem.group_id AND ucm.uid_primary=mem.zalo_uid
-    WHERE ucm.group_id=? AND ucm.uid_alt=? LIMIT 1
-  `).get(groupId, zaloUid);
+  return db.prepare("SELECT * FROM members WHERE group_id=? AND (zalo_uid=? OR global_id=?) LIMIT 1").get(groupId, zaloUid, zaloUid) || null;
 }
 export function getMemberByAvatarHash(groupId, hash) {
   if (!hash) return null;
