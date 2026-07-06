@@ -1315,6 +1315,9 @@ async function importGroupMembers(sess, zaloGroupId, canonicalGroupId = null) {
   }
 }
 
+// Mutex per-group: tránh 2 session import cùng nhóm đồng thời → x2 thành viên
+const groupImportInProgress = new Map(); // canonicalId → Promise<void>
+
 // ----- thao tác từ app -----
 export async function setWatchedGroups(userId, groupIds) {
   const sess = sessions.get(userId); if (!sess) return;
@@ -1384,13 +1387,33 @@ export async function setWatchedGroups(userId, groupIds) {
       // Auto-import / auto-map thành viên khi thêm nhóm mới
       for (const zaloGId of newZaloIds) {
         const canonicalId = sess.groupIdMap.get(zaloGId) || zaloGId;
+
+        // Nếu nhóm đang được import bởi session khác → đợi xong rồi build uid_cross_map
+        if (groupImportInProgress.has(canonicalId)) {
+          console.log(`[${userId}] ⏳ ${canonicalId} đang import bởi session khác, đợi rồi fullSync`);
+          groupImportInProgress.get(canonicalId)
+            .then(() => fullSyncGroupMembers(sess, canonicalId, { zaloGroupId: zaloGId, skipRemoval: true }))
+            .then(r => console.log(`[${userId}] 🗺️  uid_cross_map built for ${canonicalId}: ${r.added} new member(s)`))
+            .catch(() => {});
+          continue;
+        }
+
+        // Đặt lock ĐỒNG BỘ trước khi await — tránh race condition giữa 2 session
+        // (không có await giữa has() check và set() → atomic trong JS single-thread)
+        let resolveLock;
+        const lockPromise = new Promise(res => { resolveLock = res; });
+        groupImportInProgress.set(canonicalId, lockPromise);
+
         const cnt = await dbm.countMembers(canonicalId);
         if (cnt === 0) {
-          // Nhóm chưa có data → import bình thường
-          importGroupMembers(sess, zaloGId, canonicalId).catch(() => {});
+          // Nhóm chưa có data → import bình thường, giữ lock đến khi xong
+          importGroupMembers(sess, zaloGId, canonicalId)
+            .then(resolveLock, resolveLock)  // resolve cả khi lỗi để không deadlock
+            .finally(() => groupImportInProgress.delete(canonicalId));
         } else {
-          // Nhóm đã có data (account khác đã import) → build uid_cross_map
-          // skipRemoval=true: không đụng is_out, chỉ bổ sung mapping
+          // Nhóm đã có data → release lock ngay, build uid_cross_map
+          resolveLock();
+          groupImportInProgress.delete(canonicalId);
           fullSyncGroupMembers(sess, canonicalId, { zaloGroupId: zaloGId, skipRemoval: true })
             .then(r => console.log(`[${userId}] 🗺️  uid_cross_map built for ${canonicalId}: ${r.added} new member(s)`))
             .catch(e => console.warn(`[${userId}] uid_cross_map build fail ${canonicalId}:`, e?.message || e));
