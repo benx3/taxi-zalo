@@ -1527,14 +1527,19 @@ async function fullSyncGroupMembers(sess, groupId, { zaloGroupId = null, skipRem
     // Priority 2: fallback avatar hash — thử bất cứ khi nào chưa tìm được row
     if (!existingRow) {
       const hash = extractAvatarHash(m.avatar);
+      console.log(`[fullSync DBG] uid=${uid} avatar="${(m.avatar||"").slice(0,70)}" hash=${hash}`);
       if (hash) {
         existingRow = await dbm.getMemberByAvatarHash(groupId, hash);
+        console.log(`[fullSync DBG] getMemberByAvatarHash → ${existingRow ? `FOUND zalo_uid=${existingRow.zalo_uid}` : "null"}`);
       }
+    } else {
+      console.log(`[fullSync DBG] uid=${uid} → P1 found zalo_uid=${existingRow.zalo_uid} (globalId=${globalId||"-"})`);
     }
 
     if (!existingRow) {
       // Thành viên thực sự mới — tạo row với uid của account đang sync
       added++;
+      console.log(`[fullSync DBG] uid=${uid} → NEW ROW (no match)`);
       await dbm.upsertMember(groupId, uid, {
         display_name: m.displayName || null,
         avatar: m.avatar || null,
