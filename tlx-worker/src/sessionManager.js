@@ -32,6 +32,13 @@ function electNewPrimary(excludeUserId = null) {
     if (s.isAccountant) {
       primaryAccountantId = uid;
       console.log(`[KT-election] Kế toán chính mới: ${uid}`);
+      // Auto-sync ngay sau khi bầu: refresh uid_cross_map để xử lý barem chính xác
+      // skipRemoval=false: B là primary mới, dọn sạch người đã rời nhóm
+      setImmediate(() => {
+        syncGroupMembers(uid).catch(e =>
+          console.warn(`[KT-election] Auto-sync ${uid}:`, e?.message || e)
+        );
+      });
       return uid;
     }
   }
@@ -1374,12 +1381,20 @@ export async function setWatchedGroups(userId, groupIds) {
         }
       }
 
-      // Auto-import thành viên — chỉ khi nhóm chưa có data (cnt=0)
-      // Tránh tạo bản sao khi account phụ thấy senderId khác với account chính
+      // Auto-import / auto-map thành viên khi thêm nhóm mới
       for (const zaloGId of newZaloIds) {
         const canonicalId = sess.groupIdMap.get(zaloGId) || zaloGId;
         const cnt = await dbm.countMembers(canonicalId);
-        if (cnt === 0) importGroupMembers(sess, zaloGId, canonicalId).catch(() => {});
+        if (cnt === 0) {
+          // Nhóm chưa có data → import bình thường
+          importGroupMembers(sess, zaloGId, canonicalId).catch(() => {});
+        } else {
+          // Nhóm đã có data (account khác đã import) → build uid_cross_map
+          // skipRemoval=true: không đụng is_out, chỉ bổ sung mapping
+          fullSyncGroupMembers(sess, canonicalId, { zaloGroupId: zaloGId, skipRemoval: true })
+            .then(r => console.log(`[${userId}] 🗺️  uid_cross_map built for ${canonicalId}: ${r.added} new member(s)`))
+            .catch(e => console.warn(`[${userId}] uid_cross_map build fail ${canonicalId}:`, e?.message || e));
+        }
       }
     }
   } catch (e) {
@@ -1457,10 +1472,15 @@ function extractSentIds(sent) {
   return { msgId: d.msgId || d.msgID, cliMsgId: d.cliMsgId || d.cliMsgID };
 }
 
-/** Full sync: thêm mới + cập nhật tên + XÓA người đã rời nhóm (dùng cho nút thủ công) */
-async function fullSyncGroupMembers(sess, groupId) {
+/**
+ * Full sync thành viên.
+ * @param {object}  opts.zaloGroupId  - ID Zalo thực để gọi API (nếu khác groupId canonical)
+ * @param {boolean} opts.skipRemoval  - bỏ qua markRemovedMembers (dùng khi build map, không phải primary)
+ */
+async function fullSyncGroupMembers(sess, groupId, { zaloGroupId = null, skipRemoval = false } = {}) {
+  const apiGroupId = zaloGroupId || groupId;
   // Dùng fetchAllMemberProfiles để lấy đầy đủ UID + tên qua getGroupMembersInfo
-  const memberList = await fetchAllMemberProfiles(sess, groupId);
+  const memberList = await fetchAllMemberProfiles(sess, apiGroupId);
 
   console.log(`[fullSync] ${groupId}: ${memberList.length} thành viên`);
   if (!memberList.length) throw new Error(`Nhóm ${groupId}: không lấy được danh sách thành viên từ Zalo`);
@@ -1521,7 +1541,7 @@ async function fullSyncGroupMembers(sess, groupId) {
     activeUids.push(String(sess.selfId));
     added++;
   }
-  const removed = await dbm.markRemovedMembers(groupId, activeUids);
+  const removed = skipRemoval ? 0 : await dbm.markRemovedMembers(groupId, activeUids);
   return { added, removed, total: activeUids.length };
 }
 
