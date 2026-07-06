@@ -457,15 +457,17 @@ async function onMessage(sess, msg) {
       if (sess.processedMsgIds.size > 5000) sess.processedMsgIds.clear();
     }
 
-    // Thu thập thành viên thụ động: zalo_uid = senderId (local UID của session), global_id để dedup
+    // Thu thập thành viên thụ động: chỉ upsert khi biết globalId để dedup cross-account
+    // Không có globalId → bỏ qua, tránh tạo bản sao từ account phụ có senderId khác
     if (senderId && sess.isAccountant) {
-      resolveGlobalId(sess, senderId).then(({ globalId, phone }) =>
+      resolveGlobalId(sess, senderId).then(({ globalId, phone }) => {
+        if (!globalId) return;
         dbm.upsertMember(dbGroupId, senderId, {
           display_name: senderName !== "Không rõ" ? senderName : null,
-          global_id: globalId || undefined,
+          global_id: globalId,
           phone: phone || undefined,
-        })
-      ).catch(() => {});
+        });
+      }).catch(() => {});
       // Lưu cả những người bị tag trong tin nhắn (kể cả khi họ chưa chat lần nào)
       const mentioned = msg.data?.mentions || [];
       for (const mn of mentioned) {
@@ -1311,10 +1313,12 @@ export async function setWatchedGroups(userId, groupIds) {
         }
       }
 
-      // Auto-import thành viên từ nhóm mới thêm (luôn chạy để lấy đủ UID + tên)
+      // Auto-import thành viên — chỉ khi nhóm chưa có data (cnt=0)
+      // Tránh tạo bản sao khi account phụ thấy senderId khác với account chính
       for (const zaloGId of newZaloIds) {
         const canonicalId = sess.groupIdMap.get(zaloGId) || zaloGId;
-        importGroupMembers(sess, zaloGId, canonicalId).catch(() => {});
+        const cnt = await dbm.countMembers(canonicalId);
+        if (cnt === 0) importGroupMembers(sess, zaloGId, canonicalId).catch(() => {});
       }
     }
   } catch (e) {
@@ -1409,16 +1413,21 @@ async function fullSyncGroupMembers(sess, groupId) {
   for (const m of memberList) {
     const uid = String(m?.id || "");
     if (!uid) continue;
-    const existing = await dbm.getMemberByZaloUid(groupId, uid);
-    if (!existing) added++;
     const { globalId, phone } = globalIdMap[uid] || {};
+    // Tìm row hiện tại qua globalId trước (multi-account safe), fallback sang zalo_uid
+    const existingRow = globalId
+      ? await dbm.getMemberByZaloUid(groupId, globalId)
+      : await dbm.getMemberByZaloUid(groupId, uid);
+    if (!existingRow) added++;
     await dbm.upsertMember(groupId, uid, {
       display_name: m.displayName || null,
       avatar: m.avatar || null,
       global_id: globalId || undefined,
       phone: phone || undefined,
     });
-    activeUids.push(uid);
+    // Dùng stored zalo_uid (không phải local uid) để markRemovedMembers hoạt động đúng
+    // khi account B sync — tránh đánh is_out=1 nhầm cho row của account A
+    activeUids.push(existingRow?.zalo_uid || uid);
     if (++i % 10 === 0) await yieldLoop();
   }
   // Tự upsert chính mình — Zalo không echo tin nhắn của bot về chính nó

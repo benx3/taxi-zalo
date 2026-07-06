@@ -476,9 +476,13 @@ export function deleteGroup(groupId) {
     db.prepare("DELETE FROM members WHERE group_id=?").run(groupId);
     db.prepare("DELETE FROM point_transactions WHERE group_id=?").run(groupId);
     db.prepare("DELETE FROM point_rules WHERE group_id=?").run(groupId);
+    try { db.prepare("DELETE FROM barem_trip_log WHERE group_id=?").run(groupId); } catch {}
+    try { db.prepare("DELETE FROM barem_claim_log WHERE group_id=?").run(groupId); } catch {}
+    try { db.prepare("DELETE FROM barem_msg_refs WHERE group_id=?").run(groupId); } catch {}
     db.prepare("DELETE FROM accountant_groups WHERE group_id=?").run(groupId);
     try { db.prepare("DELETE FROM pending_transfers WHERE group_id=?").run(groupId); } catch {}
     try { db.prepare("DELETE FROM raw_messages WHERE group_id=?").run(groupId); } catch {}
+    try { db.prepare("DELETE FROM app_settings WHERE key=?").run(`kt_uid_${groupId}`); } catch {}
   })();
   return { ok: true };
 }

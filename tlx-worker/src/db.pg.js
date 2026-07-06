@@ -818,9 +818,13 @@ export async function deleteGroup(groupId) {
   await q("DELETE FROM members WHERE group_id=$1", [groupId]);
   await q("DELETE FROM point_transactions WHERE group_id=$1", [groupId]);
   await q("DELETE FROM point_rules WHERE group_id=$1", [groupId]);
+  await q("DELETE FROM barem_trip_log WHERE group_id=$1", [groupId]);
+  await q("DELETE FROM barem_claim_log WHERE group_id=$1", [groupId]);
+  await q("DELETE FROM barem_msg_refs WHERE group_id=$1", [groupId]);
   await q("DELETE FROM accountant_groups WHERE group_id=$1", [groupId]);
   try { await q("DELETE FROM pending_transfers WHERE group_id=$1", [groupId]); } catch {}
   try { await q("DELETE FROM raw_messages WHERE group_id=$1", [groupId]); } catch {}
+  try { await q("DELETE FROM app_settings WHERE key=$1", [`kt_uid_${groupId}`]); } catch {}
   return { ok: true };
 }
 
