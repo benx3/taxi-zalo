@@ -160,6 +160,14 @@ export async function initDb() {
     created_at BIGINT NOT NULL,
     PRIMARY KEY (group_id, msg_id)
   )`);
+  await q(`CREATE TABLE IF NOT EXISTS uid_cross_map (
+    group_id    TEXT NOT NULL,
+    uid_primary TEXT NOT NULL,
+    uid_alt     TEXT NOT NULL,
+    created_at  BIGINT NOT NULL,
+    PRIMARY KEY (group_id, uid_alt)
+  )`);
+  await q("CREATE INDEX IF NOT EXISTS idx_ucm_primary ON uid_cross_map(group_id, uid_primary)");
 }
 
 const sessions = new Map(); // token -> userId (RAM; production lớn nên thay bằng Redis)
@@ -468,9 +476,29 @@ export async function listMembersWithYesterday(groupId) {
   return r.rows;
 }
 export async function getMemberByZaloUid(groupId, zaloUid) {
-  // Tìm theo zalo_uid trước, fallback sang global_id (dùng khi failover sang account khác)
+  // 1. Tìm trực tiếp qua zalo_uid hoặc global_id
   const r = await q("SELECT * FROM members WHERE group_id=$1 AND (zalo_uid=$2 OR global_id=$2) LIMIT 1", [groupId, zaloUid]);
+  if (r.rows[0]) return r.rows[0];
+  // 2. Fallback: uid_cross_map — uid của account phụ → uid canonical của account chính
+  const m = await q(`
+    SELECT mem.* FROM members mem
+    JOIN uid_cross_map ucm ON ucm.group_id=mem.group_id AND ucm.uid_primary=mem.zalo_uid
+    WHERE ucm.group_id=$1 AND ucm.uid_alt=$2 LIMIT 1
+  `, [groupId, zaloUid]);
+  return m.rows[0] || null;
+}
+export async function getMemberByAvatarHash(groupId, hash) {
+  if (!hash) return null;
+  const r = await q("SELECT * FROM members WHERE group_id=$1 AND avatar LIKE $2 LIMIT 1", [groupId, `%${hash}%`]);
   return r.rows[0] || null;
+}
+export async function insertUidMapping(groupId, uidPrimary, uidAlt) {
+  if (!groupId || !uidPrimary || !uidAlt || uidPrimary === uidAlt) return;
+  await q(`
+    INSERT INTO uid_cross_map(group_id, uid_primary, uid_alt, created_at)
+    VALUES($1,$2,$3,$4)
+    ON CONFLICT(group_id,uid_alt) DO UPDATE SET uid_primary=EXCLUDED.uid_primary, created_at=EXCLUDED.created_at
+  `, [groupId, uidPrimary, uidAlt, now()]);
 }
 export async function upsertMember(groupId, zaloUid, { phone, display_name, avatar, global_id } = {}) {
   const now_ = now();

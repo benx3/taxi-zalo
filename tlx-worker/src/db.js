@@ -184,6 +184,14 @@ export async function ensureSeed() {
     created_at INTEGER NOT NULL,
     PRIMARY KEY (group_id, msg_id)
   )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS uid_cross_map (
+    group_id    TEXT NOT NULL,
+    uid_primary TEXT NOT NULL,
+    uid_alt     TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (group_id, uid_alt)
+  )`);
+  try { db.exec("CREATE INDEX IF NOT EXISTS idx_ucm_primary ON uid_cross_map(group_id, uid_primary)"); } catch {}
 }
 
 // ---------- Auth ----------
@@ -590,8 +598,27 @@ export function listMembersWithYesterday(groupId) {
   `).all(todayStartMs, groupId);
 }
 export function getMemberByZaloUid(groupId, zaloUid) {
-  // Tìm theo zalo_uid trước, fallback sang global_id (dùng khi failover sang account khác)
-  return db.prepare("SELECT * FROM members WHERE group_id=? AND (zalo_uid=? OR global_id=?) LIMIT 1").get(groupId, zaloUid, zaloUid);
+  // 1. Tìm trực tiếp qua zalo_uid hoặc global_id
+  const direct = db.prepare("SELECT * FROM members WHERE group_id=? AND (zalo_uid=? OR global_id=?) LIMIT 1").get(groupId, zaloUid, zaloUid);
+  if (direct) return direct;
+  // 2. Fallback: uid_cross_map — uid của account phụ → uid canonical của account chính
+  return db.prepare(`
+    SELECT mem.* FROM members mem
+    JOIN uid_cross_map ucm ON ucm.group_id=mem.group_id AND ucm.uid_primary=mem.zalo_uid
+    WHERE ucm.group_id=? AND ucm.uid_alt=? LIMIT 1
+  `).get(groupId, zaloUid);
+}
+export function getMemberByAvatarHash(groupId, hash) {
+  if (!hash) return null;
+  return db.prepare("SELECT * FROM members WHERE group_id=? AND avatar LIKE ? LIMIT 1").get(groupId, `%${hash}%`);
+}
+export function insertUidMapping(groupId, uidPrimary, uidAlt) {
+  if (!groupId || !uidPrimary || !uidAlt || uidPrimary === uidAlt) return;
+  db.prepare(`
+    INSERT INTO uid_cross_map(group_id, uid_primary, uid_alt, created_at)
+    VALUES(?,?,?,?)
+    ON CONFLICT(group_id,uid_alt) DO UPDATE SET uid_primary=excluded.uid_primary, created_at=excluded.created_at
+  `).run(groupId, uidPrimary, uidAlt, now());
 }
 export function upsertMember(groupId, zaloUid, { phone, display_name, avatar, global_id } = {}) {
   const now_ = now();

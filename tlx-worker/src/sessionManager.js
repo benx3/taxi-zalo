@@ -212,6 +212,14 @@ function resolveGroupId(sess, zaloGroupId) {
   return sess.groupIdMap.get(zaloGroupId) || zaloGroupId;
 }
 
+// Extract hash 32-char hex từ avatar URL (ổn định qua các account, thay đổi khi user đổi ảnh)
+// Ví dụ: https://s120-26-ava-talk.zadn.vn/19/a6d4d62b1e7ba72464566cc344e7d842.jpg?key=...
+function extractAvatarHash(url) {
+  if (!url) return null;
+  const m = url.match(/\/([0-9a-f]{32})\.jpg/i);
+  return m ? m[1] : null;
+}
+
 // Lấy globalId + phone của 1 UID từ Zalo API, dùng cache để không gọi lặp lại
 async function resolveGlobalId(sess, zaloUid) {
   if (!zaloUid || !sess.api) return {};
@@ -1414,17 +1422,41 @@ async function fullSyncGroupMembers(sess, groupId) {
     const uid = String(m?.id || "");
     if (!uid) continue;
     const { globalId, phone } = globalIdMap[uid] || {};
-    // Tìm row hiện tại qua globalId trước (multi-account safe), fallback sang zalo_uid
-    const existingRow = globalId
+
+    // Priority 1: tìm qua globalId hoặc zalo_uid trực tiếp
+    let existingRow = globalId
       ? await dbm.getMemberByZaloUid(groupId, globalId)
       : await dbm.getMemberByZaloUid(groupId, uid);
+
+    // Priority 2: fallback avatar hash (non-contact, uid khác nhau giữa các account)
+    if (!existingRow && !globalId) {
+      const hash = extractAvatarHash(m.avatar);
+      if (hash) {
+        existingRow = await dbm.getMemberByAvatarHash(groupId, hash);
+        if (existingRow && existingRow.zalo_uid !== uid) {
+          // Ghi mapping: uid canonical của account A ↔ uid của account đang sync
+          await dbm.insertUidMapping(groupId, existingRow.zalo_uid, uid);
+        }
+      }
+    }
+
     if (!existingRow) added++;
-    await dbm.upsertMember(groupId, uid, {
-      display_name: m.displayName || null,
-      avatar: m.avatar || null,
-      global_id: globalId || undefined,
-      phone: phone || undefined,
-    });
+
+    if (existingRow && existingRow.zalo_uid !== uid && !globalId) {
+      // Tìm được qua avatar hash: chỉ update avatar (refresh URL) + tên, KHÔNG đổi zalo_uid
+      await dbm.upsertMember(groupId, existingRow.zalo_uid, {
+        display_name: m.displayName || null,
+        avatar: m.avatar || null,
+      });
+    } else {
+      await dbm.upsertMember(groupId, uid, {
+        display_name: m.displayName || null,
+        avatar: m.avatar || null,
+        global_id: globalId || undefined,
+        phone: phone || undefined,
+      });
+    }
+
     // Dùng stored zalo_uid (không phải local uid) để markRemovedMembers hoạt động đúng
     // khi account B sync — tránh đánh is_out=1 nhầm cho row của account A
     activeUids.push(existingRow?.zalo_uid || uid);
