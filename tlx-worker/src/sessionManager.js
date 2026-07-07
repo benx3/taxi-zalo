@@ -1134,7 +1134,7 @@ function detectBaremAction(text) {
   // "lịch hủy" / "hủy lịch" / "lich huy" / "huy lich" / "hủy" đứng một mình
   if (/lich\s*hu[y]?|hu[y]?\s*lich|\bhuy\b/.test(t)) return { type: 'cancel' };
   // "lịch free" / standalone "free/freee/fre/fer" — báo lịch miễn phí sau khi đã chốt
-  if (/lich\s*(?:fre+e*|frr|fii|fer|fee)|\b(?:fre+e*|frr|fii|fer|fee)\b/.test(t)) return { type: 'free' };
+  if (/lich\s*(?:fre+e*|frr|fii|fer|fee|fri)|\b(?:fre+e*|frr|fii|fer|fee|fri)\b/.test(t)) return { type: 'free' };
   // "lịch N" / "lịch +N" / "lịch -+N" — N là số điểm thỏa thuận mới
   const adj = t.match(/lich[\s:]*[-+]*\s*(\d+(?:[.,]\d+)?)\s*(?:d(?:iem)?)?(?=[\s,.]|$)/);
   if (adj) {
