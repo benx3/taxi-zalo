@@ -431,7 +431,8 @@ async function onMessage(sess, msg) {
       }
     }
     // Chain extension: nếu tin này reply vào tin đã có trong barem_msg_refs
-    // → thêm tin hiện tại vào refs, giúp Section E trace chuỗi dài bất kỳ (reply tin 5, 7, v.v.)
+    // VÀ người gửi là poster/taker của cuốc đó → thêm vào refs để Section E trace được
+    // Người ngoài không liên quan đến cuốc xe → không track
     if (sess.isAccountant && _qraw) {
       const _pg2 = _qraw.globalMsgId != null && String(_qraw.globalMsgId) !== groupId ? String(_qraw.globalMsgId) : null;
       const _pc2 = _qraw.cliMsgId != null ? String(_qraw.cliMsgId) : null;
@@ -439,12 +440,20 @@ async function onMessage(sess, msg) {
         let _tripRef = null;
         if (_pg2) _tripRef = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, _pg2));
         if (!_tripRef && _pc2) _tripRef = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, _pc2));
-        if (_tripRef) {
-          const _og2 = msg.data?.msgId   != null ? String(msg.data.msgId)   : null;
-          const _oc2 = msg.data?.cliMsgId != null ? String(msg.data.cliMsgId) : null;
-          for (const _mid of [_og2, _oc2].filter(Boolean))
-            Promise.resolve(dbm.addBaremMsgRef(dbGroupId, _mid, _tripRef)).catch(() => {});
-        }
+        if (!_tripRef) return;
+        // Lấy poster/taker từ barem tx gốc (cả 2 loại: split row và pending combined row)
+        const _txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, _tripRef));
+        const _posterUid = _txs.find(t => t.type === 'barem' && t.to_member)?.to_member;
+        const _takerUid  = _txs.find(t => t.type === 'barem' && t.from_member)?.from_member;
+        if (!_posterUid && !_takerUid) return;
+        // Cover multi-account: so sánh cả raw UID lẫn canonical
+        const _senderC = await resolveCanonicalUid(dbGroupId, senderId);
+        const _isParty = [senderId, _senderC].some(u => u && (u === _posterUid || u === _takerUid));
+        if (!_isParty) return;
+        const _og2 = msg.data?.msgId   != null ? String(msg.data.msgId)   : null;
+        const _oc2 = msg.data?.cliMsgId != null ? String(msg.data.cliMsgId) : null;
+        for (const _mid of [_og2, _oc2].filter(Boolean))
+          Promise.resolve(dbm.addBaremMsgRef(dbGroupId, _mid, _tripRef)).catch(() => {});
       })()).catch(() => {});
     }
     const time = new Date().toLocaleTimeString("vi-VN", { hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
