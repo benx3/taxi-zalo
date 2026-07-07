@@ -173,9 +173,6 @@ export default function HomePage({ goLogin, goRegister }) {
               Trợ Lý Tài Xế <span style={s.accent}>AI</span>
             </span>
           </div>
-          <a href="/tinh-diem-tai-xe-zalo" style={{ padding: "8px 14px", borderRadius: 9, border: "none", background: "transparent", color: "#58a6ff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", textDecoration: "none" }}>
-            Tra cứu điểm
-          </a>
           <button onClick={goLogin} style={{ padding: "8px 18px", borderRadius: 9, border: "1px solid #1e2740", background: "transparent", color: "#8794ad", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
             Đăng nhập
           </button>

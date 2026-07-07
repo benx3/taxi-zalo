@@ -383,10 +383,6 @@ function MembersView({ group, onBack, onSelect }) {
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 16px 0" }}>
-      <button onClick={onBack} style={{ background: "none", border: "none", color: c.blue, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, marginBottom: 20, fontSize: 14, padding: 0 }}>
-        <ArrowLeft size={16} /> Danh sách nhóm
-      </button>
-
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
