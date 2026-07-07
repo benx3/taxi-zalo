@@ -902,16 +902,19 @@ async function onMessage(sess, msg) {
                 Promise.resolve(dbm.addBaremMsgRef(dbGroupId, mid, _foundTripMsgId)).catch(e => console.warn(`[${sess.userId}] addBaremMsgRef(E) err:`, e?.message || e));
             }
             // Xác định poster/taker từ barem tx GỐC (type='barem') — luôn đúng bất kể
-            // hướng của các barem_adjust (diff âm làm from_member/to_member đổi chiều)
+            // hướng của các barem_adjust (diff âm làm from_member/to_member đổi chiều).
+            // adjustPoints tạo 2 row riêng (to_member-only và from_member-only).
+            // addBaremPending tạo 1 row kết hợp (cả hai field đều có) — cần xử lý riêng.
             const baremPosterTx = txs.find(t => t.type === 'barem' && t.to_member && !t.from_member);
             const baremTakerTx  = txs.find(t => t.type === 'barem' && t.from_member && !t.to_member);
-            if (!baremPosterTx || !baremTakerTx) {
+            const baremPendingTx = txs.find(t => t.type === 'barem' && t.from_member && t.to_member);
+            if ((!baremPosterTx || !baremTakerTx) && !baremPendingTx) {
               console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy barem gốc trong ${txs.length} tx`);
               return;
             }
-            const posterUid     = baremPosterTx.to_member;
-            const takerUid      = baremTakerTx.from_member;
-            const origTripMsgId = baremPosterTx.trip_msg_id;
+            const posterUid     = baremPosterTx?.to_member   ?? baremPendingTx.to_member;
+            const takerUid      = baremTakerTx?.from_member  ?? baremPendingTx.from_member;
+            const origTripMsgId = (baremPosterTx ?? baremPendingTx).trip_msg_id;
 
             // currentPts = tổng CÓ DẤU của tất cả txs đối với poster
             // (to_member=poster → +points; from_member=poster → -points)
