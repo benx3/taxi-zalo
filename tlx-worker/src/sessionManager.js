@@ -735,7 +735,7 @@ async function onMessage(sess, msg) {
               }
             }
             // "lịch free" / "lich free" = lịch trình rảnh, không phải cuốc miễn phí
-            const confirmFree = /\b(?:fre+|frr|fii)\b/i.test(text) && !/(?:lịch|lich)\s+(?:fre+|frr|fii)/i.test(text);
+            const confirmFree = /\b(?:fre+|frr|fii|ferr)\b/i.test(text) && !/(?:lịch|lich)\s+(?:fre+|frr|fii|ferr)/i.test(text);
             const rulesRow = await dbm.getRules(dbGroupId);
             const baremPts = calcBaremPoints(rulesRow, cachedClaim.tripType, cachedClaim.tripPrice);
             const confirmPts = parseBonus(text) || 0;
@@ -1104,8 +1104,8 @@ function detectBaremAction(text) {
   const t = noMarkLower(text);
   // "lịch hủy" / "hủy lịch" / "lich huy" / "huy lich" / "hủy" đứng một mình
   if (/lich\s*hu[y]?|hu[y]?\s*lich|\bhuy\b/.test(t)) return { type: 'cancel' };
-  // "lịch free" / standalone "free/freee/fre" — báo lịch miễn phí sau khi đã chốt
-  if (/lich\s*(?:fre+e*|frr|fii)|\b(?:fre+e*|frr|fii)\b/.test(t)) return { type: 'free' };
+  // "lịch free" / standalone "free/freee/fre/ferr" — báo lịch miễn phí sau khi đã chốt
+  if (/lich\s*(?:fre+e*|frr|fii|ferr)|\b(?:fre+e*|frr|fii|ferr)\b/.test(t)) return { type: 'free' };
   // "lịch N" / "lịch +N" / "lịch -+N" — N là số điểm thỏa thuận mới
   const adj = t.match(/lich[\s:]*[-+]*\s*(\d+(?:[.,]\d+)?)\s*(?:d(?:iem)?)?(?=[\s,.]|$)/);
   if (adj) {
