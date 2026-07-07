@@ -751,10 +751,9 @@ async function onMessage(sess, msg) {
               ptsSrc = `rules=${rulesRow ? "ok" : "null"}`;
             }
             console.log(`[${sess.userId}] 📊 Barem confirm: type=${cachedClaim.tripType} price=${cachedClaim.tripPrice}k pts=${pts} ${ptsSrc}`);
-            // pts=0 mà không phải free → chưa có rule, bỏ qua
-            if (pts === 0 && !cachedClaim.tripFree && !confirmFree) {
-              console.warn(`[${sess.userId}] ⚠️  Barem pts=0 — chưa có rule cho ${cachedClaim.tripType} ${cachedClaim.tripPrice}k`);
-              return;
+            const noRule = pts === 0 && !cachedClaim.tripFree && !confirmFree;
+            if (noRule) {
+              console.warn(`[${sess.userId}] ⚠️  Barem pts=0 — chưa có rule cho ${cachedClaim.tripType} ${cachedClaim.tripPrice}k → đưa về pending`);
             }
             const convo = JSON.stringify({
               tripTime: cachedClaim.tripTime, tripPoster: cachedClaim.tripPosterName, tripText: cachedClaim.tripText,
@@ -767,9 +766,13 @@ async function onMessage(sess, msg) {
             // Resolve về canonical UID (account A) phòng trường hợp account B đang xử lý
             const posterCanon = await resolveCanonicalUid(dbGroupId, cachedClaim.tripPosterId);
             const takerCanon  = await resolveCanonicalUid(dbGroupId, cachedClaim.takerId);
-            if (cachedClaim.allTrips) {
+            if (cachedClaim.allTrips || noRule) {
               await dbm.addBaremPending(dbGroupId, posterCanon, takerCanon, pts, msgId, convo);
-              console.log(`[${sess.userId}] ⏳ Barem pending [${cachedClaim.allTrips.length} cuốc]: ${pts}đ — chờ kế toán duyệt`);
+              if (noRule) {
+                console.log(`[${sess.userId}] ⏳ Barem pending (không có rule): ${cachedClaim.tripType} ${cachedClaim.tripPrice}k → 0đ chờ kế toán duyệt`);
+              } else {
+                console.log(`[${sess.userId}] ⏳ Barem pending [${cachedClaim.allTrips.length} cuốc]: ${pts}đ — chờ kế toán duyệt`);
+              }
             } else {
               const reason = pts === 0 ? 'Lịch free' : (confirmPts > 0 ? `Chốt ${pts}đ (thỏa thuận)` : `Barem ${cachedClaim.tripType} ${cachedClaim.tripPrice}k`);
               const txMsgId = cachedClaim.tripMsgId || msgId;
