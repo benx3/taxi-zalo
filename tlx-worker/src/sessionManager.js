@@ -896,6 +896,24 @@ async function onMessage(sess, msg) {
               }
               if (txs.length) foundTier = "3.5";
             }
+            // Validate: nếu tìm được qua tier 1-3.5 nhưng sender KHÔNG phải poster/taker
+            // → có thể barem_msg_refs bị nhiễm (chain extension cũ) → clear và thử tier 4
+            if (txs.length) {
+              const _vpt = txs.find(t => t.type==='barem' && t.to_member && !t.from_member);
+              const _vtt = txs.find(t => t.type==='barem' && t.from_member && !t.to_member);
+              const _vpd = txs.find(t => t.type==='barem' && t.from_member && t.to_member);
+              const _vpU = _vpt?.to_member ?? _vpd?.to_member;
+              const _vtU = _vtt?.from_member ?? _vpd?.from_member;
+              if (_vpU || _vtU) {
+                try {
+                  const _vsC = await resolveCanonicalUid(dbGroupId, senderId);
+                  if (![senderId, _vsC].some(u => u && (u === _vpU || u === _vtU))) {
+                    console.warn(`[${sess.userId}] (E) tier${foundTier}: sender ${senderId} không phải party (poster=${_vpU} taker=${_vtU}) → fallback tier4`);
+                    txs = []; foundTier = 0;
+                  }
+                } catch {}
+              }
+            }
             // Tầng 4: fallback theo UID người gửi — lấy barem gần nhất trong 48h
             // Thử cả raw senderId lẫn canonical (phòng trường hợp tx được lưu bằng canonical)
             if (!txs.length) {
