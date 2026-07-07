@@ -430,6 +430,23 @@ async function onMessage(sess, msg) {
         }
       }
     }
+    // Chain extension: nếu tin này reply vào tin đã có trong barem_msg_refs
+    // → thêm tin hiện tại vào refs, giúp Section E trace chuỗi dài bất kỳ (reply tin 5, 7, v.v.)
+    if (sess.isAccountant && _qraw) {
+      const _pg2 = _qraw.globalMsgId != null && String(_qraw.globalMsgId) !== groupId ? String(_qraw.globalMsgId) : null;
+      const _pc2 = _qraw.cliMsgId != null ? String(_qraw.cliMsgId) : null;
+      Promise.resolve((async () => {
+        let _tripRef = null;
+        if (_pg2) _tripRef = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, _pg2));
+        if (!_tripRef && _pc2) _tripRef = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, _pc2));
+        if (_tripRef) {
+          const _og2 = msg.data?.msgId   != null ? String(msg.data.msgId)   : null;
+          const _oc2 = msg.data?.cliMsgId != null ? String(msg.data.cliMsgId) : null;
+          for (const _mid of [_og2, _oc2].filter(Boolean))
+            Promise.resolve(dbm.addBaremMsgRef(dbGroupId, _mid, _tripRef)).catch(() => {});
+        }
+      })()).catch(() => {});
+    }
     const time = new Date().toLocaleTimeString("vi-VN", { hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
 
     // DEBUG: log tin media để xác định cấu trúc voice thật của zca-js
