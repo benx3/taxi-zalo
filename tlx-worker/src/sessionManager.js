@@ -724,8 +724,9 @@ async function onMessage(sess, msg) {
           const confirmCliMsgId = msg.data?.cliMsgId ? String(msg.data.cliMsgId) : "";
           Promise.resolve((async () => {
             // Atomic claim: session đầu tiên ghi được vào barem_msg_refs thì được tính điểm.
-            // Phòng cả restart-catchup lẫn 2 kế toán cùng theo dõi nhóm.
-            const txRef = cachedClaim.tripMsgId;
+            // Dùng confirmMsgId (không phải tripMsgId) để sau khi hủy vẫn confirm lại được.
+            // Phòng 2 KT cùng nhận 1 tin ok-ib → cùng msgId → chỉ 1 session thắng.
+            const txRef = msgId;
             if (txRef) {
               const claimed = await Promise.resolve(dbm.claimBaremScoring(dbGroupId, txRef));
               if (!claimed) {
@@ -786,7 +787,7 @@ async function onMessage(sess, msg) {
                 Promise.resolve(dbm.addBaremMsgRef(dbGroupId, mid, txMsgId)).catch(e => console.warn(`[${sess.userId}] addBaremMsgRef err:`, e?.message || e));
               console.log(`[${sess.userId}] ✅ Barem auto: ${pts}đ | ${ptsSrc}`);
             }
-          })()).catch(e => console.error(`[${sess.userId}] barem apply:`, e?.message || e));
+          })()).catch(e => console.error(`[${sess.userId} ] barem apply:`, e?.message || e));
         }
       }
     }
@@ -867,10 +868,17 @@ async function onMessage(sess, msg) {
               if (txs.length) foundTier = "3.5";
             }
             // Tầng 4: fallback theo UID người gửi — lấy barem gần nhất trong 48h
+            // Thử cả raw senderId lẫn canonical (phòng trường hợp tx được lưu bằng canonical)
             if (!txs.length) {
               try {
-                const latestRef = await Promise.resolve(dbm.getLatestBaremTripMsgId(dbGroupId, senderId));
-                if (latestRef) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, latestRef));
+                const senderCanon = await resolveCanonicalUid(dbGroupId, senderId);
+                for (const uid of [...new Set([senderId, senderCanon])]) {
+                  const latestRef = await Promise.resolve(dbm.getLatestBaremTripMsgId(dbGroupId, uid));
+                  if (latestRef) {
+                    txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, latestRef));
+                    if (txs.length) break;
+                  }
+                }
               } catch {}
               if (txs.length) foundTier = 4;
             }
@@ -1091,8 +1099,8 @@ function noMarkLower(s) {
 function detectBaremAction(text) {
   if (!text) return null;
   const t = noMarkLower(text);
-  // "lịch hủy" / "hủy lịch" / "lich huy" / "huy lich"
-  if (/lich\s*hu[y]?|hu[y]?\s*lich/.test(t)) return { type: 'cancel' };
+  // "lịch hủy" / "hủy lịch" / "lich huy" / "huy lich" / "hủy" đứng một mình
+  if (/lich\s*hu[y]?|hu[y]?\s*lich|\bhuy\b/.test(t)) return { type: 'cancel' };
   // "lịch free" / standalone "free/freee/fre" — báo lịch miễn phí sau khi đã chốt
   if (/lich\s*(?:fre+e*|frr|fii)|\b(?:fre+e*|frr|fii)\b/.test(t)) return { type: 'free' };
   // "lịch N" / "lịch +N" / "lịch -+N" — N là số điểm thỏa thuận mới
