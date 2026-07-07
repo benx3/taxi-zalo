@@ -769,6 +769,9 @@ async function onMessage(sess, msg) {
             const takerCanon  = await resolveCanonicalUid(dbGroupId, cachedClaim.takerId);
             if (cachedClaim.allTrips || noRule) {
               await dbm.addBaremPending(dbGroupId, posterCanon, takerCanon, pts, msgId, convo);
+              // Lưu mapping để Section E (cancel/adjust) tìm được pending tx qua quote chain
+              for (const mid of [msgId, confirmCliMsgId, qCliId2, qGlobId2, cachedClaim.tripMsgId].filter(Boolean))
+                Promise.resolve(dbm.addBaremMsgRef(dbGroupId, mid, msgId)).catch(e => console.warn(`[${sess.userId}] addBaremMsgRef(pending) err:`, e?.message || e));
               if (noRule) {
                 console.log(`[${sess.userId}] ⏳ Barem pending (không có rule): ${cachedClaim.tripType} ${cachedClaim.tripPrice}k → 0đ chờ kế toán duyệt`);
               } else {
