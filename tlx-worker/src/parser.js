@@ -181,7 +181,11 @@ export function parseType(t) {
     if (/bx\s*2c\b|bxe\s*2c\b|bao\s*xe\s*2c\b|2\s*chi[eề]u|2\s*chieu/.test(l)) return "Bao xe 2 chiều";
     return "Bao xe";
   }
-  // Từ điển nhận diện chuyến sân bay
+  // Ghép ưu tiên trước sân bay: "2k sân bay" → Ghép, không phải Sân bay
+  if (/3\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|gh\b|g\b)|3k\b/.test(l)) return "Ghép 3";
+  if (/2\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|gh\b|g\b)|2k\b/.test(l)) return "Ghép 2";
+  if (/1\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|ghe\b|gh\b|g\b)|1k\b/.test(l)) return "Ghép 1";
+  // Từ điển nhận diện chuyến sân bay (chỉ khi không có ghép/bao xe)
   const AIRPORT_RE = /sân\s*bay|sân\s*qu[oô]c\s*t[eế]|sân\s*qu[oô]c\s*n[oô]i|bay\s*qu[oô]c\s*t[eế]|bay\s*qu[oô]c\s*n[oô]i|n[oô]i\s*b[àa]i|noi\s*bai|\bnb\b|\bsb\b|\bt1\b|\bt2\b|s[aả]nh\s*(?:đ[eế]n|đi\b|[tT][12]\b)|h[aạ]\s*s[aâ]n|h[aạ]\s*c[aá]nh|c[aấ]t\s*c[aá]nh|ch[uư][aâ]n\s*b[iị]\s*h[aạ]|đ[aá]p\s*xu[oô]ng|\bhạ\b(?!\s*long)/;
   if (AIRPORT_RE.test(l)) {
     if (/2\s*chi[eề]u|\b2c\b/.test(l)) return "Sân bay 2 chiều";
@@ -189,9 +193,6 @@ export function parseType(t) {
     if (/\bđón\b|\bdon\b|ra\s*đón|ra\s*don|h[aạ]\s*s[aâ]n|h[aạ]\s*c[aá]nh|đ[aá]p\s*xu[oô]ng|\bhạ\b(?!\s*long)/.test(l)) return "Sân bay đón";
     return "Sân bay";
   }
-  if (/3\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|gh\b|g\b)|3k\b/.test(l)) return "Ghép 3";
-  if (/2\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|gh\b|g\b)|2k\b/.test(l)) return "Ghép 2";
-  if (/1\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|ghe\b|gh\b|g\b)|1k\b/.test(l)) return "Ghép 1";
   return "Không rõ";
 }
 
