@@ -804,13 +804,18 @@ export default function PublicPointsPage() {
   const [slugLoading, setSlugLoading] = useState(false);
   const [meRole, setMeRole] = useState("public");
 
-  // Kiểm tra quyền monitor: gọi driver service /api/me bằng token driver
+  // Kiểm tra role: thử driver service trước (monitor/driver), fallback KT service (admin/accountant)
   useEffect(() => {
     const tok = localStorage.getItem("tlx_token");
     if (!tok) return;
     authGet("/api/me")
       .then(u => { if (u?.role) setMeRole(u.role); })
-      .catch(() => {});
+      .catch(() => {
+        fetch(KT_BASE + "/api/me", { headers: { Authorization: "Bearer " + tok } })
+          .then(r => r.ok ? r.json() : Promise.reject())
+          .then(u => { if (u?.role) setMeRole(u.role); })
+          .catch(() => {});
+      });
   }, []);
 
   // SEO: cập nhật title/desc/canonical/OG theo từng view
