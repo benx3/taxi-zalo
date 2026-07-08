@@ -2,7 +2,11 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Search, ArrowLeft, Users, ChevronRight, Clock, TrendingUp, TrendingDown, BarChart2 } from "lucide-react";
 
 const BASE = import.meta.env?.VITE_API_BASE || "http://localhost:8080";
-const KT_BASE = import.meta.env?.VITE_KT_API_BASE || "http://localhost:8082";
+// KT API: production dùng /admin-api (cùng domain), dev dùng localhost:8082
+const KT_BASE = import.meta.env?.VITE_KT_API_BASE
+  || (typeof window !== "undefined" && window.location.protocol === "https:"
+      ? window.location.origin + "/admin-api"
+      : "http://localhost:8082");
 const get = async (path) => {
   const r = await fetch(BASE + path);
   if (!r.ok) {
