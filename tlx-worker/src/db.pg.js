@@ -313,7 +313,7 @@ export async function changePassword(userId, oldPass, newPass) {
   return { ok: true };
 }
 export async function setRole(id, role, groupLimit) {
-  if (!["admin", "driver", "accountant"].includes(role)) throw new Error("Vai trò không hợp lệ");
+  if (!["admin", "driver", "accountant", "monitor"].includes(role)) throw new Error("Vai trò không hợp lệ");
   if (role === "accountant") {
     await q("UPDATE users SET role=$1, status='active', group_limit=$2, groups_locked=0 WHERE id=$3",
       [role, Number(groupLimit) || 3, id]);
@@ -713,7 +713,7 @@ export async function getLatestBaremTripMsgId(groupId, memberUid) {
   );
   return r.rows[0]?.trip_msg_id || null;
 }
-export async function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo, approvedOnly = false } = {}) {
+export async function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo, approvedOnly = false, search = "", offset = 0 } = {}) {
   const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name
     FROM point_transactions pt
     LEFT JOIN members fm ON fm.group_id=pt.group_id AND fm.zalo_uid=pt.from_member
@@ -724,8 +724,23 @@ export async function listTransactions(groupId, { zaloUid, limit = 100, dateFrom
   if (zaloUid) { conds.push(`(pt.from_member=$${params.push(zaloUid)} OR pt.to_member=$${params.push(zaloUid)})`); }
   if (dateFrom) { conds.push(`pt.created_at >= $${params.push(dateFrom)}`); }
   if (dateTo)   { conds.push(`pt.created_at <= $${params.push(dateTo)}`); }
-  const r = await q(`${base} WHERE ${conds.join(" AND ")} ORDER BY pt.created_at DESC LIMIT $${params.push(limit)}`, params);
+  if (search) { const s = `%${search.toLowerCase()}%`; conds.push(`(LOWER(COALESCE(fm.display_name,'')) LIKE $${params.push(s)} OR LOWER(COALESCE(tm.display_name,'')) LIKE $${params.push(s)})`); }
+  let sql = `${base} WHERE ${conds.join(" AND ")} ORDER BY pt.created_at DESC LIMIT $${params.push(limit)}`;
+  if (offset) sql += ` OFFSET $${params.push(offset)}`;
+  const r = await q(sql, params);
   return r.rows;
+}
+export async function countTransactions(groupId, { zaloUid, approvedOnly = false, search = "" } = {}) {
+  const base = `SELECT COUNT(*) as cnt FROM point_transactions pt
+    LEFT JOIN members fm ON fm.group_id=pt.group_id AND fm.zalo_uid=pt.from_member
+    LEFT JOIN members tm ON tm.group_id=pt.group_id AND tm.zalo_uid=pt.to_member`;
+  const conds = ["pt.group_id=$1"];
+  const params = [groupId];
+  if (approvedOnly) conds.push("(pt.status IS NULL OR pt.status='approved')");
+  if (zaloUid) { conds.push(`(pt.from_member=$${params.push(zaloUid)} OR pt.to_member=$${params.push(zaloUid)})`); }
+  if (search) { const s = `%${search.toLowerCase()}%`; conds.push(`(LOWER(COALESCE(fm.display_name,'')) LIKE $${params.push(s)} OR LOWER(COALESCE(tm.display_name,'')) LIKE $${params.push(s)})`); }
+  const r = await q(`${base} WHERE ${conds.join(" AND ")}`, params);
+  return Number(r.rows[0]?.cnt || 0);
 }
 export async function updateTransaction(id, { reason, points, raw_text }) {
   const r = await q("SELECT * FROM point_transactions WHERE id=$1", [id]);

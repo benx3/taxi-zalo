@@ -151,6 +151,24 @@ app.get("/api/public/transactions/:groupId/:zaloUid", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ---------- Monitor: xem giao dịch nhóm (chỉ monitor/admin/accountant) ----------
+app.get("/api/monitor/group-transactions/:groupId", async (req, res) => {
+  try {
+    const a = tokenOf(req); if (!a) return res.status(401).json({ error: "Chưa đăng nhập" });
+    const u = await dbm.getUserPublic(a.userId);
+    if (!["monitor", "admin", "accountant"].includes(u?.role)) return res.status(403).json({ error: "Không có quyền" });
+    const { groupId } = req.params;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const offset = Number(req.query.offset) || 0;
+    const search = (req.query.search || "").trim();
+    const [items, total] = await Promise.all([
+      dbm.listTransactions(groupId, { limit, offset, search }),
+      dbm.countTransactions(groupId, { search }),
+    ]);
+    res.json({ items, total, limit, offset });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get("/", (_req, res) => res.send("TLX Driver Service đang chạy (port 8080)"));
 app.get("/health", (_req, res) => res.json({ ok: true, sessions: sm.sessionCount?.() ?? 0 }));
 

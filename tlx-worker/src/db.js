@@ -321,7 +321,7 @@ export async function changePassword(userId, oldPass, newPass) {
 
 // Cấp / gỡ quyền
 export function setRole(id, role, groupLimit) {
-  if (!["admin", "driver", "accountant"].includes(role)) throw new Error("Vai trò không hợp lệ");
+  if (!["admin", "driver", "accountant", "monitor"].includes(role)) throw new Error("Vai trò không hợp lệ");
   if (role === "accountant") {
     // Tự activate, reset groups_locked để kế toán chọn lại nhóm
     db.prepare("UPDATE users SET role=?, status='active', group_limit=?, groups_locked=0 WHERE id=?")
@@ -851,7 +851,7 @@ export function getLatestBaremTripMsgId(groupId, memberUid) {
     "SELECT trip_msg_id FROM point_transactions WHERE group_id=? AND type='barem' AND (to_member=? OR from_member=?) ORDER BY created_at DESC LIMIT 1"
   ).get(groupId, memberUid, memberUid)?.trip_msg_id || null;
 }
-export function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo, approvedOnly = false } = {}) {
+export function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo, approvedOnly = false, search = "", offset = 0 } = {}) {
   const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name
     FROM point_transactions pt
     LEFT JOIN members fm ON fm.group_id=pt.group_id AND fm.zalo_uid=pt.from_member
@@ -862,8 +862,21 @@ export function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, date
   if (zaloUid) { conds.push("(pt.from_member=? OR pt.to_member=?)"); params.push(zaloUid, zaloUid); }
   if (dateFrom) { conds.push("pt.created_at >= ?"); params.push(dateFrom); }
   if (dateTo)   { conds.push("pt.created_at <= ?"); params.push(dateTo); }
+  if (search) { const s = `%${search.toLowerCase()}%`; conds.push("(LOWER(COALESCE(fm.display_name,'')) LIKE ? OR LOWER(COALESCE(tm.display_name,'')) LIKE ?)"); params.push(s, s); }
   params.push(limit);
-  return db.prepare(`${base} WHERE ${conds.join(" AND ")} ORDER BY pt.created_at DESC LIMIT ?`).all(...params);
+  if (offset) params.push(offset);
+  return db.prepare(`${base} WHERE ${conds.join(" AND ")} ORDER BY pt.created_at DESC LIMIT ?${offset ? " OFFSET ?" : ""}`).all(...params);
+}
+export function countTransactions(groupId, { zaloUid, approvedOnly = false, search = "" } = {}) {
+  const base = `SELECT COUNT(*) as cnt FROM point_transactions pt
+    LEFT JOIN members fm ON fm.group_id=pt.group_id AND fm.zalo_uid=pt.from_member
+    LEFT JOIN members tm ON tm.group_id=pt.group_id AND tm.zalo_uid=pt.to_member`;
+  const conds = ["pt.group_id=?"];
+  const params = [groupId];
+  if (approvedOnly) conds.push("(pt.status IS NULL OR pt.status='approved')");
+  if (zaloUid) { conds.push("(pt.from_member=? OR pt.to_member=?)"); params.push(zaloUid, zaloUid); }
+  if (search) { const s = `%${search.toLowerCase()}%`; conds.push("(LOWER(COALESCE(fm.display_name,'')) LIKE ? OR LOWER(COALESCE(tm.display_name,'')) LIKE ?)"); params.push(s, s); }
+  return db.prepare(`${base} WHERE ${conds.join(" AND ")}`).get(...params)?.cnt || 0;
 }
 export function updateTransaction(id, { reason, points, raw_text }) {
   const tx = db.prepare("SELECT * FROM point_transactions WHERE id=?").get(id);

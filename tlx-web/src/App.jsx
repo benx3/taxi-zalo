@@ -3,7 +3,7 @@ import {
   Shield, CreditCard, Ban, RefreshCw, X, User, TrendingUp,
   Users, CheckCircle2, Lock, AlertTriangle, LogOut, Settings,
   Search, Phone, Mic, Eye, EyeOff, GitMerge, UserPlus, Activity, Bot,
-  Database, Trash2, Menu, Award
+  Database, Trash2, Menu, Award, BarChart2
 } from "lucide-react";
 import { api, getToken, setToken } from "./api.js";
 
@@ -435,7 +435,7 @@ function AdminApp({ me, onLogout }) {
   const renew=async(id)=>{const u=users.find(x=>x.id===id);await api.renew(id,u?.plan==="Tháng"?month:week);reload();};
   const ban=async(id)=>{await api.ban(id);reload();};
   const setRole=async(id,role)=>{
-    const verb=role==="admin"?"CẤP quyền admin cho":"GỠ quyền admin của";
+    const verb=role==="admin"?"CẤP quyền admin cho":role==="monitor"?"CẤP quyền Monitor cho":"GỠ quyền của";
     if(!confirm(`${verb} tài khoản này?`))return;
     try{await api.setRole(id,role);reload();}catch(e){alert(e.message);}
   };
@@ -530,7 +530,7 @@ function AdminApp({ me, onLogout }) {
                     {pagedDrivers.map(u=>{const isAdm=u.role==="admin";return(
                       <tr key={u.id} style={{borderTop:"1px solid var(--line)",background:u.status==="pending"?"rgba(245,158,11,.05)":isAdm?"rgba(167,139,250,.05)":"transparent"}}>
                         <td style={{...td,fontWeight:600}}>{u.name}</td><td style={{...td,color:"var(--ink-dim)"}}>{u.phone}</td>
-                        <td style={td}>{isAdm?<span style={{display:"inline-flex",alignItems:"center",gap:4,color:"#a78bfa",fontWeight:700,fontSize:12}}><Shield size={12}/> Admin</span>:u.role==="accountant"?<span style={{display:"inline-flex",alignItems:"center",gap:4,color:"#f59e0b",fontWeight:700,fontSize:12}}><Users size={12}/> Kế Toán</span>:<span style={{color:"var(--ink-dim)",fontSize:12.5}}>Tài xế</span>}</td>
+                        <td style={td}>{isAdm?<span style={{display:"inline-flex",alignItems:"center",gap:4,color:"#a78bfa",fontWeight:700,fontSize:12}}><Shield size={12}/> Admin</span>:u.role==="accountant"?<span style={{display:"inline-flex",alignItems:"center",gap:4,color:"#f59e0b",fontWeight:700,fontSize:12}}><Users size={12}/> Kế Toán</span>:u.role==="monitor"?<span style={{display:"inline-flex",alignItems:"center",gap:4,color:"#34d399",fontWeight:700,fontSize:12}}><BarChart2 size={12}/> Monitor</span>:<span style={{color:"var(--ink-dim)",fontSize:12.5}}>Tài xế</span>}</td>
                         <td style={td}>{isAdm?"—":(u.plan||"—")}</td>
                         <td style={td}>{u.hasZalo?<span style={{color:"#34d399"}}>✓</span>:<span style={{color:"var(--ink-dim)"}}>—</span>}</td>
                         <td style={td}>{!isAdm&&u.status==="active"?<span style={{color:u.daysLeft<=3?"#f59e0b":"var(--ink)"}}>{u.daysLeft} ngày</span>:<span style={{color:"var(--ink-dim)"}}>—</span>}</td>
@@ -544,6 +544,10 @@ function AdminApp({ me, onLogout }) {
                             <button onClick={()=>setRole(u.id,"driver")} style={miniBtn("#94a3b8")}><Users size={13}/> Gỡ KT</button>
                             <button onClick={()=>ban(u.id)} style={miniBtn(u.status==="banned"?"#3b82f6":"#ef4444")}><Ban size={13}/> {u.status==="banned"?"Mở":"Khoá"}</button>
                             <button onClick={()=>setDeleteTarget(u)} style={miniBtn("#ef4444")}>✕ Xóa</button>
+                          </>) : u.role==="monitor" ? (<>
+                            <button onClick={()=>setRole(u.id,"driver")} style={miniBtn("#94a3b8")}><BarChart2 size={13}/> Gỡ Monitor</button>
+                            <button onClick={()=>ban(u.id)} style={miniBtn(u.status==="banned"?"#3b82f6":"#ef4444")}><Ban size={13}/> {u.status==="banned"?"Mở":"Khoá"}</button>
+                            <button onClick={()=>setDeleteTarget(u)} style={miniBtn("#ef4444")}>✕ Xóa</button>
                           </>) : u.status==="pending" ? (<>
                             <button onClick={()=>approve(u.id,"Tuần")} style={miniBtn("#3b82f6")}>Duyệt · Tuần</button>
                             <button onClick={()=>approve(u.id,"Tháng")} style={miniBtn("#22c55e")}>Duyệt · Tháng</button>
@@ -551,6 +555,7 @@ function AdminApp({ me, onLogout }) {
                           </>) : (<>
                             <button onClick={()=>setRole(u.id,"admin")} style={miniBtn("#a78bfa")}><Shield size={13}/> Cấp admin</button>
                             <button onClick={()=>setAcctTarget(u)} style={miniBtn("#f59e0b")}><Users size={13}/> Cấp KT</button>
+                            <button onClick={()=>setRole(u.id,"monitor")} style={miniBtn("#34d399")}><BarChart2 size={13}/> Cấp Monitor</button>
                             <button onClick={()=>setRenewTarget(u)} style={miniBtn("#22c55e")}><RefreshCw size={13}/> Gia hạn</button>
                             <button onClick={()=>ban(u.id)} style={miniBtn(u.status==="banned"?"#3b82f6":"#ef4444")}><Ban size={13}/> {u.status==="banned"?"Mở":"Khoá"}</button>
                             <button onClick={()=>setDeleteTarget(u)} style={miniBtn("#ef4444")}>✕ Xóa</button>

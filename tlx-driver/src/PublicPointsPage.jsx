@@ -15,6 +15,12 @@ const get = async (path) => {
   }
   return r.json();
 };
+const authGet = async (path) => {
+  const tok = localStorage.getItem("tlx_token");
+  const r = await fetch(BASE + path, { headers: { Authorization: "Bearer " + (tok || "") } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+};
 
 const fmtTime = (ms) => {
   const d = new Date(Number(ms));
@@ -362,9 +368,132 @@ function GroupsView({ onSelect }) {
 }
 
 const MEMBER_PAGE_SIZES = [50, 100, 150];
+const TX_PAGE_LIMIT = 50;
+
+const TX_STATUS = (tx) => {
+  if (tx.type === "san") return { label: "San điểm", bg: "rgba(88,166,255,.12)", col: "#58a6ff" };
+  const s = tx.status;
+  if (!s || s === "approved") return { label: "Đã duyệt", bg: "rgba(52,211,153,.12)", col: "#34d399" };
+  if (s === "pending") return { label: "Chờ duyệt", bg: "rgba(251,191,36,.12)", col: "#fbbf24" };
+  if (s === "rejected") return { label: "Từ chối", bg: "rgba(248,113,113,.12)", col: "#f87171" };
+  return { label: s, bg: "rgba(255,255,255,.06)", col: c.dim };
+};
+
+/* ── GroupTransactionsView ──────────────────────── */
+function GroupTransactionsView({ group }) {
+  const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+
+  const fetchTxs = useCallback(async (p, s) => {
+    setLoading(true); setErr("");
+    try {
+      const offset = (p - 1) * TX_PAGE_LIMIT;
+      const params = new URLSearchParams({ limit: TX_PAGE_LIMIT, offset });
+      if (s) params.set("search", s);
+      const tok = localStorage.getItem("tlx_token");
+      const r = await fetch(`${BASE}/api/monitor/group-transactions/${group.group_id}?${params}`,
+        { headers: { Authorization: "Bearer " + (tok || "") } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      setItems(data.items || []);
+      setTotal(data.total || 0);
+    } catch (e) { setErr(e.message); }
+    finally { setLoading(false); }
+  }, [group.group_id]);
+
+  useEffect(() => { fetchTxs(page, search); }, [fetchTxs, page, search]);
+
+  useEffect(() => {
+    const t = setTimeout(() => { setPage(1); setSearch(searchInput.trim()); }, 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  const totalPages = Math.ceil(Math.max(total, 1) / TX_PAGE_LIMIT);
+
+  return (
+    <div>
+      {/* Search */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
+          <Search size={15} color={c.dim} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+          <input
+            style={{ width: "100%", padding: "10px 14px 10px 36px", borderRadius: 10, border: `1px solid ${c.border}`, background: c.card, color: c.ink, fontSize: 14, outline: "none", boxSizing: "border-box" }}
+            placeholder="Tìm theo tên poster / taker…"
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+          />
+        </div>
+        <span style={{ display: "flex", alignItems: "center", fontSize: 13, color: c.dim }}>
+          {total} giao dịch
+        </span>
+      </div>
+
+      {loading && <div style={{ textAlign: "center", padding: 40, color: c.dim }}>Đang tải…</div>}
+      {err && <div style={{ color: "#f87171", marginBottom: 12 }}>Lỗi: {err}</div>}
+      {!loading && items.length === 0 && !err && (
+        <div style={{ textAlign: "center", padding: "48px 0", color: c.dim }}>Không có giao dịch.</div>
+      )}
+
+      {items.map(tx => {
+        const pts = Number(tx.points);
+        const ptsStr = Math.abs(pts % 1) < 0.001 ? Math.abs(pts).toFixed(0) : Math.abs(pts).toFixed(2);
+        const status = TX_STATUS(tx);
+        const typeLabel = tx.type === "barem" ? "barem" : tx.type === "san" ? "san điểm" : tx.type === "auto" ? "tự động" : "thủ công";
+        const from = tx.from_member_name || tx.from_member || "";
+        const to = tx.to_member_name || tx.to_member || "";
+        return (
+          <div key={tx.id} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 10, padding: "11px 14px", marginBottom: 8, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "start" }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: c.ink, marginBottom: 3 }}>
+                {from && to ? <><span style={{ color: "#60a5fa" }}>{from}</span><span style={{ color: c.dim }}> → </span><span style={{ color: "#34d399" }}>{to}</span></> :
+                 from ? <span style={{ color: "#60a5fa" }}>{from}</span> :
+                 to   ? <span style={{ color: "#34d399" }}>{to}</span> : <span style={{ color: c.dim }}>—</span>}
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
+                <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: status.bg, color: status.col, fontWeight: 700 }}>{status.label}</span>
+                <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(255,255,255,.05)", color: c.dim, fontWeight: 600 }}>{typeLabel}</span>
+                <span style={{ fontSize: 11, color: c.dim, marginLeft: "auto", display: "flex", alignItems: "center", gap: 3 }}>
+                  <Clock size={10} />{fmtTime(tx.created_at)}
+                </span>
+              </div>
+            </div>
+            <div style={{ textAlign: "right", fontWeight: 800, fontSize: 18, color: pts >= 0 ? "#34d399" : "#f87171", whiteSpace: "nowrap" }}>
+              {pts >= 0 ? "+" : "-"}{ptsStr}đ
+            </div>
+          </div>
+        );
+      })}
+
+      {totalPages > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, padding: "16px 0 0", flexWrap: "wrap" }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+            style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${c.border}`, background: "transparent", color: page === 1 ? c.dim : c.ink, cursor: page === 1 ? "default" : "pointer", fontSize: 14 }}>‹</button>
+          {buildPageList(page, totalPages).map((pg, idx) =>
+            pg === "…"
+              ? <span key={`e${idx}`} style={{ width: 28, textAlign: "center", color: c.dim }}>…</span>
+              : <button key={pg} onClick={() => setPage(pg)}
+                  style={{ width: 36, height: 36, borderRadius: 8, border: "1px solid", borderColor: pg === page ? c.accent : c.border, background: pg === page ? "rgba(52,211,153,.15)" : "transparent", color: pg === page ? c.accent : c.ink, fontWeight: pg === page ? 800 : 400, fontSize: 14, cursor: "pointer" }}>
+                  {pg}
+                </button>
+          )}
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+            style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${c.border}`, background: "transparent", color: page === totalPages ? c.dim : c.ink, cursor: page === totalPages ? "default" : "pointer", fontSize: 14 }}>›</button>
+          <span style={{ fontSize: 12, color: c.dim, marginLeft: 6 }}>trang {page}/{totalPages}</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ── MembersView ────────────────────────────────── */
-function MembersView({ group, onBack, onSelect }) {
+function MembersView({ group, onBack, onSelect, meRole }) {
+  const canMonitor = ["monitor", "admin", "accountant"].includes(meRole);
+  const [activeTab, setActiveTab] = useState("leaderboard");
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -430,6 +559,23 @@ function MembersView({ group, onBack, onSelect }) {
         </div>
       </div>
 
+      {/* Tabs */}
+      {canMonitor && (
+        <div style={{ display: "flex", gap: 2, marginBottom: 18, borderBottom: `1px solid ${c.border}` }}>
+          {[["leaderboard", "Bảng xếp hạng"], ["transactions", "Lịch sử giao dịch"]].map(([tab, label]) => (
+            <button key={tab} onClick={() => setActiveTab(tab)}
+              style={{ padding: "9px 18px", border: "none", borderBottom: activeTab === tab ? `2px solid ${c.accent}` : "2px solid transparent", background: "transparent", color: activeTab === tab ? c.accent : c.dim, fontWeight: activeTab === tab ? 700 : 500, fontSize: 14, cursor: "pointer", transition: "color .15s", marginBottom: -1 }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {canMonitor && activeTab === "transactions" && (
+        <GroupTransactionsView group={group} />
+      )}
+
+      {(!canMonitor || activeTab === "leaderboard") && <>
       {/* Search + Sort + Page size */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
         <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
@@ -526,6 +672,7 @@ function MembersView({ group, onBack, onSelect }) {
           </span>
         </div>
       )}
+      </>}
     </div>
   );
 }
@@ -655,6 +802,16 @@ export default function PublicPointsPage() {
   const [group, setGroup] = useState(null);
   const [member, setMember] = useState(null);
   const [slugLoading, setSlugLoading] = useState(false);
+  const [meRole, setMeRole] = useState("public");
+
+  // Kiểm tra quyền monitor: gọi driver service /api/me bằng token driver
+  useEffect(() => {
+    const tok = localStorage.getItem("tlx_token");
+    if (!tok) return;
+    authGet("/api/me")
+      .then(u => { if (u?.role) setMeRole(u.role); })
+      .catch(() => {});
+  }, []);
 
   // SEO: cập nhật title/desc/canonical/OG theo từng view
   useEffect(() => {
@@ -752,6 +909,7 @@ export default function PublicPointsPage() {
           group={group}
           onBack={backToGroups}
           onSelect={m => selectMember(group, m)}
+          meRole={meRole}
         />
       )}
       {!slugLoading && view === "transactions" && group && member && (
