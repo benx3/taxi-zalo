@@ -491,8 +491,9 @@ function GroupTransactionsView({ group }) {
 }
 
 /* ── MembersView ────────────────────────────────── */
-function MembersView({ group, onBack, onSelect, meRole }) {
-  const canMonitor = ["monitor", "admin", "accountant"].includes(meRole);
+function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds }) {
+  const canMonitor = ["admin", "accountant"].includes(meRole)
+    || (meRole === "monitor" && (allowedGroupIds === null || (Array.isArray(allowedGroupIds) && allowedGroupIds.includes(group.group_id))));
   const [activeTab, setActiveTab] = useState("leaderboard");
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -803,17 +804,25 @@ export default function PublicPointsPage() {
   const [member, setMember] = useState(null);
   const [slugLoading, setSlugLoading] = useState(false);
   const [meRole, setMeRole] = useState("public");
+  const [allowedGroupIds, setAllowedGroupIds] = useState(null); // null = chưa biết, [] = không có, string[] = danh sách
 
   // Kiểm tra role: thử driver service trước (monitor/driver), fallback KT service (admin/accountant)
   useEffect(() => {
     const tok = localStorage.getItem("tlx_token");
     if (!tok) return;
     authGet("/api/me")
-      .then(u => { if (u?.role) setMeRole(u.role); })
+      .then(u => {
+        if (u?.role) setMeRole(u.role);
+        if (["monitor", "admin", "accountant"].includes(u?.role)) {
+          authGet("/api/monitor/my-groups")
+            .then(d => setAllowedGroupIds(d.all ? null : (d.groupIds || [])))
+            .catch(() => setAllowedGroupIds([]));
+        }
+      })
       .catch(() => {
         fetch(KT_BASE + "/api/me", { headers: { Authorization: "Bearer " + tok } })
           .then(r => r.ok ? r.json() : Promise.reject())
-          .then(u => { if (u?.role) setMeRole(u.role); })
+          .then(u => { if (u?.role) setMeRole(u.role); if (u?.role === "admin" || u?.role === "accountant") setAllowedGroupIds(null); })
           .catch(() => {});
       });
   }, []);
@@ -915,6 +924,7 @@ export default function PublicPointsPage() {
           onBack={backToGroups}
           onSelect={m => selectMember(group, m)}
           meRole={meRole}
+          allowedGroupIds={allowedGroupIds}
         />
       )}
       {!slugLoading && view === "transactions" && group && member && (

@@ -81,6 +81,13 @@ CREATE TABLE IF NOT EXISTS accountant_groups (
   PRIMARY KEY (accountant_id, group_id)
 );
 
+CREATE TABLE IF NOT EXISTS monitor_groups (
+  monitor_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  group_id   TEXT NOT NULL,
+  group_name TEXT,
+  PRIMARY KEY (monitor_id, group_id)
+);
+
 CREATE TABLE IF NOT EXISTS members (
   id           TEXT PRIMARY KEY,
   group_id     TEXT NOT NULL,
@@ -610,6 +617,15 @@ export function addAccountantGroup(accountantId, groupId, groupName, zaloGroupId
 }
 export function removeAccountantGroup(accountantId, groupId) {
   db.prepare("DELETE FROM accountant_groups WHERE accountant_id=? AND group_id=?").run(accountantId, groupId);
+}
+export function getMonitorGroups(monitorId) {
+  return db.prepare("SELECT * FROM monitor_groups WHERE monitor_id=?").all(monitorId);
+}
+export function addMonitorGroup(monitorId, groupId, groupName) {
+  db.prepare("INSERT OR REPLACE INTO monitor_groups(monitor_id,group_id,group_name) VALUES(?,?,?)").run(monitorId, groupId, groupName || groupId);
+}
+export function removeMonitorGroup(monitorId, groupId) {
+  db.prepare("DELETE FROM monitor_groups WHERE monitor_id=? AND group_id=?").run(monitorId, groupId);
 }
 // Lazy migration: đổi old-format group_id → per-accountant instanceId mà không cần restart
 // "First caller" lấy toàn bộ dữ liệu cũ; caller sau nhận instance rỗng (sẽ auto-import)

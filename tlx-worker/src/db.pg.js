@@ -79,6 +79,12 @@ export async function initDb() {
       group_name    TEXT,
       PRIMARY KEY (accountant_id, group_id)
     );
+    CREATE TABLE IF NOT EXISTS monitor_groups (
+      monitor_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      group_id   TEXT NOT NULL,
+      group_name TEXT,
+      PRIMARY KEY (monitor_id, group_id)
+    );
     CREATE TABLE IF NOT EXISTS members (
       id           TEXT PRIMARY KEY,
       group_id     TEXT NOT NULL,
@@ -484,6 +490,17 @@ export async function addAccountantGroup(accountantId, groupId, groupName, zaloG
 }
 export async function removeAccountantGroup(accountantId, groupId) {
   await q("DELETE FROM accountant_groups WHERE accountant_id=$1 AND group_id=$2", [accountantId, groupId]);
+}
+export async function getMonitorGroups(monitorId) {
+  const r = await q("SELECT * FROM monitor_groups WHERE monitor_id=$1", [monitorId]);
+  return r.rows;
+}
+export async function addMonitorGroup(monitorId, groupId, groupName) {
+  await q("INSERT INTO monitor_groups(monitor_id,group_id,group_name) VALUES($1,$2,$3) ON CONFLICT(monitor_id,group_id) DO UPDATE SET group_name=$3",
+    [monitorId, groupId, groupName || groupId]);
+}
+export async function removeMonitorGroup(monitorId, groupId) {
+  await q("DELETE FROM monitor_groups WHERE monitor_id=$1 AND group_id=$2", [monitorId, groupId]);
 }
 export async function migrateGroupInstanceForAccountant(accountantId, oldGroupId, newGroupId, zaloGroupId) {
   if (oldGroupId === newGroupId) return;

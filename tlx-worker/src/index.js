@@ -242,6 +242,21 @@ app.post("/api/admin/accountant-groups", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Admin: quản lý nhóm monitor ----------
+app.get("/api/admin/monitor-groups/:userId", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try { res.json(await dbm.getMonitorGroups(req.params.userId)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/api/admin/monitor-groups", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { monitorId, groupId, groupName, action } = req.body;
+  if (!monitorId || !groupId) return res.status(400).json({ error: "Thiếu monitorId hoặc groupId" });
+  if (action === "remove") await dbm.removeMonitorGroup(monitorId, groupId);
+  else await dbm.addMonitorGroup(monitorId, groupId, groupName || groupId);
+  res.json({ ok: true });
+});
+
 // ---------- Admin: quản lý dữ liệu ----------
 app.get("/api/admin/data-stats", async (req, res) => {
   if (!await requireAdmin(req, res)) return;

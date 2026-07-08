@@ -151,6 +151,18 @@ app.get("/api/public/transactions/:groupId/:zaloUid", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ---------- Monitor: danh sách nhóm được phép xem ----------
+app.get("/api/monitor/my-groups", async (req, res) => {
+  try {
+    const a = tokenOf(req); if (!a) return res.status(401).json({ error: "Chưa đăng nhập" });
+    const u = await dbm.getUserPublic(a.userId);
+    if (!["monitor", "admin", "accountant"].includes(u?.role)) return res.status(403).json({ error: "Không có quyền" });
+    if (u.role === "admin" || u.role === "accountant") return res.json({ all: true });
+    const groups = await dbm.getMonitorGroups(a.userId);
+    res.json({ all: false, groupIds: groups.map(g => g.group_id) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ---------- Monitor: xem giao dịch nhóm (chỉ monitor/admin/accountant) ----------
 app.get("/api/monitor/group-transactions/:groupId", async (req, res) => {
   try {

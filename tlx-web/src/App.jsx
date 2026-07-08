@@ -413,6 +413,7 @@ function AdminApp({ me, onLogout }) {
   const [navOpen,setNavOpen]=useState(()=>window.innerWidth>=768);
   const [resetTarget,setResetTarget]=useState(null);
   const [acctTarget,setAcctTarget]=useState(null);
+  const [monitorTarget,setMonitorTarget]=useState(null);
   const [deleteTarget,setDeleteTarget]=useState(null);
   const [renewTarget,setRenewTarget]=useState(null);
   const fmt=n=>n.toLocaleString("vi-VN")+"đ";
@@ -545,6 +546,7 @@ function AdminApp({ me, onLogout }) {
                             <button onClick={()=>ban(u.id)} style={miniBtn(u.status==="banned"?"#3b82f6":"#ef4444")}><Ban size={13}/> {u.status==="banned"?"Mở":"Khoá"}</button>
                             <button onClick={()=>setDeleteTarget(u)} style={miniBtn("#ef4444")}>✕ Xóa</button>
                           </>) : u.role==="monitor" ? (<>
+                            <button onClick={()=>setMonitorTarget(u)} style={miniBtn("#34d399")}><BarChart2 size={13}/> Nhóm Monitor</button>
                             <button onClick={()=>setRole(u.id,"driver")} style={miniBtn("#94a3b8")}><BarChart2 size={13}/> Gỡ Monitor</button>
                             <button onClick={()=>ban(u.id)} style={miniBtn(u.status==="banned"?"#3b82f6":"#ef4444")}><Ban size={13}/> {u.status==="banned"?"Mở":"Khoá"}</button>
                             <button onClick={()=>setDeleteTarget(u)} style={miniBtn("#ef4444")}>✕ Xóa</button>
@@ -577,6 +579,7 @@ function AdminApp({ me, onLogout }) {
       </div>
       {resetTarget&&<ResetPwdModal target={resetTarget} onClose={()=>setResetTarget(null)} onDone={reload}/>}
       {acctTarget&&<SetAccountantModal target={acctTarget} onClose={()=>setAcctTarget(null)} onDone={()=>{setAcctTarget(null);reload();}}/>}
+      {monitorTarget&&<SetMonitorGroupsModal target={monitorTarget} onClose={()=>setMonitorTarget(null)}/>}
       {deleteTarget&&<DeleteUserModal target={deleteTarget} onClose={()=>setDeleteTarget(null)} onDone={()=>{setDeleteTarget(null);reload();}}/>}
       {renewTarget&&<RenewModal target={renewTarget} week={week} month={month} onClose={()=>setRenewTarget(null)} onDone={()=>{setRenewTarget(null);reload();}}/>}
     </div>
@@ -662,6 +665,75 @@ function SetAccountantModal({target,onClose,onDone}){
           <button onClick={save} disabled={saving} style={{flex:1,padding:"10px",borderRadius:12,border:"none",cursor:saving?"default":"pointer",fontWeight:800,fontSize:14,background:"rgba(245,158,11,.2)",color:"#f59e0b"}}>
             {saving?"Đang lưu…":isKT?"Cập nhật":"Cấp quyền Kế Toán"}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===== Admin: Phân nhóm cho Monitor ===== */
+function SetMonitorGroupsModal({ target, onClose }) {
+  const [allGroups, setAllGroups] = useState([]);
+  const [current, setCurrent] = useState([]);
+  const [saving, setSaving] = useState(null);
+  const [msg, setMsg] = useState(null);
+
+  useEffect(() => {
+    Promise.all([
+      api.listAccountantGroups(),
+      api.monitorGroups(target.id),
+    ]).then(([groups, myGroups]) => {
+      setAllGroups(groups);
+      setCurrent(myGroups.map(g => g.group_id));
+    }).catch(() => {});
+  }, [target.id]);
+
+  const hasAccess = (gid) => current.includes(gid);
+
+  const toggle = async (g) => {
+    const action = hasAccess(g.group_id) ? "remove" : "add";
+    setSaving(g.group_id);
+    try {
+      await api.setMonitorGroup(target.id, g.group_id, g.group_name, action);
+      setCurrent(prev => action === "add" ? [...prev, g.group_id] : prev.filter(id => id !== g.group_id));
+      setMsg({ ok: true, text: action === "add" ? `Đã cấp: ${g.group_name}` : `Đã thu hồi: ${g.group_name}` });
+      setTimeout(() => setMsg(null), 2500);
+    } catch (e) { setMsg({ ok: false, text: e.message }); }
+    finally { setSaving(null); }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 16, padding: "24px 28px", width: 440, maxWidth: "95vw", maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <BarChart2 size={18} color="#34d399" />
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Nhóm Monitor</div>
+          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)", padding: 4 }}><X size={18} /></button>
+        </div>
+        <div style={{ fontSize: 13, color: "var(--ink-dim)", marginBottom: 12 }}>
+          Monitor: <b style={{ color: "var(--ink)" }}>{target.name || target.phone}</b>
+          <br />Chọn nhóm được phép xem lịch sử giao dịch.
+        </div>
+        {msg && <div style={{ padding: "7px 12px", borderRadius: 8, marginBottom: 10, fontSize: 13, fontWeight: 600, background: msg.ok ? "rgba(52,211,153,.12)" : "rgba(239,68,68,.12)", color: msg.ok ? "#34d399" : "#f87171" }}>{msg.text}</div>}
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {allGroups.length === 0 && <div style={{ textAlign: "center", padding: 24, color: "var(--ink-dim)", fontSize: 13 }}>Chưa có nhóm nào trong hệ thống.</div>}
+          {allGroups.map(g => {
+            const active = hasAccess(g.group_id);
+            const isBusy = saving === g.group_id;
+            return (
+              <div key={g.group_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.group_name || g.group_id}</div>
+                  <div style={{ fontSize: 11, color: "var(--ink-dim)" }}>{g.accountant_name} · {g.member_count ?? "?"} TV</div>
+                </div>
+                <button onClick={() => toggle(g)} disabled={isBusy}
+                  style={{ flexShrink: 0, padding: "6px 14px", borderRadius: 8, border: "none", cursor: isBusy ? "default" : "pointer", fontWeight: 700, fontSize: 12,
+                    background: active ? "rgba(52,211,153,.18)" : "rgba(255,255,255,.07)", color: active ? "#34d399" : "var(--ink-dim)" }}>
+                  {isBusy ? "…" : active ? "✓ Đang xem" : "Cấp quyền"}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

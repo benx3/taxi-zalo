@@ -51,6 +51,8 @@ export const api = {
   getDataStats: () => req("/api/admin/data-stats", null, "GET"),
   purgeTable: (table, days) => req("/api/admin/purge", { table, days }),
   listAccountantGroups: () => req("/api/admin/accountant-groups", null, "GET"),
+  monitorGroups: (userId) => req(`/api/admin/monitor-groups/${userId}`, null, "GET"),
+  setMonitorGroup: (monitorId, groupId, groupName, action) => req("/api/admin/monitor-groups", { monitorId, groupId, groupName, action }),
   adminGetMembers: (groupId) => req(`/api/accountant/members?groupId=${encodeURIComponent(groupId)}`, null, "GET"),
   adminAdjustPoints: (body) => req("/api/accountant/adjust-points", body),
   adminGetTransactions: (groupId, limit = 150) => req(`/api/accountant/transactions?groupId=${encodeURIComponent(groupId)}&limit=${limit}`, null, "GET"),
