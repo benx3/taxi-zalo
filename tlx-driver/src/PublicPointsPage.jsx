@@ -380,7 +380,9 @@ const TX_STATUS = (tx) => {
 };
 
 /* ── GroupTransactionsView ──────────────────────── */
-function GroupTransactionsView({ group }) {
+function GroupTransactionsView({ group, txApiBase, txPath }) {
+  const apiBase = txApiBase || BASE;
+  const apiPath = txPath || "/api/monitor/group-transactions";
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -396,7 +398,7 @@ function GroupTransactionsView({ group }) {
       const params = new URLSearchParams({ limit: TX_PAGE_LIMIT, offset });
       if (s) params.set("search", s);
       const tok = localStorage.getItem("tlx_token");
-      const r = await fetch(`${BASE}/api/monitor/group-transactions/${group.group_id}?${params}`,
+      const r = await fetch(`${apiBase}${apiPath}/${group.group_id}?${params}`,
         { headers: { Authorization: "Bearer " + (tok || "") } });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
@@ -404,7 +406,7 @@ function GroupTransactionsView({ group }) {
       setTotal(data.total || 0);
     } catch (e) { setErr(e.message); }
     finally { setLoading(false); }
-  }, [group.group_id]);
+  }, [group.group_id, apiBase, apiPath]);
 
   useEffect(() => { fetchTxs(page, search); }, [fetchTxs, page, search]);
 
@@ -491,7 +493,7 @@ function GroupTransactionsView({ group }) {
 }
 
 /* ── MembersView ────────────────────────────────── */
-function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds }) {
+function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBase, txPath }) {
   const canMonitor = ["admin", "accountant"].includes(meRole)
     || (meRole === "monitor" && (allowedGroupIds === null || (Array.isArray(allowedGroupIds) && allowedGroupIds.includes(group.group_id))));
   const [activeTab, setActiveTab] = useState("leaderboard");
@@ -573,7 +575,7 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds }) {
       )}
 
       {canMonitor && activeTab === "transactions" && (
-        <GroupTransactionsView group={group} />
+        <GroupTransactionsView group={group} txApiBase={txApiBase} txPath={txPath} />
       )}
 
       {(!canMonitor || activeTab === "leaderboard") && <>
@@ -804,9 +806,12 @@ export default function PublicPointsPage() {
   const [member, setMember] = useState(null);
   const [slugLoading, setSlugLoading] = useState(false);
   const [meRole, setMeRole] = useState("public");
-  const [allowedGroupIds, setAllowedGroupIds] = useState(null); // null = chưa biết, [] = không có, string[] = danh sách
+  const [allowedGroupIds, setAllowedGroupIds] = useState(null);
+  // txApiBase: service nào để gọi group-transactions (driver vs KT)
+  const [txApiBase, setTxApiBase] = useState(BASE);
+  const [txPath, setTxPath] = useState("/api/monitor/group-transactions");
 
-  // Kiểm tra role: thử driver service trước (monitor/driver), fallback KT service (admin/accountant)
+  // Kiểm tra role: thử driver service trước (monitor), fallback KT service (admin/accountant)
   useEffect(() => {
     const tok = localStorage.getItem("tlx_token");
     if (!tok) return;
@@ -817,12 +822,21 @@ export default function PublicPointsPage() {
           authGet("/api/monitor/my-groups")
             .then(d => setAllowedGroupIds(d.all ? null : (d.groupIds || [])))
             .catch(() => setAllowedGroupIds([]));
+          // monitor/admin/accountant với driver token → dùng driver endpoint
         }
       })
       .catch(() => {
+        // driver service không nhận token → thử KT service
         fetch(KT_BASE + "/api/me", { headers: { Authorization: "Bearer " + tok } })
           .then(r => r.ok ? r.json() : Promise.reject())
-          .then(u => { if (u?.role) setMeRole(u.role); if (u?.role === "admin" || u?.role === "accountant") setAllowedGroupIds(null); })
+          .then(u => {
+            if (u?.role) setMeRole(u.role);
+            if (u?.role === "admin" || u?.role === "accountant") {
+              setAllowedGroupIds(null);
+              setTxApiBase(KT_BASE);
+              setTxPath("/api/admin/group-transactions");
+            }
+          })
           .catch(() => {});
       });
   }, []);
@@ -925,6 +939,8 @@ export default function PublicPointsPage() {
           onSelect={m => selectMember(group, m)}
           meRole={meRole}
           allowedGroupIds={allowedGroupIds}
+          txApiBase={txApiBase}
+          txPath={txPath}
         />
       )}
       {!slugLoading && view === "transactions" && group && member && (

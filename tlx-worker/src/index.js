@@ -242,6 +242,22 @@ app.post("/api/admin/accountant-groups", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Admin/KT: xem giao dịch nhóm (dùng KT token) ----------
+app.get("/api/admin/group-transactions/:groupId", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  try {
+    const { groupId } = req.params;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const offset = Number(req.query.offset) || 0;
+    const search = (req.query.search || "").trim();
+    const [items, total] = await Promise.all([
+      dbm.listTransactions(groupId, { limit, offset, search }),
+      dbm.countTransactions(groupId, { search }),
+    ]);
+    res.json({ items, total, limit, offset });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ---------- Admin: quản lý nhóm monitor ----------
 app.get("/api/admin/monitor-groups/:userId", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
