@@ -448,12 +448,15 @@ function GroupTransactionsView({ group, txApiBase, txPath }) {
         const typeLabel = tx.type === "barem" ? "barem" : tx.type === "san" ? "san điểm" : tx.type === "auto" ? "tự động" : "thủ công";
         const from = tx.from_member_name || tx.from_member || "";
         const to = tx.to_member_name || tx.to_member || "";
+        // Âm khi chỉ có from_member (poster trả điểm, không có người nhận riêng)
+        const isNeg = !!tx.from_member && !tx.to_member;
+        const ptsColor = isNeg ? "#f87171" : "#34d399";
         return (
           <div key={tx.id} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 10, padding: "11px 14px", marginBottom: 8, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "start" }}>
             <div>
               <div style={{ fontSize: 14, fontWeight: 700, color: c.ink, marginBottom: 3 }}>
                 {from && to ? <><span style={{ color: "#60a5fa" }}>{from}</span><span style={{ color: c.dim }}> → </span><span style={{ color: "#34d399" }}>{to}</span></> :
-                 from ? <span style={{ color: "#60a5fa" }}>{from}</span> :
+                 from ? <span style={{ color: "#f87171" }}>{from}</span> :
                  to   ? <span style={{ color: "#34d399" }}>{to}</span> : <span style={{ color: c.dim }}>—</span>}
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
@@ -464,8 +467,8 @@ function GroupTransactionsView({ group, txApiBase, txPath }) {
                 </span>
               </div>
             </div>
-            <div style={{ textAlign: "right", fontWeight: 800, fontSize: 18, color: pts >= 0 ? "#34d399" : "#f87171", whiteSpace: "nowrap" }}>
-              {pts >= 0 ? "+" : "-"}{ptsStr}đ
+            <div style={{ textAlign: "right", fontWeight: 800, fontSize: 18, color: ptsColor, whiteSpace: "nowrap" }}>
+              {isNeg ? "-" : "+"}{ptsStr}đ
             </div>
           </div>
         );
