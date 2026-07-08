@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Search, ArrowLeft, Users, ChevronRight, Clock, TrendingUp, TrendingDown, BarChart2 } from "lucide-react";
 
 const BASE = import.meta.env?.VITE_API_BASE || "http://localhost:8080";
+const KT_BASE = import.meta.env?.VITE_KT_API_BASE || "http://localhost:8082";
 const get = async (path) => {
   const r = await fetch(BASE + path);
   if (!r.ok) {
@@ -288,7 +289,8 @@ function GroupsView({ onSelect }) {
   useEffect(() => {
     const tok = localStorage.getItem("tlx_token");
     if (!tok) { setAuthStatus("denied"); return; }
-    fetch(BASE + "/api/me", { headers: { "Content-Type": "application/json", Authorization: "Bearer " + tok } })
+    // Gọi KT/admin API để verify token (token do admin-api cấp, không phải driver service)
+    fetch(KT_BASE + "/api/me", { headers: { "Content-Type": "application/json", Authorization: "Bearer " + tok } })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(u => setAuthStatus(u.role === "admin" || u.role === "accountant" ? "authorized" : "denied"))
       .catch(() => setAuthStatus("denied"));
