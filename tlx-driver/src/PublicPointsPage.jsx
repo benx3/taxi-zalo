@@ -454,11 +454,12 @@ function GroupTransactionsView({ group, txApiBase, txPath }) {
         return (
           <div key={tx.id} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 10, padding: "11px 14px", marginBottom: 8, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "start" }}>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: c.ink, marginBottom: 3 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: c.ink, marginBottom: 4 }}>
                 {from && to ? <><span style={{ color: "#60a5fa" }}>{from}</span><span style={{ color: c.dim }}> → </span><span style={{ color: "#34d399" }}>{to}</span></> :
                  from ? <span style={{ color: "#f87171" }}>{from}</span> :
                  to   ? <span style={{ color: "#34d399" }}>{to}</span> : <span style={{ color: c.dim }}>—</span>}
               </div>
+              {tx.raw_text && <ConvoThread raw={tx.raw_text} />}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
                 <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: status.bg, color: status.col, fontWeight: 700 }}>{status.label}</span>
                 <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(255,255,255,.05)", color: c.dim, fontWeight: 600 }}>{typeLabel}</span>
