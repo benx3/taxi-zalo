@@ -55,7 +55,8 @@ export function parseBonus(t) {
     if (val > 0 && val <= 20) return val;
   }
   // Tiền tố +- hoặc -+ không kèm đơn vị: "ib+-1.5", "ok -+2"
-  const pm = t.match(/[+\-]{2}\s*(\d+(?:[,\.]\d+)?)(?!\w)/);
+  // (?<![+\-]) tránh bắt nhầm "---17" (số nhà trong địa chỉ)
+  const pm = t.match(/(?<![+\-])[+\-]{2}\s*(\d+(?:[,\.]\d+)?)(?!\w)/);
   if (pm) {
     const val = parseFloat(pm[1].replace(",", "."));
     if (val > 0 && val <= 20) return val;
