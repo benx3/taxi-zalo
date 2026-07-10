@@ -177,7 +177,7 @@ export function parseSeats(t) {
 
 export function parseType(t) {
   const l = t.toLowerCase();
-  if (/(bao\s*hàng|csct\s*đồ|(?:^|[\s\d,.])\s*đồ\s|gửi\s*hàng|giao\s*hàng|chở\s*hàng|ship\b|kiện\s*hàng|hàng\s+(?:nhỏ|nặng|lớn|to|bé|gọn|cồng|kềnh))/.test(l) && !/1\s*ghế|1k\b|gái|khách/.test(l)) return "Hàng";
+  if (/(bao\s*hàng|csct\s*đồ|(?:^|[\s\d,.])\s*đồ\s|gửi\s*hàng|giao\s*hàng|chở\s*hàng|ship\b|kiện\s*hàng|hàng\s+(?:nhỏ|nặng|lớn|to|bé|gọn|cồng|kềnh)|hồ\s*sơ|tài\s*liệu|giấy\s*tờ|phong\s*bì|bưu\s*phẩm)/.test(l) && !/1\s*ghế|1k\b|gái|khách/.test(l)) return "Hàng";
   if (/bao\s*xe|\bbxe\b|\bbx\b|bx\d+|\bxe\s*7\b|7\s*chỗ|\b7c\b|\blịch\s*taxi\b|\btaxi\b/.test(l)) {
     if (/bx\s*2c\b|bxe\s*2c\b|bao\s*xe\s*2c\b|2\s*chi[eề]u|2\s*chieu/.test(l)) return "Bao xe 2 chiều";
     return "Bao xe";
