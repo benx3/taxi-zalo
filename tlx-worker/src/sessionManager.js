@@ -973,8 +973,10 @@ async function onMessage(sess, msg) {
             }, 0);
 
             // Giữ nội dung convo gốc + thêm tin hành động
+            // baremPosterTx null khi pending (combined row) → đọc từ baremPendingTx
+            const _rawSrc = baremPosterTx ?? baremPendingTx;
             let baseConvo = null;
-            try { baseConvo = baremPosterTx.raw_text ? JSON.parse(baremPosterTx.raw_text) : null; } catch {}
+            try { baseConvo = _rawSrc?.raw_text ? JSON.parse(_rawSrc.raw_text) : null; } catch {}
 
             // Lịch sử điều chỉnh — đọc từ barem tx (source of truth).
             // KHÔNG đọc từ adj txs vì cancel/free sẽ làm mất dữ liệu gốc nếu overwrite chúng.
