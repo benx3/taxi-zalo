@@ -226,11 +226,13 @@ function ConvoThread({ raw }) {
       </div>
     );
   }
-  if (raw) {
-    const short = raw.length > 120 ? raw.slice(0, 120) + "…" : raw;
+  // Cancel/free/adjust không có tripText — chỉ hiển thị phần điều chỉnh
+  if (c2 && (c2.cancelText || c2.freeText || c2.adjustText)) {
     return (
-      <div style={{ background: "rgba(0,0,0,.2)", border: `1px solid ${c.border}`, borderRadius: 8, padding: "7px 10px", marginBottom: 6, fontSize: 13, color: c.dim, wordBreak: "break-word" }}>
-        {short}
+      <div style={{ background: "rgba(0,0,0,.3)", border: `1px solid ${c.border}`, borderRadius: 8, padding: "8px 10px", marginBottom: 6, lineHeight: 1.5 }}>
+        {c2.cancelText && row(c2.cancelTime, c2.canceller, c2.cancelText, "#fbbf24")}
+        {c2.freeText   && row(c2.freeTime,   c2.freePoster, c2.freeText,  "#fb923c")}
+        {c2.adjustText && row(c2.adjustTime, c2.adjuster,   c2.adjustText,"#a78bfa")}
       </div>
     );
   }
