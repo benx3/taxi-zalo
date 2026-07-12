@@ -39,62 +39,59 @@ function hasRouteHint(t) {
 }
 
 // ----- ĐIỂM EXPLICIT: "1đ","1₫","1d","1điểm","+-1.5","-+2d","1 diem","0,5đ" -----
+// Điểm luôn < 10 và thường ở cuối tin → ưu tiên bắt cuối câu trước, có đơn vị ở giữa là fallback.
 export function parseBonus(t) {
-  // Đơn vị ngắn (đ, ₫, d) bắt ở bất kỳ đâu: "1đ", "1₫", "+-1.5d"
+  // 1. Cuối câu — ưu tiên cao nhất vì điểm hầu như luôn ở đây
+  // Điểm kèm dấu ngay sau giá: "350k-1 , ôm biển" / "500k -1,tgct"
+  const afterK = t.match(/\d{2,4}\s*k\s*([+\-])\s*(\d{1,2}(?:[,.]\d{1,2})?)\b(?![,.]\d)/i);
+  if (afterK) {
+    const val = parseFloat(afterK[2].replace(",", "."));
+    if (val > 0 && val < 10) return val;
+  }
+  // Số thập phân cuối câu không có đơn vị: "500k tg. 0,5" / "400k-0.5" / "/0,5"
+  const tail = t.match(/(?:^|\s|[+\-/.])(\d+[,\.]\d{1,2})\s*(?:[.,;]*\s*[a-zA-Z]{2,8})?\s*$/);
+  if (tail) {
+    const val = parseFloat(tail[1].replace(",", "."));
+    if (val > 0 && val < 10) return val;
+  }
+  // Số thập phân trước @mention: "lịch 0,5 @Kế Toán lưu ý"
+  const beforeAt = t.match(/(?:^|\s|[+\-/.])(\d+[,\.]\d{1,2})\s+@/);
+  if (beforeAt) {
+    const val = parseFloat(beforeAt[1].replace(",", "."));
+    if (val > 0 && val < 10) return val;
+  }
+  // Số nguyên cuối câu sau dấu -: "300k sảnh nhận -1"
+  const tailMinus = t.match(/\s-\s*(\d+)\s*$/);
+  if (tailMinus) {
+    const val = parseInt(tailMinus[1]);
+    if (val > 0 && val < 10) return val;
+  }
+  // Số nguyên cuối câu sau dấu +: "350k+2", "300k +1"
+  const tailPlus = t.match(/(?:k|\s)\+\s*(\d+)\s*$/i);
+  if (tailPlus) {
+    const val = parseInt(tailPlus[1]);
+    if (val > 0 && val < 10) return val;
+  }
+
+  // 2. Có đơn vị rõ ràng — bắt bất kỳ đâu trong câu (fallback)
   // ₫ = U+20AB (ký hiệu tiền tệ), đ = U+0111 (chữ cái Vietnamese)
   const ms = t.match(/(?:[+\-]{2})?\s*(\d+(?:[,\.]\d+)?)\s*(?:đ|₫|d)(?![\wÀ-ɏḀ-ỿ])/i);
   if (ms) {
     const val = parseFloat(ms[1].replace(",", "."));
-    if (val > 0 && val <= 20) return val;
+    if (val > 0 && val < 10) return val;
   }
-  // Đơn vị dài "điểm/diem" — thêm lookahead chặn "2 điểm thuận thành" (địa điểm, không phải điểm thưởng)
-  // Không match nếu "điểm" theo sau bởi khoảng trắng + chữ cái (tên địa điểm)
+  // "điểm/diem" — chặn "2 điểm thuận thành" (địa điểm)
   const ml = t.match(/(?:[+\-]{2})?\s*(\d+(?:[,\.]\d+)?)\s*(?:điểm|diem)(?![\wÀ-ɏḀ-ỿ])(?!\s+[\wÀ-ɏḀ-ỿ])/i);
   if (ml) {
     const val = parseFloat(ml[1].replace(",", "."));
-    if (val > 0 && val <= 20) return val;
+    if (val > 0 && val < 10) return val;
   }
-  // Tiền tố +- hoặc -+ không kèm đơn vị: "ib+-1.5", "ok -+2"
+  // Tiền tố +- hoặc -+: "ib+-1.5", "ok -+2"
   // (?<![+\-]) tránh bắt nhầm "---17" (số nhà trong địa chỉ)
   const pm = t.match(/(?<![+\-])[+\-]{2}\s*(\d+(?:[,\.]\d+)?)(?!\w)/);
   if (pm) {
     const val = parseFloat(pm[1].replace(",", "."));
-    if (val > 0 && val <= 20) return val;
-  }
-  // Điểm kèm dấu ngay sau giá (không cần cuối chuỗi): "350k-1 , ôm biển" / "500k -1,tgct"
-  // \d{1,2} chặn số lớn (100 = 3 chữ số → không khớp), (?![,.]\d) tránh "1,000"
-  const afterK = t.match(/\d{2,4}\s*k\s*([+\-])\s*(\d{1,2}(?:[,.]\d{1,2})?)\b(?![,.]\d)/i);
-  if (afterK) {
-    const val = parseFloat(afterK[2].replace(",", "."));
-    if (val > 0 && val <= 10) return val;
-  }
-  // Số thập phân cuối câu không có đơn vị: "500k tg. 0,5" / "400k-0.5" / "350k+0,5" / "/0,5" / "Ok.0.5"
-  // - Cho phép "/." trước số (vd: "/0,5", "Ok.0.5")
-  // - Cho phép ghi chú ASCII ngắn sau số (vd: "0,5 .csct", "0,5 tg") trước cuối chuỗi
-  // \d{1,2} cho phần thập phân để tránh bắt nhầm "1,000" (phân cách hàng nghìn)
-  const tail = t.match(/(?:^|\s|[+\-/.])(\d+[,\.]\d{1,2})\s*(?:[.,;]*\s*[a-zA-Z]{2,8})?\s*$/);
-  // Số thập phân trước @mention: "lịch 0,5 @Kế Toán lưu ý" / "okib 0.5 @KT"
-  const beforeAt = t.match(/(?:^|\s|[+\-/.])(\d+[,\.]\d{1,2})\s+@/);
-  if (tail) {
-    const val = parseFloat(tail[1].replace(",", "."));
-    if (val > 0 && val <= 10) return val;
-  }
-  if (beforeAt) {
-    const val = parseFloat(beforeAt[1].replace(",", "."));
-    if (val > 0 && val <= 10) return val;
-  }
-  // Số nguyên cuối câu sau dấu - (kèm khoảng trắng): "300k sảnh nhận -1"
-  // Yêu cầu \s trước - để tránh bắt nhầm giá kiểu "500k-100"
-  const tailMinus = t.match(/\s-\s*(\d+)\s*$/);
-  if (tailMinus) {
-    const val = parseInt(tailMinus[1]);
-    if (val > 0 && val <= 10) return val;
-  }
-  // Số nguyên cuối câu sau dấu + liền k hoặc khoảng trắng: "350k+2", "300k +1"
-  const tailPlus = t.match(/(?:k|\s)\+\s*(\d+)\s*$/i);
-  if (tailPlus) {
-    const val = parseInt(tailPlus[1]);
-    if (val > 0 && val <= 10) return val;
+    if (val > 0 && val < 10) return val;
   }
   return null;
 }
