@@ -479,6 +479,7 @@ function PendingApprovalsView({ group, apiBase }) {
       const tok = localStorage.getItem("tlx_token");
       const r = await fetch(`${base}/api/monitor/pending-transfers/${group.group_id}`,
         { headers: { Authorization: "Bearer " + (tok || "") } });
+      if (r.status === 403) throw new Error("Bạn không có quyền trên nhóm này");
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setItems(await r.json());
     } catch (e) { setErr(e.message); }
