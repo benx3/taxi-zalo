@@ -544,6 +544,44 @@ app.post("/api/accountant/pending-transfers/:id/reject", async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// ---------- Monitor-compatible aliases (cho KT/admin dùng trang public driver) ----------
+app.get("/api/monitor/pending-transfers/:groupId", async (req, res) => {
+  if (!await checkGroupAccess(req, res, req.params.groupId)) return;
+  try { res.json(await dbm.listPendingTransfers(req.params.groupId)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/api/monitor/pending-transfers/:id/approve", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  try {
+    const u = await dbm.getUserPublic(a.userId);
+    const approvedBy = `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`;
+    await dbm.approvePendingTransfer(req.params.id, approvedBy);
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post("/api/monitor/pending-transfers/:id/reject", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  try {
+    const u = await dbm.getUserPublic(a.userId);
+    const approvedBy = `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`;
+    await dbm.rejectPendingTransfer(req.params.id, approvedBy);
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post("/api/monitor/adjust-points", async (req, res) => {
+  const { groupId, zaloUid, delta, reason } = req.body;
+  if (!groupId || !zaloUid || delta === undefined) return res.status(400).json({ error: "Thiếu groupId, zaloUid hoặc delta" });
+  if (!await checkGroupAccess(req, res, groupId)) return;
+  try {
+    const a = tokenOf(req);
+    const u = a ? await dbm.getUserPublic(a.userId) : null;
+    const adjusterLabel = `${u?.role === "admin" ? "admin" : "kt"}: ${u?.name || "?"}`;
+    const fullReason = (reason?.trim() ? reason.trim() + " " : "") + `[${adjusterLabel}]`;
+    const txId = await dbm.adjustPoints(groupId, zaloUid, Number(delta), fullReason);
+    res.json({ ok: true, txId });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 
 // Barem
 app.get("/api/accountant/rules/:groupId", async (req, res) => {

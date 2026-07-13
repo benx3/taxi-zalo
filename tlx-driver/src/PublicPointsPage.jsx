@@ -499,7 +499,8 @@ function GroupTransactionsView({ group, txApiBase, txPath }) {
 }
 
 /* ── PendingApprovalsView ───────────────────────── */
-function PendingApprovalsView({ group }) {
+function PendingApprovalsView({ group, apiBase }) {
+  const base = apiBase || BASE;
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -509,13 +510,13 @@ function PendingApprovalsView({ group }) {
     setLoading(true); setErr("");
     try {
       const tok = localStorage.getItem("tlx_token");
-      const r = await fetch(`${BASE}/api/monitor/pending-transfers/${group.group_id}`,
+      const r = await fetch(`${base}/api/monitor/pending-transfers/${group.group_id}`,
         { headers: { Authorization: "Bearer " + (tok || "") } });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setItems(await r.json());
     } catch (e) { setErr(e.message); }
     finally { setLoading(false); }
-  }, [group.group_id]);
+  }, [group.group_id, base]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -523,7 +524,7 @@ function PendingApprovalsView({ group }) {
     setBusy(b => ({ ...b, [id]: true }));
     try {
       const tok = localStorage.getItem("tlx_token");
-      const r = await fetch(`${BASE}/api/monitor/pending-transfers/${id}/${action}`,
+      const r = await fetch(`${base}/api/monitor/pending-transfers/${id}/${action}`,
         { method: "POST", headers: { Authorization: "Bearer " + (tok || "") } });
       if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `HTTP ${r.status}`); }
       await load();
@@ -628,7 +629,8 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
     setAdjusting(true);
     try {
       const tok = localStorage.getItem("tlx_token");
-      const r = await fetch(`${BASE}/api/monitor/adjust-points`, {
+      const adjustBase = txApiBase || BASE;
+      const r = await fetch(`${adjustBase}/api/monitor/adjust-points`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + (tok || "") },
         body: JSON.stringify({ groupId: group.group_id, zaloUid: adjustTarget.uid, delta, reason: adjustReason.trim() }),
@@ -711,7 +713,7 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
       )}
 
       {canMonitor && activeTab === "approve" && (
-        <PendingApprovalsView group={group} />
+        <PendingApprovalsView group={group} apiBase={txApiBase || BASE} />
       )}
 
       {(!canMonitor || activeTab === "leaderboard") && <>
