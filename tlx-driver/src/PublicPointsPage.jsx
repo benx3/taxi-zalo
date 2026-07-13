@@ -250,6 +250,7 @@ function TxRow({ tx, memberUid }) {
   const typeLabel = tx.type === "barem" ? "barem" : tx.type === "san" ? "san điểm" : tx.type === "auto" ? "tự động" : "thủ công";
   const typeBg = tx.type === "barem" ? "rgba(52,211,153,.12)" : tx.type === "san" ? "rgba(88,166,255,.12)" : "rgba(255,255,255,.06)";
   const typeColor = tx.type === "barem" ? "#34d399" : tx.type === "san" ? "#58a6ff" : c.dim;
+  const approverName = tx.approved_by ? tx.approved_by.replace(/^[^:]+:/, "").trim() : null;
 
   return (
     <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: "13px 15px", marginBottom: 10 }}>
@@ -282,6 +283,10 @@ function TxRow({ tx, memberUid }) {
         <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: typeBg, color: typeColor, fontWeight: 700 }}>
           {typeLabel}
         </span>
+        {approverName
+          ? <span style={{ fontSize: 11, color: c.dim, fontWeight: 600 }}>thủ công · <span style={{ color: "#a3e635" }}>{approverName}</span></span>
+          : <span style={{ fontSize: 11, color: "#818cf8", fontWeight: 600 }}>auto</span>
+        }
         <span style={{ fontSize: 11, color: c.dim, display: "flex", alignItems: "center", gap: 3, marginLeft: "auto" }}>
           <Clock size={10} /> {fmtTime(tx.created_at)}
         </span>
@@ -420,6 +425,7 @@ function GroupTransactionsView({ group, txApiBase, txPath }) {
         // Âm khi chỉ có from_member (poster trả điểm, không có người nhận riêng)
         const isNeg = !!tx.from_member && !tx.to_member;
         const ptsColor = isNeg ? "#f87171" : "#34d399";
+        const approverName = tx.approved_by ? tx.approved_by.replace(/^[^:]+:/, "").trim() : null;
         return (
           <div key={tx.id} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 10, padding: "11px 14px", marginBottom: 8, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "start" }}>
             <div>
@@ -432,6 +438,14 @@ function GroupTransactionsView({ group, txApiBase, txPath }) {
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
                 <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: status.bg, color: status.col, fontWeight: 700 }}>{status.label}</span>
                 <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(255,255,255,.05)", color: c.dim, fontWeight: 600 }}>{typeLabel}</span>
+                {tx.status === "approved" && (
+                  approverName
+                    ? <span style={{ fontSize: 11, color: c.dim, fontWeight: 600 }}>thủ công · <span style={{ color: "#a3e635" }}>{approverName}</span></span>
+                    : <span style={{ fontSize: 11, color: "#818cf8", fontWeight: 600 }}>auto</span>
+                )}
+                {tx.status === "rejected" && approverName && (
+                  <span style={{ fontSize: 11, color: c.dim }}>từ chối bởi <span style={{ color: "#f87171" }}>{approverName}</span></span>
+                )}
                 <span style={{ fontSize: 11, color: c.dim, marginLeft: "auto", display: "flex", alignItems: "center", gap: 3 }}>
                   <Clock size={10} />{fmtTime(tx.created_at)}
                 </span>
@@ -472,6 +486,7 @@ function PendingApprovalsView({ group, apiBase }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState({});
+  const [editPoints, setEditPoints] = useState({}); // txId → string
 
   const load = useCallback(async () => {
     setLoading(true); setErr("");
@@ -481,7 +496,14 @@ function PendingApprovalsView({ group, apiBase }) {
         { headers: { Authorization: "Bearer " + (tok || "") } });
       if (r.status === 403) throw new Error("Bạn không có quyền trên nhóm này");
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      setItems(await r.json());
+      const data = await r.json();
+      setItems(data);
+      // Khởi tạo editPoints với giá trị hiện tại (chỉ cho tx chưa có giá trị đang sửa)
+      setEditPoints(prev => {
+        const next = { ...prev };
+        data.forEach(tx => { if (!(tx.id in next)) next[tx.id] = String(Number(tx.points)); });
+        return next;
+      });
     } catch (e) { setErr(e.message); }
     finally { setLoading(false); }
   }, [group.group_id, base]);
@@ -492,9 +514,13 @@ function PendingApprovalsView({ group, apiBase }) {
     setBusy(b => ({ ...b, [id]: true }));
     try {
       const tok = localStorage.getItem("tlx_token");
+      const body = action === "approve" && editPoints[id] !== undefined
+        ? { points: Number(editPoints[id]) } : {};
       const r = await fetch(`${base}/api/monitor/pending-transfers/${id}/${action}`,
-        { method: "POST", headers: { Authorization: "Bearer " + (tok || "") } });
+        { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + (tok || "") },
+          body: JSON.stringify(body) });
       if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `HTTP ${r.status}`); }
+      setEditPoints(prev => { const n = { ...prev }; delete n[id]; return n; });
       await load();
     } catch (e) { alert(e.message); }
     finally { setBusy(b => { const n = { ...b }; delete n[id]; return n; }); }
@@ -515,27 +541,46 @@ function PendingApprovalsView({ group, apiBase }) {
 
       {items.map(tx => {
         const pts = Number(tx.points);
-        const ptsStr = pts % 1 === 0 ? pts.toFixed(0) : pts.toFixed(2);
         const from = tx.from_member_name || tx.from_member || "";
         const to = tx.to_member_name || tx.to_member || "";
         const typeLabel = tx.type === "barem" ? "barem" : tx.type === "san" ? "san điểm" : "thủ công";
         const isBusy = !!busy[tx.id];
+        const curPts = editPoints[tx.id] ?? String(pts);
+        const ptsChanged = Number(curPts) !== pts;
         return (
           <div key={tx.id} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
+            {/* Header: tên + ô điểm */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <div style={{ flex: 1, fontSize: 14, fontWeight: 700, color: c.ink }}>
+              <div style={{ flex: 1, fontSize: 14, fontWeight: 700, color: c.ink, minWidth: 0 }}>
                 {from && to
                   ? <><span style={{ color: "#60a5fa" }}>{from}</span><span style={{ color: c.dim }}> → </span><span style={{ color: "#34d399" }}>{to}</span></>
                   : from ? <span style={{ color: "#f87171" }}>{from}</span>
                   : to ? <span style={{ color: "#34d399" }}>{to}</span>
                   : <span style={{ color: c.dim }}>—</span>}
               </div>
-              <span style={{ fontWeight: 800, fontSize: 18, color: "#fbbf24" }}>{ptsStr}đ</span>
+              {/* Ô điểm chỉnh được */}
+              <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={curPts}
+                  onChange={e => setEditPoints(prev => ({ ...prev, [tx.id]: e.target.value }))}
+                  disabled={isBusy}
+                  style={{ width: 72, padding: "4px 8px", borderRadius: 7, border: `1px solid ${ptsChanged ? c.accent : c.border}`, background: "rgba(0,0,0,.3)", color: ptsChanged ? c.accent : "#fbbf24", fontWeight: 700, fontSize: 15, textAlign: "center", outline: "none" }}
+                />
+                <span style={{ fontSize: 13, color: ptsChanged ? c.accent : "#fbbf24", fontWeight: 700 }}>đ</span>
+              </div>
             </div>
             {tx.raw_text && <ConvoThread raw={tx.raw_text} />}
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(251,191,36,.12)", color: "#fbbf24", fontWeight: 700 }}>Chờ duyệt</span>
               <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(255,255,255,.05)", color: c.dim, fontWeight: 600 }}>{typeLabel}</span>
+              {ptsChanged && (
+                <span style={{ fontSize: 11, color: c.accent, fontWeight: 600 }}>
+                  {pts % 1 === 0 ? pts.toFixed(0) : pts.toFixed(2)}đ → {Number(curPts) % 1 === 0 ? Number(curPts).toFixed(0) : Number(curPts).toFixed(2)}đ
+                </span>
+              )}
               <span style={{ fontSize: 11, color: c.dim, marginLeft: "auto", display: "flex", alignItems: "center", gap: 3 }}>
                 <Clock size={10} />{fmtTime(tx.created_at)}
               </span>
@@ -545,7 +590,7 @@ function PendingApprovalsView({ group, apiBase }) {
                 disabled={isBusy}
                 onClick={() => act(tx.id, "approve")}
                 style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: isBusy ? "#21262d" : "rgba(52,211,153,.15)", color: isBusy ? c.dim : "#34d399", fontWeight: 700, fontSize: 13, cursor: isBusy ? "default" : "pointer" }}>
-                {isBusy ? "…" : "✓ Duyệt"}
+                {isBusy ? "…" : ptsChanged ? `✓ Duyệt ${Number(curPts) % 1 === 0 ? Number(curPts).toFixed(0) : Number(curPts).toFixed(2)}đ` : "✓ Duyệt"}
               </button>
               <button
                 disabled={isBusy}
@@ -685,33 +730,6 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
       )}
 
       {(!canMonitor || activeTab === "leaderboard") && <>
-      {/* Inline adjust form */}
-      {canMonitor && adjustTarget && (
-        <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: "14px 18px", marginBottom: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <span style={{ fontWeight: 700, fontSize: 14, color: c.ink }}>Sửa điểm: {adjustTarget.name}</span>
-            <span style={{ fontSize: 12, color: c.dim, marginLeft: 4 }}>
-              hiện tại <b style={{ color: c.ink }}>{adjustTarget.points >= 0 ? "+" : ""}{adjustTarget.points % 1 === 0 ? adjustTarget.points.toFixed(0) : adjustTarget.points.toFixed(2)}đ</b>
-            </span>
-            <button onClick={() => { setAdjustTarget(null); setAdjustDelta(""); setAdjustReason(""); }}
-              style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: c.dim, fontSize: 18, lineHeight: 1, padding: "0 2px" }}>✕</button>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input type="number" step="0.5" value={adjustDelta} onChange={e => setAdjustDelta(e.target.value)}
-              placeholder="+1 hoặc -2.5" autoFocus
-              style={{ flex: "0 0 130px", padding: "8px 12px", borderRadius: 10, border: `1px solid ${c.border}`, background: "rgba(0,0,0,.2)", color: c.ink, fontSize: 13, outline: "none" }}
-              onKeyDown={e => e.key === "Enter" && doAdjust()} />
-            <input type="text" value={adjustReason} onChange={e => setAdjustReason(e.target.value)}
-              placeholder="Lý do (tùy chọn)"
-              style={{ flex: 1, minWidth: 160, padding: "8px 12px", borderRadius: 10, border: `1px solid ${c.border}`, background: "rgba(0,0,0,.2)", color: c.ink, fontSize: 13, outline: "none" }}
-              onKeyDown={e => e.key === "Enter" && doAdjust()} />
-            <button onClick={doAdjust} disabled={adjusting || !adjustDelta}
-              style={{ padding: "8px 20px", borderRadius: 10, border: "none", cursor: adjusting || !adjustDelta ? "default" : "pointer", fontWeight: 700, fontSize: 13, background: "rgba(52,211,153,.2)", color: "#34d399", opacity: adjusting || !adjustDelta ? 0.5 : 1 }}>
-              {adjusting ? "Đang lưu…" : "Lưu"}
-            </button>
-          </div>
-        </div>
-      )}
       {adjustFlash && (
         <div style={{ padding: "10px 14px", borderRadius: 10, marginBottom: 12, background: adjustFlash.ok ? "rgba(52,211,153,.12)" : "rgba(248,113,113,.12)", color: adjustFlash.ok ? "#34d399" : "#f87171", fontSize: 13, fontWeight: 600 }}>
           {adjustFlash.msg}
@@ -764,37 +782,65 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
           const ptsYest = Number(m.points_yesterday) ?? pts;
           const fmtPts = (v) => `${v >= 0 ? "+" : ""}${v % 1 === 0 ? v.toFixed(0) : v.toFixed(2)}đ`;
           const rank = rankOffset + i + 1;
+          const isEditing = canMonitor && adjustTarget?.uid === m.zalo_uid;
+          const isLast = i === paged.length - 1;
           return (
-            <div key={m.zalo_uid}
-              style={{ display: "grid", gridTemplateColumns: `48px 1fr 96px 96px ${canMonitor ? "36px" : "20px"}`, gap: 8, padding: "13px 16px", borderBottom: i < paged.length - 1 ? `1px solid ${c.border}` : "none", cursor: "pointer", alignItems: "center", transition: "background .1s" }}
-              onMouseEnter={e => e.currentTarget.style.background = "#1c2128"}
-              onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-              onClick={() => onSelect(m)}>
-              <ZaloAvatar uid={m.zalo_uid} name={m.display_name} src={m.avatar} size={40} />
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: c.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {m.alias || m.display_name || m.zalo_uid}
+            <div key={m.zalo_uid}>
+              {/* Member row */}
+              <div
+                style={{ display: "grid", gridTemplateColumns: `48px 1fr 96px 96px ${canMonitor ? "36px" : "20px"}`, gap: 8, padding: "13px 16px", borderBottom: (!isLast || isEditing) ? `1px solid ${c.border}` : "none", cursor: "pointer", alignItems: "center", transition: "background .1s", background: isEditing ? "rgba(52,211,153,.04)" : "transparent" }}
+                onMouseEnter={e => { if (!isEditing) e.currentTarget.style.background = "#1c2128"; }}
+                onMouseLeave={e => { if (!isEditing) e.currentTarget.style.background = "transparent"; }}
+                onClick={() => { if (!isEditing) onSelect(m); }}>
+                <ZaloAvatar uid={m.zalo_uid} name={m.display_name} src={m.avatar} size={40} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: c.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {m.alias || m.display_name || m.zalo_uid}
+                  </div>
+                  {m.alias && <div style={{ fontSize: 11, color: c.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.display_name}</div>}
+                  <div style={{ fontSize: 11, color: c.dim, marginTop: 1 }}>#{rank} · ID …{(m.zalo_uid || "").slice(-6)}</div>
                 </div>
-                {m.alias && <div style={{ fontSize: 11, color: c.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.display_name}</div>}
-                <div style={{ fontSize: 11, color: c.dim, marginTop: 1 }}>#{rank} · ID …{(m.zalo_uid || "").slice(-6)}</div>
+                <div style={{ textAlign: "right", fontWeight: 700, fontSize: 14, color: ptsYest >= 0 ? "#94a3b8" : "#f87171" }}>
+                  {fmtPts(ptsYest)}
+                </div>
+                <div style={{ textAlign: "right", fontWeight: 800, fontSize: 16, color: pts >= 0 ? "#34d399" : "#f87171" }}>
+                  {fmtPts(pts)}
+                </div>
+                {canMonitor
+                  ? <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        if (isEditing) { setAdjustTarget(null); setAdjustDelta(""); setAdjustReason(""); }
+                        else { setAdjustTarget({ uid: m.zalo_uid, name: m.alias || m.display_name || m.zalo_uid, points: pts }); setAdjustDelta(""); setAdjustReason(""); }
+                      }}
+                      title={isEditing ? "Đóng" : "Sửa điểm"}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: isEditing ? c.accent : c.dim, fontSize: 15, padding: "2px 4px", borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center" }}
+                      onMouseEnter={e => e.currentTarget.style.color = c.accent}
+                      onMouseLeave={e => { if (!isEditing) e.currentTarget.style.color = c.dim; }}>
+                      {isEditing ? "✕" : "✏"}
+                    </button>
+                  : <ChevronRight size={15} color={c.dim} />
+                }
               </div>
-              <div style={{ textAlign: "right", fontWeight: 700, fontSize: 14, color: ptsYest >= 0 ? "#94a3b8" : "#f87171" }}>
-                {fmtPts(ptsYest)}
-              </div>
-              <div style={{ textAlign: "right", fontWeight: 800, fontSize: 16, color: pts >= 0 ? "#34d399" : "#f87171" }}>
-                {fmtPts(pts)}
-              </div>
-              {canMonitor
-                ? <button
-                    onClick={e => { e.stopPropagation(); setAdjustTarget({ uid: m.zalo_uid, name: m.alias || m.display_name || m.zalo_uid, points: pts }); setAdjustDelta(""); setAdjustReason(""); }}
-                    title="Sửa điểm"
-                    style={{ background: "none", border: "none", cursor: "pointer", color: c.dim, fontSize: 15, padding: "2px 4px", borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center" }}
-                    onMouseEnter={e => e.currentTarget.style.color = c.accent}
-                    onMouseLeave={e => e.currentTarget.style.color = c.dim}>
-                    ✏
-                  </button>
-                : <ChevronRight size={15} color={c.dim} />
-              }
+              {/* Inline adjust form */}
+              {isEditing && (
+                <div style={{ padding: "12px 16px", borderBottom: !isLast ? `1px solid ${c.border}` : "none", background: "rgba(0,0,0,.15)" }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <input type="number" step="0.5" value={adjustDelta} onChange={e => setAdjustDelta(e.target.value)}
+                      placeholder="+1 hoặc -2.5" autoFocus
+                      style={{ flex: "0 0 120px", padding: "8px 10px", borderRadius: 9, border: `1px solid ${c.border}`, background: "rgba(0,0,0,.25)", color: c.ink, fontSize: 13, outline: "none" }}
+                      onKeyDown={e => e.key === "Enter" && doAdjust()} />
+                    <input type="text" value={adjustReason} onChange={e => setAdjustReason(e.target.value)}
+                      placeholder="Lý do (tùy chọn)"
+                      style={{ flex: 1, minWidth: 130, padding: "8px 10px", borderRadius: 9, border: `1px solid ${c.border}`, background: "rgba(0,0,0,.25)", color: c.ink, fontSize: 13, outline: "none" }}
+                      onKeyDown={e => e.key === "Enter" && doAdjust()} />
+                    <button onClick={doAdjust} disabled={adjusting || !adjustDelta}
+                      style={{ padding: "8px 18px", borderRadius: 9, border: "none", cursor: adjusting || !adjustDelta ? "default" : "pointer", fontWeight: 700, fontSize: 13, background: "rgba(52,211,153,.2)", color: "#34d399", opacity: adjusting || !adjustDelta ? 0.5 : 1 }}>
+                      {adjusting ? "Đang lưu…" : "Lưu"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

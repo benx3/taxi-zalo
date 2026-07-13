@@ -203,7 +203,8 @@ app.post("/api/monitor/pending-transfers/:id/approve", async (req, res) => {
     const ctx = await checkMonitorGroupAccess(req, res, groupId); if (!ctx) return;
     const { u } = ctx;
     const adjusterRole = u?.role === "admin" ? "admin" : u?.role === "accountant" ? "kt" : "monitor";
-    await dbm.approvePendingTransfer(req.params.id, `${adjusterRole}:${u?.name || ctx.a.userId}`);
+    const overridePoints = req.body?.points !== undefined ? Number(req.body.points) : null;
+    await dbm.approvePendingTransfer(req.params.id, `${adjusterRole}:${u?.name || ctx.a.userId}`, overridePoints);
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });

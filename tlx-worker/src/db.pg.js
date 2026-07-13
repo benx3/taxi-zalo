@@ -872,20 +872,22 @@ export async function getPendingTxGroup(txId) {
   return r.rows[0]?.group_id || null;
 }
 
-export async function approvePendingTransfer(txId, approvedBy = null) {
+export async function approvePendingTransfer(txId, approvedBy = null, overridePoints = null) {
   const r = await q("SELECT * FROM point_transactions WHERE id=$1 AND status='pending'", [txId]);
   const tx = r.rows[0]; if (!tx) throw new Error("Không tìm thấy giao dịch đang chờ");
+  const pts = (overridePoints !== null && overridePoints !== undefined && !isNaN(Number(overridePoints)))
+    ? Math.abs(Number(overridePoints)) : Number(tx.points);
   if (tx.from_member) {
     await upsertMember(tx.group_id, tx.from_member);
     await q("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
-      [tx.points, now(), tx.group_id, tx.from_member]);
+      [pts, now(), tx.group_id, tx.from_member]);
   }
   if (tx.to_member) {
     await upsertMember(tx.group_id, tx.to_member);
     await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
-      [tx.points, now(), tx.group_id, tx.to_member]);
+      [pts, now(), tx.group_id, tx.to_member]);
   }
-  await q("UPDATE point_transactions SET status='approved', approved_by=$1 WHERE id=$2", [approvedBy || null, txId]);
+  await q("UPDATE point_transactions SET status='approved', points=$1, approved_by=$2 WHERE id=$3", [pts, approvedBy || null, txId]);
 }
 
 export async function rejectPendingTransfer(txId, approvedBy = null) {

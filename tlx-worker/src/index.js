@@ -535,7 +535,8 @@ app.post("/api/accountant/pending-transfers/:id/approve", async (req, res) => {
       if (!groups.some(g => g.group_id === groupId)) return res.status(403).json({ error: "Không có quyền trên nhóm này" });
     }
     const u = await dbm.getUserPublic(a.userId);
-    await dbm.approvePendingTransfer(req.params.id, `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`);
+    const overridePoints = req.body?.points !== undefined ? Number(req.body.points) : null;
+    await dbm.approvePendingTransfer(req.params.id, `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`, overridePoints);
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -570,7 +571,8 @@ app.post("/api/monitor/pending-transfers/:id/approve", async (req, res) => {
       if (!groups.some(g => g.group_id === groupId)) return res.status(403).json({ error: "Không có quyền trên nhóm này" });
     }
     const u = await dbm.getUserPublic(a.userId);
-    await dbm.approvePendingTransfer(req.params.id, `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`);
+    const overridePoints = req.body?.points !== undefined ? Number(req.body.points) : null;
+    await dbm.approvePendingTransfer(req.params.id, `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`, overridePoints);
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });

@@ -1008,20 +1008,22 @@ export function getPendingTxGroup(txId) {
   return db.prepare("SELECT group_id FROM point_transactions WHERE id=? AND status='pending'").get(txId)?.group_id || null;
 }
 
-export function approvePendingTransfer(txId, approvedBy = null) {
+export function approvePendingTransfer(txId, approvedBy = null, overridePoints = null) {
   const tx = db.prepare("SELECT * FROM point_transactions WHERE id=? AND status='pending'").get(txId);
   if (!tx) throw new Error("Không tìm thấy giao dịch đang chờ");
+  const pts = (overridePoints !== null && overridePoints !== undefined && !isNaN(Number(overridePoints)))
+    ? Math.abs(Number(overridePoints)) : tx.points;
   if (tx.from_member) {
     upsertMember(tx.group_id, tx.from_member);
     db.prepare("UPDATE members SET points=ROUND(points-?,10),updated_at=? WHERE group_id=? AND zalo_uid=?")
-      .run(tx.points, now(), tx.group_id, tx.from_member);
+      .run(pts, now(), tx.group_id, tx.from_member);
   }
   if (tx.to_member) {
     upsertMember(tx.group_id, tx.to_member);
     db.prepare("UPDATE members SET points=ROUND(points+?,10),updated_at=? WHERE group_id=? AND zalo_uid=?")
-      .run(tx.points, now(), tx.group_id, tx.to_member);
+      .run(pts, now(), tx.group_id, tx.to_member);
   }
-  db.prepare("UPDATE point_transactions SET status='approved', approved_by=? WHERE id=?").run(approvedBy || null, txId);
+  db.prepare("UPDATE point_transactions SET status='approved', points=?, approved_by=? WHERE id=?").run(pts, approvedBy || null, txId);
 }
 
 export function rejectPendingTransfer(txId, approvedBy = null) {
