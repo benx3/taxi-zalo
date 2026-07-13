@@ -181,6 +181,44 @@ app.get("/api/monitor/group-transactions/:groupId", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ---------- Monitor: giao dịch đang chờ duyệt ----------
+async function checkMonitorGroupAccess(req, res, groupId) {
+  const a = tokenOf(req); if (!a) { res.status(401).json({ error: "Chưa đăng nhập" }); return null; }
+  const u = await dbm.getUserPublic(a.userId);
+  if (!["monitor", "admin", "accountant"].includes(u?.role)) { res.status(403).json({ error: "Không có quyền" }); return null; }
+  if (u.role === "admin" || u.role === "accountant") return { a, u };
+  const groups = await dbm.getMonitorGroups(a.userId);
+  if (!groups.some(g => g.group_id === groupId)) { res.status(403).json({ error: "Không có quyền trên nhóm này" }); return null; }
+  return { a, u };
+}
+
+app.get("/api/monitor/pending-transfers/:groupId", async (req, res) => {
+  try {
+    const ctx = await checkMonitorGroupAccess(req, res, req.params.groupId); if (!ctx) return;
+    res.json(await dbm.listPendingTransfers(req.params.groupId));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/api/monitor/pending-transfers/:id/approve", async (req, res) => {
+  try {
+    const a = tokenOf(req); if (!a) return res.status(401).json({ error: "Chưa đăng nhập" });
+    const u = await dbm.getUserPublic(a.userId);
+    if (!["monitor", "admin", "accountant"].includes(u?.role)) return res.status(403).json({ error: "Không có quyền" });
+    const approvedBy = `monitor:${u?.name || a.userId}`;
+    await dbm.approvePendingTransfer(req.params.id, approvedBy);
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post("/api/monitor/pending-transfers/:id/reject", async (req, res) => {
+  try {
+    const a = tokenOf(req); if (!a) return res.status(401).json({ error: "Chưa đăng nhập" });
+    const u = await dbm.getUserPublic(a.userId);
+    if (!["monitor", "admin", "accountant"].includes(u?.role)) return res.status(403).json({ error: "Không có quyền" });
+    const approvedBy = `monitor:${u?.name || a.userId}`;
+    await dbm.rejectPendingTransfer(req.params.id, approvedBy);
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 app.get("/", (_req, res) => res.send("TLX Driver Service đang chạy (port 8080)"));
 app.get("/health", (_req, res) => res.json({ ok: true, sessions: sm.sessionCount?.() ?? 0 }));
 

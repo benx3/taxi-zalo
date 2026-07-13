@@ -174,6 +174,7 @@ export async function ensureSeed() {
   )`);
   try { db.exec("ALTER TABLE barem_msg_refs ADD COLUMN created_at INTEGER"); } catch {}
   try { db.exec("ALTER TABLE members ADD COLUMN global_id TEXT"); } catch {}
+  try { db.exec("ALTER TABLE point_transactions ADD COLUMN approved_by TEXT"); } catch {}
   try { db.exec("CREATE UNIQUE INDEX idx_members_global_id ON members(group_id,global_id) WHERE global_id IS NOT NULL"); } catch {}
   db.exec(`CREATE TABLE IF NOT EXISTS barem_trip_log (
     group_id   TEXT NOT NULL,
@@ -1003,7 +1004,7 @@ export function listPendingTransfers(groupId) {
   ).all(groupId);
 }
 
-export function approvePendingTransfer(txId) {
+export function approvePendingTransfer(txId, approvedBy = null) {
   const tx = db.prepare("SELECT * FROM point_transactions WHERE id=? AND status='pending'").get(txId);
   if (!tx) throw new Error("Không tìm thấy giao dịch đang chờ");
   if (tx.from_member) {
@@ -1016,13 +1017,13 @@ export function approvePendingTransfer(txId) {
     db.prepare("UPDATE members SET points=ROUND(points+?,10),updated_at=? WHERE group_id=? AND zalo_uid=?")
       .run(tx.points, now(), tx.group_id, tx.to_member);
   }
-  db.prepare("UPDATE point_transactions SET status='approved' WHERE id=?").run(txId);
+  db.prepare("UPDATE point_transactions SET status='approved', approved_by=? WHERE id=?").run(approvedBy || null, txId);
 }
 
-export function rejectPendingTransfer(txId) {
+export function rejectPendingTransfer(txId, approvedBy = null) {
   const tx = db.prepare("SELECT * FROM point_transactions WHERE id=? AND status='pending'").get(txId);
   if (!tx) throw new Error("Không tìm thấy giao dịch đang chờ");
-  db.prepare("UPDATE point_transactions SET status='rejected' WHERE id=?").run(txId);
+  db.prepare("UPDATE point_transactions SET status='rejected', approved_by=? WHERE id=?").run(approvedBy || null, txId);
 }
 
 // ---------- Kế toán: account KT của nhóm (để auto san điểm) ----------

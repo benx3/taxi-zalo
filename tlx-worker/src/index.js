@@ -527,13 +527,21 @@ app.get("/api/accountant/pending-transfers", async (req, res) => {
 });
 app.post("/api/accountant/pending-transfers/:id/approve", async (req, res) => {
   const a = await requireAccountant(req, res); if (!a) return;
-  try { await dbm.approvePendingTransfer(req.params.id); res.json({ ok: true }); }
-  catch (e) { res.status(400).json({ error: e.message }); }
+  try {
+    const u = await dbm.getUserPublic(a.userId);
+    const approvedBy = `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`;
+    await dbm.approvePendingTransfer(req.params.id, approvedBy);
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 app.post("/api/accountant/pending-transfers/:id/reject", async (req, res) => {
   const a = await requireAccountant(req, res); if (!a) return;
-  try { await dbm.rejectPendingTransfer(req.params.id); res.json({ ok: true }); }
-  catch (e) { res.status(400).json({ error: e.message }); }
+  try {
+    const u = await dbm.getUserPublic(a.userId);
+    const approvedBy = `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`;
+    await dbm.rejectPendingTransfer(req.params.id, approvedBy);
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 

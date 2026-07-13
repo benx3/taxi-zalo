@@ -498,6 +498,100 @@ function GroupTransactionsView({ group, txApiBase, txPath }) {
   );
 }
 
+/* ── PendingApprovalsView ───────────────────────── */
+function PendingApprovalsView({ group }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState({});
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr("");
+    try {
+      const tok = localStorage.getItem("tlx_token");
+      const r = await fetch(`${BASE}/api/monitor/pending-transfers/${group.group_id}`,
+        { headers: { Authorization: "Bearer " + (tok || "") } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setItems(await r.json());
+    } catch (e) { setErr(e.message); }
+    finally { setLoading(false); }
+  }, [group.group_id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const act = async (id, action) => {
+    setBusy(b => ({ ...b, [id]: true }));
+    try {
+      const tok = localStorage.getItem("tlx_token");
+      const r = await fetch(`${BASE}/api/monitor/pending-transfers/${id}/${action}`,
+        { method: "POST", headers: { Authorization: "Bearer " + (tok || "") } });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `HTTP ${r.status}`); }
+      await load();
+    } catch (e) { alert(e.message); }
+    finally { setBusy(b => { const n = { ...b }; delete n[id]; return n; }); }
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <span style={{ fontSize: 14, color: c.dim }}>{items.length} giao dịch đang chờ duyệt</span>
+        <button onClick={load} style={{ padding: "7px 14px", borderRadius: 9, border: `1px solid ${c.border}`, background: "transparent", color: c.dim, fontSize: 13, cursor: "pointer" }}>↻ Tải lại</button>
+      </div>
+
+      {loading && <div style={{ textAlign: "center", padding: 40, color: c.dim }}>Đang tải…</div>}
+      {err && <div style={{ color: "#f87171", marginBottom: 12 }}>Lỗi: {err}</div>}
+      {!loading && items.length === 0 && !err && (
+        <div style={{ textAlign: "center", padding: "48px 0", color: c.dim }}>Không có giao dịch nào đang chờ duyệt.</div>
+      )}
+
+      {items.map(tx => {
+        const pts = Number(tx.points);
+        const ptsStr = pts % 1 === 0 ? pts.toFixed(0) : pts.toFixed(2);
+        const from = tx.from_member_name || tx.from_member || "";
+        const to = tx.to_member_name || tx.to_member || "";
+        const typeLabel = tx.type === "barem" ? "barem" : tx.type === "san" ? "san điểm" : "thủ công";
+        const isBusy = !!busy[tx.id];
+        return (
+          <div key={tx.id} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <div style={{ flex: 1, fontSize: 14, fontWeight: 700, color: c.ink }}>
+                {from && to
+                  ? <><span style={{ color: "#60a5fa" }}>{from}</span><span style={{ color: c.dim }}> → </span><span style={{ color: "#34d399" }}>{to}</span></>
+                  : from ? <span style={{ color: "#f87171" }}>{from}</span>
+                  : to ? <span style={{ color: "#34d399" }}>{to}</span>
+                  : <span style={{ color: c.dim }}>—</span>}
+              </div>
+              <span style={{ fontWeight: 800, fontSize: 18, color: "#fbbf24" }}>{ptsStr}đ</span>
+            </div>
+            {tx.raw_text && <ConvoThread raw={tx.raw_text} />}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(251,191,36,.12)", color: "#fbbf24", fontWeight: 700 }}>Chờ duyệt</span>
+              <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(255,255,255,.05)", color: c.dim, fontWeight: 600 }}>{typeLabel}</span>
+              <span style={{ fontSize: 11, color: c.dim, marginLeft: "auto", display: "flex", alignItems: "center", gap: 3 }}>
+                <Clock size={10} />{fmtTime(tx.created_at)}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button
+                disabled={isBusy}
+                onClick={() => act(tx.id, "approve")}
+                style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: isBusy ? "#21262d" : "rgba(52,211,153,.15)", color: isBusy ? c.dim : "#34d399", fontWeight: 700, fontSize: 13, cursor: isBusy ? "default" : "pointer" }}>
+                {isBusy ? "…" : "✓ Duyệt"}
+              </button>
+              <button
+                disabled={isBusy}
+                onClick={() => act(tx.id, "reject")}
+                style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: isBusy ? "#21262d" : "rgba(248,113,113,.1)", color: isBusy ? c.dim : "#f87171", fontWeight: 700, fontSize: 13, cursor: isBusy ? "default" : "pointer" }}>
+                {isBusy ? "…" : "✗ Từ chối"}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── MembersView ────────────────────────────────── */
 function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBase, txPath }) {
   const canMonitor = ["admin", "accountant"].includes(meRole)
@@ -571,7 +665,7 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
       {/* Tabs */}
       {canMonitor && (
         <div style={{ display: "flex", gap: 2, marginBottom: 18, borderBottom: `1px solid ${c.border}` }}>
-          {[["leaderboard", "Bảng xếp hạng"], ["transactions", "Lịch sử giao dịch"]].map(([tab, label]) => (
+          {[["leaderboard", "Bảng xếp hạng"], ["transactions", "Lịch sử giao dịch"], ["approve", "Duyệt điểm"]].map(([tab, label]) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               style={{ padding: "9px 18px", border: "none", borderBottom: activeTab === tab ? `2px solid ${c.accent}` : "2px solid transparent", background: "transparent", color: activeTab === tab ? c.accent : c.dim, fontWeight: activeTab === tab ? 700 : 500, fontSize: 14, cursor: "pointer", transition: "color .15s", marginBottom: -1 }}>
               {label}
@@ -582,6 +676,10 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
 
       {canMonitor && activeTab === "transactions" && (
         <GroupTransactionsView group={group} txApiBase={txApiBase} txPath={txPath} />
+      )}
+
+      {canMonitor && activeTab === "approve" && (
+        <PendingApprovalsView group={group} />
       )}
 
       {(!canMonitor || activeTab === "leaderboard") && <>

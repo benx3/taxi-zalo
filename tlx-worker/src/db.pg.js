@@ -150,6 +150,7 @@ export async function initDb() {
     PRIMARY KEY (group_id, msg_id)
   )`);
   await q("ALTER TABLE barem_msg_refs ADD COLUMN IF NOT EXISTS created_at BIGINT");
+  await q("ALTER TABLE point_transactions ADD COLUMN IF NOT EXISTS approved_by TEXT");
   await q(`CREATE TABLE IF NOT EXISTS barem_trip_log (
     group_id   TEXT NOT NULL,
     msg_id     TEXT NOT NULL,
@@ -866,7 +867,7 @@ export async function listPendingTransfers(groupId) {
   return r.rows;
 }
 
-export async function approvePendingTransfer(txId) {
+export async function approvePendingTransfer(txId, approvedBy = null) {
   const r = await q("SELECT * FROM point_transactions WHERE id=$1 AND status='pending'", [txId]);
   const tx = r.rows[0]; if (!tx) throw new Error("Không tìm thấy giao dịch đang chờ");
   if (tx.from_member) {
@@ -879,13 +880,13 @@ export async function approvePendingTransfer(txId) {
     await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
       [tx.points, now(), tx.group_id, tx.to_member]);
   }
-  await q("UPDATE point_transactions SET status='approved' WHERE id=$1", [txId]);
+  await q("UPDATE point_transactions SET status='approved', approved_by=$1 WHERE id=$2", [approvedBy || null, txId]);
 }
 
-export async function rejectPendingTransfer(txId) {
+export async function rejectPendingTransfer(txId, approvedBy = null) {
   const r = await q("SELECT id FROM point_transactions WHERE id=$1 AND status='pending'", [txId]);
   if (!r.rows[0]) throw new Error("Không tìm thấy giao dịch đang chờ");
-  await q("UPDATE point_transactions SET status='rejected' WHERE id=$1", [txId]);
+  await q("UPDATE point_transactions SET status='rejected', approved_by=$1 WHERE id=$2", [approvedBy || null, txId]);
 }
 
 // ---------- Kế toán: account KT của nhóm (để auto san điểm) ----------
