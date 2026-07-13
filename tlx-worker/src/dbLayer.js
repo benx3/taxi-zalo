@@ -59,7 +59,7 @@ export const {
   addBaremMsgRef, getBaremMsgRefTripMsgId, getLatestBaremTripMsgId,
   listTransactions, countTransactions, updateTransaction, updateBaremPair, deleteTransaction,
   addBaremPending,
-  createPendingTransfer, listPendingTransfers, approvePendingTransfer, rejectPendingTransfer,
+  createPendingTransfer, listPendingTransfers, getPendingTxGroup, approvePendingTransfer, rejectPendingTransfer,
   lockAccountantGroups, isGroupsLocked,
   getRules, saveRules,
   getGroupKtUid, setGroupKtUid,

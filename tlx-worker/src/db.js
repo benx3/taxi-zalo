@@ -1004,6 +1004,10 @@ export function listPendingTransfers(groupId) {
   ).all(groupId);
 }
 
+export function getPendingTxGroup(txId) {
+  return db.prepare("SELECT group_id FROM point_transactions WHERE id=? AND status='pending'").get(txId)?.group_id || null;
+}
+
 export function approvePendingTransfer(txId, approvedBy = null) {
   const tx = db.prepare("SELECT * FROM point_transactions WHERE id=? AND status='pending'").get(txId);
   if (!tx) throw new Error("Không tìm thấy giao dịch đang chờ");

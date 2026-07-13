@@ -528,18 +528,28 @@ app.get("/api/accountant/pending-transfers", async (req, res) => {
 app.post("/api/accountant/pending-transfers/:id/approve", async (req, res) => {
   const a = await requireAccountant(req, res); if (!a) return;
   try {
+    const groupId = await dbm.getPendingTxGroup(req.params.id);
+    if (!groupId) return res.status(404).json({ error: "Không tìm thấy giao dịch" });
+    if (a.role !== "admin") {
+      const groups = await dbm.getAccountantGroups(a.userId);
+      if (!groups.some(g => g.group_id === groupId)) return res.status(403).json({ error: "Không có quyền trên nhóm này" });
+    }
     const u = await dbm.getUserPublic(a.userId);
-    const approvedBy = `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`;
-    await dbm.approvePendingTransfer(req.params.id, approvedBy);
+    await dbm.approvePendingTransfer(req.params.id, `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`);
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 app.post("/api/accountant/pending-transfers/:id/reject", async (req, res) => {
   const a = await requireAccountant(req, res); if (!a) return;
   try {
+    const groupId = await dbm.getPendingTxGroup(req.params.id);
+    if (!groupId) return res.status(404).json({ error: "Không tìm thấy giao dịch" });
+    if (a.role !== "admin") {
+      const groups = await dbm.getAccountantGroups(a.userId);
+      if (!groups.some(g => g.group_id === groupId)) return res.status(403).json({ error: "Không có quyền trên nhóm này" });
+    }
     const u = await dbm.getUserPublic(a.userId);
-    const approvedBy = `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`;
-    await dbm.rejectPendingTransfer(req.params.id, approvedBy);
+    await dbm.rejectPendingTransfer(req.params.id, `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`);
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -553,18 +563,28 @@ app.get("/api/monitor/pending-transfers/:groupId", async (req, res) => {
 app.post("/api/monitor/pending-transfers/:id/approve", async (req, res) => {
   const a = await requireAccountant(req, res); if (!a) return;
   try {
+    const groupId = await dbm.getPendingTxGroup(req.params.id);
+    if (!groupId) return res.status(404).json({ error: "Không tìm thấy giao dịch" });
+    if (a.role !== "admin") {
+      const groups = await dbm.getAccountantGroups(a.userId);
+      if (!groups.some(g => g.group_id === groupId)) return res.status(403).json({ error: "Không có quyền trên nhóm này" });
+    }
     const u = await dbm.getUserPublic(a.userId);
-    const approvedBy = `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`;
-    await dbm.approvePendingTransfer(req.params.id, approvedBy);
+    await dbm.approvePendingTransfer(req.params.id, `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`);
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 app.post("/api/monitor/pending-transfers/:id/reject", async (req, res) => {
   const a = await requireAccountant(req, res); if (!a) return;
   try {
+    const groupId = await dbm.getPendingTxGroup(req.params.id);
+    if (!groupId) return res.status(404).json({ error: "Không tìm thấy giao dịch" });
+    if (a.role !== "admin") {
+      const groups = await dbm.getAccountantGroups(a.userId);
+      if (!groups.some(g => g.group_id === groupId)) return res.status(403).json({ error: "Không có quyền trên nhóm này" });
+    }
     const u = await dbm.getUserPublic(a.userId);
-    const approvedBy = `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`;
-    await dbm.rejectPendingTransfer(req.params.id, approvedBy);
+    await dbm.rejectPendingTransfer(req.params.id, `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`);
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });

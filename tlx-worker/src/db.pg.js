@@ -867,6 +867,11 @@ export async function listPendingTransfers(groupId) {
   return r.rows;
 }
 
+export async function getPendingTxGroup(txId) {
+  const r = await q("SELECT group_id FROM point_transactions WHERE id=$1 AND status='pending'", [txId]);
+  return r.rows[0]?.group_id || null;
+}
+
 export async function approvePendingTransfer(txId, approvedBy = null) {
   const r = await q("SELECT * FROM point_transactions WHERE id=$1 AND status='pending'", [txId]);
   const tx = r.rows[0]; if (!tx) throw new Error("Không tìm thấy giao dịch đang chờ");
