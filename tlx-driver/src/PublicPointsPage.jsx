@@ -292,46 +292,13 @@ function TxRow({ tx, memberUid }) {
 
 /* ── GroupsView ─────────────────────────────────── */
 function GroupsView({ onSelect }) {
-  const [authStatus, setAuthStatus] = useState("loading"); // "loading" | "authorized" | "denied"
   const [groups, setGroups] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  // Kiểm tra quyền: chỉ admin/accountant mới được xem danh sách nhóm
   useEffect(() => {
-    const tok = localStorage.getItem("tlx_token");
-    if (!tok) { setAuthStatus("denied"); return; }
-    // Gọi KT/admin API để verify token (token do admin-api cấp, không phải driver service)
-    fetch(KT_BASE + "/api/me", { headers: { "Content-Type": "application/json", Authorization: "Bearer " + tok } })
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(u => setAuthStatus(u.role === "admin" || u.role === "accountant" ? "authorized" : "denied"))
-      .catch(() => setAuthStatus("denied"));
-  }, []);
-
-  useEffect(() => {
-    if (authStatus !== "authorized") return;
-    setLoading(true);
     get("/api/public/groups").then(setGroups).catch(e => setErr(e.message)).finally(() => setLoading(false));
-  }, [authStatus]);
-
-  if (authStatus === "loading") {
-    return <div style={{ textAlign: "center", padding: 80, color: c.dim }}>Đang kiểm tra quyền…</div>;
-  }
-
-  if (authStatus === "denied") {
-    return (
-      <div style={{ maxWidth: 480, margin: "80px auto 0", padding: "0 20px", textAlign: "center" }}>
-        <div style={{ fontSize: 52, marginBottom: 20 }}>🔒</div>
-        <h2 style={{ fontFamily: "'Plus Jakarta Sans',system-ui", fontWeight: 800, fontSize: 22, color: c.ink, margin: "0 0 14px" }}>
-          Trang dành riêng cho kế toán
-        </h2>
-        <p style={{ color: c.dim, fontSize: 15, lineHeight: 1.7, margin: 0 }}>
-          Bạn cần đăng nhập với tài khoản <b style={{ color: c.ink }}>kế toán</b> hoặc{" "}
-          <b style={{ color: c.ink }}>quản trị viên</b> để xem danh sách nhóm.
-        </p>
-      </div>
-    );
-  }
+  }, []);
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "40px 16px 0" }}>
