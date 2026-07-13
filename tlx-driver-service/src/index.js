@@ -219,6 +219,20 @@ app.post("/api/monitor/pending-transfers/:id/reject", async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+app.post("/api/monitor/adjust-points", async (req, res) => {
+  try {
+    const { groupId, zaloUid, delta, reason } = req.body;
+    if (!groupId || !zaloUid || delta === undefined) return res.status(400).json({ error: "Thiếu groupId, zaloUid hoặc delta" });
+    const ctx = await checkMonitorGroupAccess(req, res, groupId); if (!ctx) return;
+    const { u } = ctx;
+    const adjusterRole = u?.role === "admin" ? "admin" : u?.role === "accountant" ? "kt" : "monitor";
+    const adjusterLabel = `${adjusterRole}: ${u?.name || "?"}`;
+    const fullReason = (reason?.trim() ? reason.trim() + " " : "") + `[${adjusterLabel}]`;
+    const txId = await dbm.adjustPoints(groupId, zaloUid, Number(delta), fullReason);
+    res.json({ ok: true, txId });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 app.get("/", (_req, res) => res.send("TLX Driver Service đang chạy (port 8080)"));
 app.get("/health", (_req, res) => res.json({ ok: true, sessions: sm.sessionCount?.() ?? 0 }));
 

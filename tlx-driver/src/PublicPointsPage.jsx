@@ -606,10 +606,42 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [copied, setCopied] = useState(false);
+  const [adjustTarget, setAdjustTarget] = useState(null); // { uid, name, points }
+  const [adjustDelta, setAdjustDelta] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
+  const [adjusting, setAdjusting] = useState(false);
+  const [adjustFlash, setAdjustFlash] = useState(null); // { ok, msg }
 
   const shareUrl = `${window.location.origin}/xem-diem/${group.slug || slugify(group.group_name)}`;
   const copyLink = () => {
     navigator.clipboard.writeText(shareUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  };
+
+  const loadMembers = useCallback(() => {
+    setLoading(true);
+    get(`/api/public/members/${group.group_id}`).then(setMembers).catch(e => setErr(e.message)).finally(() => setLoading(false));
+  }, [group.group_id]);
+
+  const doAdjust = async () => {
+    const delta = parseFloat(adjustDelta);
+    if (!delta || isNaN(delta) || !adjustTarget) return;
+    setAdjusting(true);
+    try {
+      const tok = localStorage.getItem("tlx_token");
+      const r = await fetch(`${BASE}/api/monitor/adjust-points`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + (tok || "") },
+        body: JSON.stringify({ groupId: group.group_id, zaloUid: adjustTarget.uid, delta, reason: adjustReason.trim() }),
+      });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `HTTP ${r.status}`); }
+      setAdjustFlash({ ok: true, msg: `Đã sửa ${delta > 0 ? "+" : ""}${delta}đ cho ${adjustTarget.name}` });
+      setAdjustTarget(null); setAdjustDelta(""); setAdjustReason("");
+      loadMembers();
+      setTimeout(() => setAdjustFlash(null), 3000);
+    } catch (e) {
+      setAdjustFlash({ ok: false, msg: e.message });
+      setTimeout(() => setAdjustFlash(null), 4000);
+    } finally { setAdjusting(false); }
   };
 
   useEffect(() => {
@@ -683,6 +715,39 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
       )}
 
       {(!canMonitor || activeTab === "leaderboard") && <>
+      {/* Inline adjust form */}
+      {canMonitor && adjustTarget && (
+        <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: "14px 18px", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <span style={{ fontWeight: 700, fontSize: 14, color: c.ink }}>Sửa điểm: {adjustTarget.name}</span>
+            <span style={{ fontSize: 12, color: c.dim, marginLeft: 4 }}>
+              hiện tại <b style={{ color: c.ink }}>{adjustTarget.points >= 0 ? "+" : ""}{adjustTarget.points % 1 === 0 ? adjustTarget.points.toFixed(0) : adjustTarget.points.toFixed(2)}đ</b>
+            </span>
+            <button onClick={() => { setAdjustTarget(null); setAdjustDelta(""); setAdjustReason(""); }}
+              style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: c.dim, fontSize: 18, lineHeight: 1, padding: "0 2px" }}>✕</button>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input type="number" step="0.5" value={adjustDelta} onChange={e => setAdjustDelta(e.target.value)}
+              placeholder="+1 hoặc -2.5" autoFocus
+              style={{ flex: "0 0 130px", padding: "8px 12px", borderRadius: 10, border: `1px solid ${c.border}`, background: "rgba(0,0,0,.2)", color: c.ink, fontSize: 13, outline: "none" }}
+              onKeyDown={e => e.key === "Enter" && doAdjust()} />
+            <input type="text" value={adjustReason} onChange={e => setAdjustReason(e.target.value)}
+              placeholder="Lý do (tùy chọn)"
+              style={{ flex: 1, minWidth: 160, padding: "8px 12px", borderRadius: 10, border: `1px solid ${c.border}`, background: "rgba(0,0,0,.2)", color: c.ink, fontSize: 13, outline: "none" }}
+              onKeyDown={e => e.key === "Enter" && doAdjust()} />
+            <button onClick={doAdjust} disabled={adjusting || !adjustDelta}
+              style={{ padding: "8px 20px", borderRadius: 10, border: "none", cursor: adjusting || !adjustDelta ? "default" : "pointer", fontWeight: 700, fontSize: 13, background: "rgba(52,211,153,.2)", color: "#34d399", opacity: adjusting || !adjustDelta ? 0.5 : 1 }}>
+              {adjusting ? "Đang lưu…" : "Lưu"}
+            </button>
+          </div>
+        </div>
+      )}
+      {adjustFlash && (
+        <div style={{ padding: "10px 14px", borderRadius: 10, marginBottom: 12, background: adjustFlash.ok ? "rgba(52,211,153,.12)" : "rgba(248,113,113,.12)", color: adjustFlash.ok ? "#34d399" : "#f87171", fontSize: 13, fontWeight: 600 }}>
+          {adjustFlash.msg}
+        </div>
+      )}
+
       {/* Search + Sort + Page size */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
         <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
@@ -717,7 +782,7 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
 
       <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, overflow: "hidden" }}>
         {/* Header */}
-        <div style={{ display: "grid", gridTemplateColumns: "48px 1fr 96px 96px 20px", gap: 8, padding: "10px 16px", borderBottom: `1px solid ${c.border}`, fontSize: 11, color: c.dim, fontWeight: 700 }}>
+        <div style={{ display: "grid", gridTemplateColumns: `48px 1fr 96px 96px ${canMonitor ? "36px" : "20px"}`, gap: 8, padding: "10px 16px", borderBottom: `1px solid ${c.border}`, fontSize: 11, color: c.dim, fontWeight: 700 }}>
           <div /><div>Tên Zalo</div>
           <div style={{ textAlign: "right", lineHeight: 1.3 }}>{yesterdayLabel()}</div>
           <div style={{ textAlign: "right" }}>Điểm hiện giờ</div>
@@ -731,7 +796,7 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
           const rank = rankOffset + i + 1;
           return (
             <div key={m.zalo_uid}
-              style={{ display: "grid", gridTemplateColumns: "48px 1fr 96px 96px 20px", gap: 8, padding: "13px 16px", borderBottom: i < paged.length - 1 ? `1px solid ${c.border}` : "none", cursor: "pointer", alignItems: "center", transition: "background .1s" }}
+              style={{ display: "grid", gridTemplateColumns: `48px 1fr 96px 96px ${canMonitor ? "36px" : "20px"}`, gap: 8, padding: "13px 16px", borderBottom: i < paged.length - 1 ? `1px solid ${c.border}` : "none", cursor: "pointer", alignItems: "center", transition: "background .1s" }}
               onMouseEnter={e => e.currentTarget.style.background = "#1c2128"}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}
               onClick={() => onSelect(m)}>
@@ -749,7 +814,17 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
               <div style={{ textAlign: "right", fontWeight: 800, fontSize: 16, color: pts >= 0 ? "#34d399" : "#f87171" }}>
                 {fmtPts(pts)}
               </div>
-              <ChevronRight size={15} color={c.dim} />
+              {canMonitor
+                ? <button
+                    onClick={e => { e.stopPropagation(); setAdjustTarget({ uid: m.zalo_uid, name: m.alias || m.display_name || m.zalo_uid, points: pts }); setAdjustDelta(""); setAdjustReason(""); }}
+                    title="Sửa điểm"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: c.dim, fontSize: 15, padding: "2px 4px", borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center" }}
+                    onMouseEnter={e => e.currentTarget.style.color = c.accent}
+                    onMouseLeave={e => e.currentTarget.style.color = c.dim}>
+                    ✏
+                  </button>
+                : <ChevronRight size={15} color={c.dim} />
+              }
             </div>
           );
         })}
