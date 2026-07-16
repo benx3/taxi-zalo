@@ -1030,12 +1030,26 @@ async function onMessage(sess, msg) {
               if (t.from_member === posterUid) return s - Number(t.points);
               return s;
             }, 0);
-            // Bỏ qua nếu đã là 0đ (đã hủy/free trước đó)
+            const origTripMsgId = (baremPosterTx ?? baremPendingTx)?.trip_msg_id;
+            // Trip đã 0đ (hủy/free/chưa có giá) → lưu tin vào thread thay vì bỏ qua hoàn toàn
             if (currentPts <= 0) {
-              console.log(`[BAREM_E] ℹ️ @kt không rõ lệnh, currentPts=${currentPts} → bỏ qua`);
+              const _pTx = txs.find(t => t.type === 'barem' && t.status === 'pending');
+              if (_pTx && origTripMsgId) {
+                let _tc = {};
+                try { _tc = _pTx.raw_text ? JSON.parse(_pTx.raw_text) : {}; } catch {}
+                const _th = _tc.thread || [];
+                if (!_th.some(e => e.msgId === msgId)) {
+                  _th.push({ msgId, time, sender: senderName, text });
+                  await dbm.updateTransaction(_pTx.id, { raw_text: JSON.stringify({ ..._tc, thread: _th }) });
+                }
+                for (const mid of [msgId, qGlobId, qCliId].filter(Boolean))
+                  Promise.resolve(dbm.addBaremMsgRef(dbGroupId, mid, origTripMsgId)).catch(() => {});
+                console.log(`[BAREM_E] 📎 @kt 0đ thread+1: "${text.slice(0, 40)}"`);
+              } else {
+                console.log(`[BAREM_E] ℹ️ @kt không rõ lệnh, currentPts=${currentPts} → bỏ qua`);
+              }
               return;
             }
-            const origTripMsgId = (baremPosterTx ?? baremPendingTx)?.trip_msg_id;
             const _rawSrc = baremPosterTx ?? baremPendingTx;
             let baseConvo = null;
             try { baseConvo = _rawSrc?.raw_text ? JSON.parse(_rawSrc.raw_text) : null; } catch {}
@@ -1133,6 +1147,40 @@ async function onMessage(sess, msg) {
         }
         sess.onEvent(sess.userId, { type: "trip", trip: tripOut });
       }
+    }
+
+    // (F) Lưu mọi tin reply thuộc chuỗi cuốc xe vào thread — bất kể có hành động hay không
+    // Chạy sau tất cả sections; Section E có return sớm nên không chạy tới đây — đã handle riêng.
+    if (qd && sess.isAccountant) {
+      const _qGF = qd.globalMsgId != null && String(qd.globalMsgId) !== groupId ? String(qd.globalMsgId) : "";
+      const _qCF = qd.cliMsgId   != null ? String(qd.cliMsgId)   : "";
+      Promise.resolve((async () => {
+        // Kiểm tra tin được quote có thuộc barem chain không
+        let _tripF = null;
+        for (const mid of [_qGF, _qCF].filter(Boolean)) {
+          try { _tripF = await dbm.getBaremMsgRefTripMsgId(dbGroupId, mid); } catch {}
+          if (_tripF) break;
+        }
+        if (!_tripF) return;
+        // Dedup: Section C/D đã ghi msgId này vào barem_msg_refs → bỏ qua
+        const _existF = await dbm.getBaremMsgRefTripMsgId(dbGroupId, msgId);
+        if (_existF) return;
+        // Ghi msgId vào chain để tin reply sau tìm được
+        const _cliF = msg.data?.cliMsgId ? String(msg.data.cliMsgId) : null;
+        for (const mid of [msgId, _cliF].filter(Boolean))
+          Promise.resolve(dbm.addBaremMsgRef(dbGroupId, mid, _tripF)).catch(() => {});
+        // Append vào thread của tất cả barem txs gốc
+        const _txsF = await dbm.getTransactionsByTripMsgId(dbGroupId, _tripF);
+        for (const tx of _txsF.filter(t => t.type === 'barem')) {
+          let _cF = {};
+          try { _cF = tx.raw_text ? JSON.parse(tx.raw_text) : {}; } catch {}
+          const _thF = _cF.thread || [];
+          if (_thF.some(e => e.msgId === msgId)) continue;
+          _thF.push({ msgId, time, sender: senderName, text });
+          await dbm.updateTransaction(tx.id, { raw_text: JSON.stringify({ ..._cF, thread: _thF }) });
+        }
+        console.log(`[${sess.userId}] 📎 (F) thread+1: "${text.slice(0, 40)}" → trip=${_tripF}`);
+      })()).catch(e => console.warn(`[${sess.userId}] (F) thread err:`, e?.message || e));
     }
   } catch (e) {
     console.error(`[${sess.userId}] onMessage:`, e?.message || e);
