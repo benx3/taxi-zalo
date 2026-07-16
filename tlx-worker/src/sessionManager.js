@@ -843,118 +843,110 @@ async function onMessage(sess, msg) {
         const parsedBonus = parseBonus(text);
         const action = detectBaremAction(text) || (parsedBonus > 0 ? { type: 'adjust', points: parsedBonus } : null);
         if (!action) console.log(`[BAREM_E] ⚠️ ktMentioned=true nhưng không detect action | text="${text.slice(0,80)}"`);
-        if (action) {
-          // globalMsgId trong tin nhóm Zalo = threadId (ID nhóm), lọc ra để tránh nhầm với ID tin nhắn
-          const qGlobId = qd.globalMsgId != null && String(qd.globalMsgId) !== groupId ? String(qd.globalMsgId) : "";
-          const qCliId  = qd.cliMsgId   != null ? String(qd.cliMsgId)   : "";
-          Promise.resolve((async () => {
-            let txs = [];
-            let foundTier = 0;
-            // Tầng 1: quoted msg chính là trip_msg_id gốc
-            if (qGlobId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qGlobId));
-            if (!txs.length && qCliId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qCliId));
-            if (txs.length) foundTier = 1;
-            // Tầng 2: tìm qua confirmMsgId/claimMsgId trong raw_text JSON (ok ib message)
-            if (!txs.length) {
-              for (const mid of [qGlobId, qCliId].filter(Boolean)) {
-                if (txs.length) break;
-                txs = await Promise.resolve(dbm.getTransactionsByConfirmMsgId(dbGroupId, mid));
-              }
-              if (txs.length) foundTier = 2;
-            } 
-            // Tầng 3: tra bảng barem_msg_refs — bất kỳ tin nào đã được E xử lý đều là entry point
-            if (!txs.length) {
-              for (const mid of [qGlobId, qCliId].filter(Boolean)) {
-                if (txs.length) break;
-                try {
-                  const refId = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, mid));
-                  if (refId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, refId));
-                } catch {}
-              }
-              if (txs.length) foundTier = 3;
+        // globalMsgId trong tin nhóm Zalo = threadId (ID nhóm), lọc ra để tránh nhầm với ID tin nhắn
+        const qGlobId = qd.globalMsgId != null && String(qd.globalMsgId) !== groupId ? String(qd.globalMsgId) : "";
+        const qCliId  = qd.cliMsgId   != null ? String(qd.cliMsgId)   : "";
+        Promise.resolve((async () => {
+          let txs = [];
+          let foundTier = 0;
+          // Tầng 1: quoted msg chính là trip_msg_id gốc
+          if (qGlobId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qGlobId));
+          if (!txs.length && qCliId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, qCliId));
+          if (txs.length) foundTier = 1;
+          // Tầng 2: tìm qua confirmMsgId/claimMsgId trong raw_text JSON (ok ib message)
+          if (!txs.length) {
+            for (const mid of [qGlobId, qCliId].filter(Boolean)) {
+              if (txs.length) break;
+              txs = await Promise.resolve(dbm.getTransactionsByConfirmMsgId(dbGroupId, mid));
             }
-            // Tầng 3.5: quoteChain walk-up — leo ngược chuỗi reply tối đa 4 bước
-            if (!txs.length) {
-              const _visited = new Set([qGlobId, qCliId].filter(Boolean));
-              let _toCheck = [..._visited];
-              for (let _d = 0; _d < 4 && !txs.length && _toCheck.length; _d++) {
-                const _next = [];
-                for (const _mid of _toCheck) {
-                  const _parents = sess.quoteChain.get(_mid);
-                  if (!_parents) continue;
-                  for (const _p of _parents) {
-                    if (!_p || _visited.has(_p)) continue;
-                    _visited.add(_p);
-                    _next.push(_p);
-                    try {
-                      const _refId = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, _p));
-                      if (_refId) { txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, _refId)); if (txs.length) break; }
-                    } catch {}
-                  }
-                  if (txs.length) break;
-                }
-                _toCheck = _next;
-              }
-              if (txs.length) foundTier = "3.5";
-            }
-            // Validate: nếu tìm được qua tier 1-3.5 nhưng sender KHÔNG phải poster/taker
-            // → có thể barem_msg_refs bị nhiễm (chain extension cũ) → clear và thử tier 4
-            if (txs.length) {
-              const _vpt = txs.find(t => t.type==='barem' && t.to_member && !t.from_member);
-              const _vtt = txs.find(t => t.type==='barem' && t.from_member && !t.to_member);
-              const _vpd = txs.find(t => t.type==='barem' && t.from_member && t.to_member);
-              const _vpU = _vpt?.to_member ?? _vpd?.to_member;
-              const _vtU = _vtt?.from_member ?? _vpd?.from_member;
-              if (_vpU || _vtU) {
-                try {
-                  const _vsC = await resolveCanonicalUid(dbGroupId, senderId);
-                  if (![senderId, _vsC].some(u => u && (u === _vpU || u === _vtU))) {
-                    console.warn(`[${sess.userId}] (E) tier${foundTier}: sender ${senderId} không phải party (poster=${_vpU} taker=${_vtU}) → fallback tier4`);
-                    txs = []; foundTier = 0;
-                  }
-                } catch {}
-              }
-            }
-            // Tầng 4: fallback theo UID người gửi — lấy barem gần nhất trong 48h
-            // Thử cả raw senderId lẫn canonical (phòng trường hợp tx được lưu bằng canonical)
-            if (!txs.length) {
+            if (txs.length) foundTier = 2;
+          }
+          // Tầng 3: tra bảng barem_msg_refs — bất kỳ tin nào đã được E xử lý đều là entry point
+          if (!txs.length) {
+            for (const mid of [qGlobId, qCliId].filter(Boolean)) {
+              if (txs.length) break;
               try {
-                const senderCanon = await resolveCanonicalUid(dbGroupId, senderId);
-                for (const uid of [...new Set([senderId, senderCanon])]) {
-                  const latestRef = await Promise.resolve(dbm.getLatestBaremTripMsgId(dbGroupId, uid));
-                  if (latestRef) {
-                    txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, latestRef));
-                    if (txs.length) break;
-                  }
+                const refId = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, mid));
+                if (refId) txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, refId));
+              } catch {}
+            }
+            if (txs.length) foundTier = 3;
+          }
+          // Tầng 3.5: quoteChain walk-up — leo ngược chuỗi reply tối đa 4 bước
+          if (!txs.length) {
+            const _visited = new Set([qGlobId, qCliId].filter(Boolean));
+            let _toCheck = [..._visited];
+            for (let _d = 0; _d < 4 && !txs.length && _toCheck.length; _d++) {
+              const _next = [];
+              for (const _mid of _toCheck) {
+                const _parents = sess.quoteChain.get(_mid);
+                if (!_parents) continue;
+                for (const _p of _parents) {
+                  if (!_p || _visited.has(_p)) continue;
+                  _visited.add(_p);
+                  _next.push(_p);
+                  try {
+                    const _refId = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, _p));
+                    if (_refId) { txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, _refId)); if (txs.length) break; }
+                  } catch {}
+                }
+                if (txs.length) break;
+              }
+              _toCheck = _next;
+            }
+            if (txs.length) foundTier = "3.5";
+          }
+          // Validate: nếu tìm được qua tier 1-3.5 nhưng sender KHÔNG phải poster/taker
+          // → có thể barem_msg_refs bị nhiễm (chain extension cũ) → clear và thử tier 4
+          if (txs.length) {
+            const _vpt = txs.find(t => t.type==='barem' && t.to_member && !t.from_member);
+            const _vtt = txs.find(t => t.type==='barem' && t.from_member && !t.to_member);
+            const _vpd = txs.find(t => t.type==='barem' && t.from_member && t.to_member);
+            const _vpU = _vpt?.to_member ?? _vpd?.to_member;
+            const _vtU = _vtt?.from_member ?? _vpd?.from_member;
+            if (_vpU || _vtU) {
+              try {
+                const _vsC = await resolveCanonicalUid(dbGroupId, senderId);
+                if (![senderId, _vsC].some(u => u && (u === _vpU || u === _vtU))) {
+                  console.warn(`[${sess.userId}] (E) tier${foundTier}: sender ${senderId} không phải party (poster=${_vpU} taker=${_vtU}) → fallback tier4`);
+                  txs = []; foundTier = 0;
                 }
               } catch {}
-              if (txs.length) foundTier = 4;
             }
+          }
+          // Tầng 4: fallback theo UID người gửi — lấy barem gần nhất trong 48h
+          if (!txs.length) {
+            try {
+              const senderCanon = await resolveCanonicalUid(dbGroupId, senderId);
+              for (const uid of [...new Set([senderId, senderCanon])]) {
+                const latestRef = await Promise.resolve(dbm.getLatestBaremTripMsgId(dbGroupId, uid));
+                if (latestRef) {
+                  txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, latestRef));
+                  if (txs.length) break;
+                }
+              }
+            } catch {}
+            if (txs.length) foundTier = 4;
+          }
+
+          if (action) {
+            // ── Có lệnh rõ ràng: cancel / free / adjust ──────────────────────
             if (!txs.length) {
               console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy tx | quoted glob=${qGlobId} cli=${qCliId} | sender=${senderId} | group=${dbGroupId}`);
               return;
             }
             console.log(`[${sess.userId}] (E) barem ${action.type}: found ${txs.length} tx via tier${foundTier} | glob=${qGlobId} cli=${qCliId}`);
             // Dedup: nếu 2 KT cùng tag → chỉ 1 session được xử lý tin này
-            // addBaremMsgRef dùng ON CONFLICT DO NOTHING — session nào insert trước thắng
             const _foundTripMsgId = txs.find(t => t.type === 'barem')?.trip_msg_id;
             const _dedupKey = `E:${msgId}`;
             const _alreadyDone = await Promise.resolve(dbm.getBaremMsgRefTripMsgId(dbGroupId, _dedupKey));
-            if (_alreadyDone) {
-              console.log(`[${sess.userId}] ⏭️ (E) skip dup: ${msgId}`);
-              return;
-            }
+            if (_alreadyDone) { console.log(`[${sess.userId}] ⏭️ (E) skip dup: ${msgId}`); return; }
             if (_foundTripMsgId) {
-              // Ghi dedup key + entry points cho chain tiếp theo
               for (const mid of [_dedupKey, msgId, qGlobId, qCliId].filter(Boolean))
                 Promise.resolve(dbm.addBaremMsgRef(dbGroupId, mid, _foundTripMsgId)).catch(e => console.warn(`[${sess.userId}] addBaremMsgRef(E) err:`, e?.message || e));
             }
-            // Xác định poster/taker từ barem tx GỐC (type='barem') — luôn đúng bất kể
-            // hướng của các barem_adjust (diff âm làm from_member/to_member đổi chiều).
-            // adjustPoints tạo 2 row riêng (to_member-only và from_member-only).
-            // addBaremPending tạo 1 row kết hợp (cả hai field đều có) — cần xử lý riêng.
-            const baremPosterTx = txs.find(t => t.type === 'barem' && t.to_member && !t.from_member);
-            const baremTakerTx  = txs.find(t => t.type === 'barem' && t.from_member && !t.to_member);
+            const baremPosterTx  = txs.find(t => t.type === 'barem' && t.to_member && !t.from_member);
+            const baremTakerTx   = txs.find(t => t.type === 'barem' && t.from_member && !t.to_member);
             const baremPendingTx = txs.find(t => t.type === 'barem' && t.from_member && t.to_member);
             if ((!baremPosterTx || !baremTakerTx) && !baremPendingTx) {
               console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy barem gốc trong ${txs.length} tx`);
@@ -963,23 +955,14 @@ async function onMessage(sess, msg) {
             const posterUid     = baremPosterTx?.to_member   ?? baremPendingTx.to_member;
             const takerUid      = baremTakerTx?.from_member  ?? baremPendingTx.from_member;
             const origTripMsgId = (baremPosterTx ?? baremPendingTx).trip_msg_id;
-
-            // currentPts = tổng CÓ DẤU của tất cả txs đối với poster
-            // (to_member=poster → +points; from_member=poster → -points)
             const currentPts = txs.reduce((s, t) => {
               if (t.to_member === posterUid) return s + Number(t.points);
               if (t.from_member === posterUid) return s - Number(t.points);
               return s;
             }, 0);
-
-            // Giữ nội dung convo gốc + thêm tin hành động
-            // baremPosterTx null khi pending (combined row) → đọc từ baremPendingTx
             const _rawSrc = baremPosterTx ?? baremPendingTx;
             let baseConvo = null;
             try { baseConvo = _rawSrc?.raw_text ? JSON.parse(_rawSrc.raw_text) : null; } catch {}
-
-            // Lịch sử điều chỉnh — đọc từ barem tx (source of truth).
-            // KHÔNG đọc từ adj txs vì cancel/free sẽ làm mất dữ liệu gốc nếu overwrite chúng.
             const adjustHistory = baseConvo?.adjustHistory || [];
 
             if (action.type === 'cancel') {
@@ -988,7 +971,6 @@ async function onMessage(sess, msg) {
                 ...(adjustHistory.length ? { adjustHistory } : {}),
                 cancelTime: time, canceller: senderName, cancelText: text,
               });
-              // Chỉ update raw_text của barem txs; adj txs chỉ zero points (giữ raw_text gốc)
               for (const tx of txs) {
                 const upd = { points: 0, reason: 'Hủy lịch' };
                 if (tx.type === 'barem') upd.raw_text = reversalConvo;
@@ -1001,7 +983,6 @@ async function onMessage(sess, msg) {
                 ...(adjustHistory.length ? { adjustHistory } : {}),
                 freeTime: time, freePoster: senderName, freeText: text,
               });
-              // Chỉ update raw_text của barem txs; adj txs chỉ zero points
               for (const tx of txs) {
                 const upd = { points: 0, reason: 'Lịch free' };
                 if (tx.type === 'barem') upd.raw_text = freeConvo;
@@ -1012,29 +993,74 @@ async function onMessage(sess, msg) {
               const diff = action.points - currentPts;
               if (diff === 0) return;
               const reason = `Thỏa thuận: ${currentPts}đ → ${action.points}đ`;
-              // Hấp thụ cancel/free trước đó vào adjustHistory (khi điều chỉnh lại sau hủy/free)
               const prevEvents = [];
               if (baseConvo?.cancelText) prevEvents.push({ cancelTime: baseConvo.cancelTime, canceller: baseConvo.canceller, cancelText: baseConvo.cancelText });
               else if (baseConvo?.freeText) prevEvents.push({ cancelTime: baseConvo.freeTime, canceller: baseConvo.freePoster, cancelText: `[Free] ${baseConvo.freeText}` });
               const newEntry = { cancelTime: time, canceller: senderName, cancelText: text, adjFrom: currentPts, adjTo: action.points };
               const newAdjHistory = [...adjustHistory, ...prevEvents, newEntry];
-              // Xóa cancelText/freeText cũ khỏi base (đã hấp thụ vào adjustHistory)
               const { cancelText: _ct, cancelTime: _cT, canceller: _c, freeText: _ft, freeTime: _fT, freePoster: _fp, adjustHistory: _ah, ...cleanBase } = baseConvo || {};
               const adjConvo = JSON.stringify({ ...cleanBase, adjustHistory: newAdjHistory });
-              // Update barem txs để duy trì running adjustHistory
               for (const tx of txs) {
                 if (tx.type === 'barem') await dbm.updateTransaction(tx.id, { raw_text: adjConvo });
               }
-              // Tạo adj txs với full snapshot (context đầy đủ cho ConvoThread)
               const posterC = await resolveCanonicalUid(dbGroupId, posterUid);
               const takerC  = await resolveCanonicalUid(dbGroupId, takerUid);
               await dbm.adjustPoints(dbGroupId, posterC,  diff, reason, 'barem_adjust', origTripMsgId, null, null, adjConvo);
               await dbm.adjustPoints(dbGroupId, takerC,  -diff, reason, 'barem_adjust', origTripMsgId, null, null, adjConvo);
               console.log(`[${sess.userId}] 📝 Barem adjust: ${currentPts}→${action.points}đ diff=${diff} | poster=${posterUid} taker=${takerUid}`);
             }
-          })()).catch(e => console.error(`[${sess.userId}] barem action (E):`, e?.message || e));
-          return;
-        }
+
+          } else {
+            // ── Không detect được lệnh: đưa cuốc về pending cho KT review ────
+            if (!txs.length) {
+              console.log(`[BAREM_E] ℹ️ @kt không rõ lệnh, không truy vết được tx → bỏ qua`);
+              return;
+            }
+            const baremPosterTx  = txs.find(t => t.type === 'barem' && t.to_member && !t.from_member);
+            const baremTakerTx   = txs.find(t => t.type === 'barem' && t.from_member && !t.to_member);
+            const baremPendingTx = txs.find(t => t.type === 'barem' && t.from_member && t.to_member);
+            const posterUid = baremPosterTx?.to_member   ?? baremPendingTx?.to_member;
+            const takerUid  = baremTakerTx?.from_member  ?? baremPendingTx?.from_member;
+            if (!posterUid || !takerUid) {
+              console.log(`[BAREM_E] ℹ️ @kt không rõ lệnh, không xác định được poster/taker → bỏ qua`);
+              return;
+            }
+            const currentPts = txs.reduce((s, t) => {
+              if (t.to_member === posterUid) return s + Number(t.points);
+              if (t.from_member === posterUid) return s - Number(t.points);
+              return s;
+            }, 0);
+            // Bỏ qua nếu đã là 0đ (đã hủy/free trước đó)
+            if (currentPts <= 0) {
+              console.log(`[BAREM_E] ℹ️ @kt không rõ lệnh, currentPts=${currentPts} → bỏ qua`);
+              return;
+            }
+            const origTripMsgId = (baremPosterTx ?? baremPendingTx)?.trip_msg_id;
+            const _rawSrc = baremPosterTx ?? baremPendingTx;
+            let baseConvo = null;
+            try { baseConvo = _rawSrc?.raw_text ? JSON.parse(_rawSrc.raw_text) : null; } catch {}
+
+            // Đảo ngược điểm đã áp dụng (bằng cách set points=0 — updateTransaction tự hoàn điểm)
+            const approvedTxs = txs.filter(t => t.type === 'barem' && (!t.status || t.status === 'approved'));
+            const reviewConvo = JSON.stringify({ ...(baseConvo || {}), reviewMsg: text, reviewBy: senderName, reviewTime: time });
+            for (const tx of approvedTxs) {
+              await dbm.updateTransaction(tx.id, { points: 0, reason: `Chờ KT review: "${text.slice(0, 50)}"`, raw_text: reviewConvo });
+            }
+            // Tạo pending row mới (addBaremPending giờ chỉ check status='pending' → không conflict với row gốc đã zeroed)
+            const pendingId = await dbm.addBaremPending(dbGroupId, posterUid, takerUid, currentPts, origTripMsgId, reviewConvo);
+            // Ghi msg refs để Section E chain sau tìm được
+            for (const mid of [msgId, qGlobId, qCliId].filter(Boolean))
+              Promise.resolve(dbm.addBaremMsgRef(dbGroupId, mid, origTripMsgId)).catch(() => {});
+            console.log(`[${sess.userId}] ⏳ @kt ambiguous → revert ${currentPts}đ về pending id=${pendingId} | poster=${posterUid} taker=${takerUid} tier${foundTier}`);
+            sess.onEvent(sess.userId, {
+              type: 'pending_transfer', txId: pendingId,
+              groupId: dbGroupId, groupName,
+              fromUid: takerUid, fromName: '', toUid: posterUid, toName: '',
+              points: currentPts, rawText: text,
+            });
+          }
+        })()).catch(e => console.error(`[${sess.userId}] barem (E):`, e?.message || e));
+        return;
       }
     }
 
@@ -1076,14 +1102,16 @@ async function onMessage(sess, msg) {
       // Kế toán: lưu cuốc vào tripMsgCache để (C) phát hiện claim sau
       if (sess.isAccountant) {
         const pricedTrips = trips.filter(t => t.price);
-        if (pricedTrips.length > 0) {
-          const primary = pricedTrips[0];
+        // Nếu không có trip nào có giá nhưng có trip có route → vẫn cache để ok ib tạo pending 0đ
+        const cacheTrips = pricedTrips.length > 0 ? pricedTrips : trips.filter(t => t.route);
+        if (cacheTrips.length > 0) {
+          const primary = cacheTrips[0];
           const tripData = {
-            type: primary.type, price: primary.price,
+            type: primary.type, price: primary.price || null,
             senderId: primary.senderId, senderName, text, time,
             explicitPoints: primary.explicitPoints || 0,
             free: !!primary.free,
-            // Tin nhiều cuốc: lưu toàn bộ để kế toán xem và điều chỉnh
+            // Tin nhiều cuốc: chỉ áp dụng khi có giá; trip 0đ luôn là 1 cuốc
             allTrips: pricedTrips.length > 1
               ? pricedTrips.map(t => ({ type: t.type, price: t.price, explicitPoints: t.explicitPoints || 0 }))
               : null,

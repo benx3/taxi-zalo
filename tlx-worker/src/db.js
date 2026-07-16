@@ -963,7 +963,7 @@ export function deleteTransaction(id) {
 // ---------- Barem: tạo giao dịch chờ kế toán duyệt (không cộng điểm ngay) ----------
 export function addBaremPending(groupId, posterId, takerId, pts, tripMsgId, rawText) {
   if (tripMsgId) {
-    const exists = db.prepare("SELECT id FROM point_transactions WHERE group_id=? AND trip_msg_id=? AND type='barem'").get(groupId, tripMsgId);
+    const exists = db.prepare("SELECT id FROM point_transactions WHERE group_id=? AND trip_msg_id=? AND type='barem' AND status='pending'").get(groupId, tripMsgId);
     if (exists) return exists.id;
   }
   upsertMember(groupId, posterId);

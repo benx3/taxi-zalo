@@ -826,7 +826,7 @@ export async function deleteTransaction(id) {
 // ---------- Barem: tạo giao dịch chờ kế toán duyệt ----------
 export async function addBaremPending(groupId, posterId, takerId, pts, tripMsgId, rawText) {
   if (tripMsgId) {
-    const exists = await q("SELECT id FROM point_transactions WHERE group_id=$1 AND trip_msg_id=$2 AND type='barem'", [groupId, tripMsgId]);
+    const exists = await q("SELECT id FROM point_transactions WHERE group_id=$1 AND trip_msg_id=$2 AND type='barem' AND status='pending'", [groupId, tripMsgId]);
     if (exists.rows[0]) return exists.rows[0].id;
   }
   await upsertMember(groupId, posterId);

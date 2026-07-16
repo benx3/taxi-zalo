@@ -176,7 +176,7 @@ export function parseType(t) {
   const l = t.toLowerCase();
   if (/(bao\s*hàng|csct\s*đồ|(?:^|[\s\d,.])\s*đồ\s|gửi\s*hàng|giao\s*hàng|chở\s*hàng|ship\b|kiện\s*hàng|hàng\s+(?:nhỏ|nặng|lớn|to|bé|gọn|cồng|kềnh)|hồ\s*sơ|tài\s*liệu|giấy\s*tờ|phong\s*bì|bưu\s*phẩm)/.test(l) && !/1\s*ghế|1k\b|gái|khách/.test(l)) return "Hàng";
   // \bbx\b(?!\s+[a-zA-Z\xC0-ỹ]): "bx" chỉ = bao xe khi KHÔNG kèm tên địa điểm (bx nước ngầm/bx giáp bát = bến xe, không phải bao xe)
-  if (/bao\s*xe|\bbxe\b|\bbx\b(?!\s+[a-zA-Z\xC0-ỹ])|bx\d+|\bxe\s*7\b|7\s*chỗ|\b7c\b|\blịch\s*taxi\b|\btaxi\b/.test(l)) {
+  if (/bao\s*xe|\bbxe\d*\b|\bbx\b(?!\s+[a-zA-Z\xC0-ỹ])|bx\d+|\bxe\s*7\b|7\s*chỗ|\b7c\b|\blịch\s*taxi\b|\btaxi\b/.test(l)) {
     if (/bx\s*2c\b|bxe\s*2c\b|bao\s*xe\s*2c\b|2\s*chi[eề]u|2\s*chieu/.test(l)) return "Bao xe 2 chiều";
     return "Bao xe";
   }
@@ -302,19 +302,32 @@ export function parseMultipleTrips(raw) {
 
 // Hàm chính: tin thô → object cuốc. Trả null nếu không phải cuốc.
 // QUY TẮC VÀNG: có giá tiền → 99% là cuốc xe. Vì vậy ưu tiên giá:
-//   - Không có giá hợp lệ → bỏ (gần như chắc không phải cuốc).
 //   - Có giá → coi là cuốc, TRỪ KHI chắc chắn là rác (ok/ib, hủy, sản điểm).
+//   - Không có giá nhưng có route rõ → coi là cuốc 0đ, pending cho KT duyệt nếu có ok ib.
 export function parseTrip(raw) {
   const text = (raw.text || "").trim();
   if (!text) return null;
+  if (isClaimMessage(text)) return null;
+  if (isHardNoise(text)) return null;
 
   const price = parsePrice(text);
-  // không có giá hợp lệ → không phải cuốc
-  if (!price || price < 50 || price > 5000) return null;
 
-  // có giá rồi, nhưng vẫn loại nếu là tin chốt/hủy/sản chắc chắn:
-  if (isClaimMessage(text)) return null;       // chỉ ok/ib (không kèm giá thật)
-  if (isHardNoise(text)) return null;          // hủy lịch / sản điểm / xác nhận rõ ràng
+  if (!price || price < 50 || price > 5000) {
+    // Không parse được giá → thử nhận dạng qua route.
+    // Có ok ib sau đó → sessionManager tạo pending 0đ cho KT duyệt.
+    const route = parseRoute(text);
+    const hasRoute = route && (route.from !== '?' || route.to !== '?');
+    if (!hasRoute) return null;
+    return {
+      groupId: raw.groupId, group: raw.groupName,
+      senderId: raw.senderId, sender: raw.senderName,
+      msgId: raw.msgId, t: raw.time, text,
+      price: null,
+      time: parseTime(text), car: null, seats: null,
+      type: "Không rõ", route,
+      free: false, explicitPoints: null, bonus: null,
+    };
+  }
 
   const explicitPoints = parseBonus(text);
   const tripType = parseType(text);
