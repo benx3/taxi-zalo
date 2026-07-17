@@ -15,9 +15,9 @@ const get = async (path) => {
   }
   return r.json();
 };
-const authGet = async (path) => {
+const authGet = async (path, base = BASE) => {
   const tok = localStorage.getItem("tlx_token");
-  const r = await fetch(BASE + path, { headers: { Authorization: "Bearer " + (tok || "") } });
+  const r = await fetch(base + path, { headers: { Authorization: "Bearer " + (tok || "") } });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 };
@@ -296,14 +296,14 @@ function TxRow({ tx, memberUid }) {
 }
 
 /* ── GroupsView ─────────────────────────────────── */
-function GroupsView({ onSelect }) {
+function GroupsView({ onSelect, apiBase = BASE }) {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    authGet("/api/public/groups").then(setGroups).catch(e => setErr(e.message)).finally(() => setLoading(false));
-  }, []);
+    authGet("/api/public/groups", apiBase).then(setGroups).catch(e => setErr(e.message)).finally(() => setLoading(false));
+  }, [apiBase]);
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "40px 16px 0" }}>
@@ -1022,7 +1022,7 @@ export default function PublicPointsPage() {
       })
       .catch(() => {
         // driver service không nhận token → thử KT service
-        fetch(KT_BASE + "/api/me", { headers: { Authorization: "Bearer " + tok } })
+        return fetch(KT_BASE + "/api/me", { headers: { Authorization: "Bearer " + tok } })
           .then(r => r.ok ? r.json() : Promise.reject())
           .then(u => {
             if (u?.role) setMeRole(u.role);
@@ -1137,7 +1137,7 @@ export default function PublicPointsPage() {
         </div>
       )}
       {!slugLoading && view === "groups" && meRoleLoaded && ["admin", "accountant"].includes(meRole) && (
-        <GroupsView onSelect={selectGroup} />
+        <GroupsView onSelect={selectGroup} apiBase={txApiBase} />
       )}
       {!slugLoading && view === "members" && group && (
         <MembersView

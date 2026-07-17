@@ -112,6 +112,13 @@ app.get("/api/admin/session-health", async (req, res) => {
 
   res.json({ sessions: liveHealth.filter(s => !s.isAccountant), accountants });
 });
+app.get("/api/public/groups", async (req, res) => {
+  const a = tokenOf(req); if (!a) return res.status(401).json({ error: "Chưa đăng nhập" });
+  const u = await dbm.getUserPublic(a.userId);
+  if (!["admin", "accountant"].includes(u?.role)) return res.status(403).json({ error: "Không có quyền" });
+  try { res.json(await dbm.listPublicGroups()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.get("/api/admin/groups", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   res.json(await dbm.listAllGroups());
