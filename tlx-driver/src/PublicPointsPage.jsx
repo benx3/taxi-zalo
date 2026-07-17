@@ -302,7 +302,7 @@ function GroupsView({ onSelect }) {
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    get("/api/public/groups").then(setGroups).catch(e => setErr(e.message)).finally(() => setLoading(false));
+    authGet("/api/public/groups").then(setGroups).catch(e => setErr(e.message)).finally(() => setLoading(false));
   }, []);
 
   return (
@@ -1128,15 +1128,15 @@ export default function PublicPointsPage() {
       {!slugLoading && view === "groups" && !meRoleLoaded && (
         <div style={{ textAlign: "center", padding: 80, color: c.dim }}>Đang kiểm tra quyền…</div>
       )}
-      {!slugLoading && view === "groups" && meRoleLoaded && !["monitor", "admin", "accountant"].includes(meRole) && (
+      {!slugLoading && view === "groups" && meRoleLoaded && !["admin", "accountant"].includes(meRole) && (
         <div style={{ maxWidth: 480, margin: "80px auto", textAlign: "center", padding: "0 20px" }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
           <h2 style={{ color: c.ink, marginBottom: 8 }}>Không có quyền truy cập</h2>
-          <p style={{ color: c.dim, marginBottom: 24 }}>Danh sách nhóm chỉ dành cho kế toán và monitor. Nếu bạn có link nhóm cụ thể, hãy truy cập trực tiếp.</p>
+          <p style={{ color: c.dim, marginBottom: 24 }}>Danh sách nhóm chỉ dành cho kế toán. Nếu bạn có link nhóm cụ thể, hãy truy cập trực tiếp.</p>
           <a href="/?screen=login" style={{ display: "inline-block", padding: "10px 24px", borderRadius: 9, background: "rgba(52,211,153,.15)", color: c.accent, fontWeight: 700, textDecoration: "none" }}>Đăng nhập</a>
         </div>
       )}
-      {!slugLoading && view === "groups" && meRoleLoaded && ["monitor", "admin", "accountant"].includes(meRole) && (
+      {!slugLoading && view === "groups" && meRoleLoaded && ["admin", "accountant"].includes(meRole) && (
         <GroupsView onSelect={selectGroup} />
       )}
       {!slugLoading && view === "members" && group && (

@@ -130,7 +130,7 @@ app.get("/api/public/groups", async (req, res) => {
   if (!a) return res.status(401).json({ error: "Chưa đăng nhập" });
   try {
     const u = await dbm.getUserPublic(a.userId);
-    if (!["monitor", "admin", "accountant"].includes(u?.role))
+    if (!["admin", "accountant"].includes(u?.role))
       return res.status(403).json({ error: "Không có quyền xem danh sách nhóm" });
     const groups = await dbm.listPublicGroups();
     res.json(groups.map(g => ({ ...g, slug: slugify(g.group_name) })));
