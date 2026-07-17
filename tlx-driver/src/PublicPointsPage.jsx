@@ -1001,6 +1001,7 @@ export default function PublicPointsPage() {
   const [member, setMember] = useState(null);
   const [slugLoading, setSlugLoading] = useState(false);
   const [meRole, setMeRole] = useState("public");
+  const [meRoleLoaded, setMeRoleLoaded] = useState(false);
   const [allowedGroupIds, setAllowedGroupIds] = useState(null);
   // txApiBase: service nào để gọi group-transactions (driver vs KT)
   const [txApiBase, setTxApiBase] = useState(BASE);
@@ -1009,7 +1010,7 @@ export default function PublicPointsPage() {
   // Kiểm tra role: thử driver service trước (monitor), fallback KT service (admin/accountant)
   useEffect(() => {
     const tok = localStorage.getItem("tlx_token");
-    if (!tok) return;
+    if (!tok) { setMeRoleLoaded(true); return; }
     authGet("/api/me")
       .then(u => {
         if (u?.role) setMeRole(u.role);
@@ -1017,7 +1018,6 @@ export default function PublicPointsPage() {
           authGet("/api/monitor/my-groups")
             .then(d => setAllowedGroupIds(d.all ? null : (d.groupIds || [])))
             .catch(() => setAllowedGroupIds([]));
-          // monitor/admin/accountant với driver token → dùng driver endpoint
         }
       })
       .catch(() => {
@@ -1033,7 +1033,8 @@ export default function PublicPointsPage() {
             }
           })
           .catch(() => {});
-      });
+      })
+      .finally(() => setMeRoleLoaded(true));
   }, []);
 
   // SEO: cập nhật title/desc/canonical/OG theo từng view
@@ -1124,7 +1125,18 @@ export default function PublicPointsPage() {
       {slugLoading && (
         <div style={{ textAlign: "center", padding: 80, color: c.dim }}>Đang tải nhóm…</div>
       )}
-      {!slugLoading && view === "groups" && (
+      {!slugLoading && view === "groups" && !meRoleLoaded && (
+        <div style={{ textAlign: "center", padding: 80, color: c.dim }}>Đang kiểm tra quyền…</div>
+      )}
+      {!slugLoading && view === "groups" && meRoleLoaded && !["monitor", "admin", "accountant"].includes(meRole) && (
+        <div style={{ maxWidth: 480, margin: "80px auto", textAlign: "center", padding: "0 20px" }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+          <h2 style={{ color: c.ink, marginBottom: 8 }}>Không có quyền truy cập</h2>
+          <p style={{ color: c.dim, marginBottom: 24 }}>Danh sách nhóm chỉ dành cho kế toán và monitor. Nếu bạn có link nhóm cụ thể, hãy truy cập trực tiếp.</p>
+          <a href="/?screen=login" style={{ display: "inline-block", padding: "10px 24px", borderRadius: 9, background: "rgba(52,211,153,.15)", color: c.accent, fontWeight: 700, textDecoration: "none" }}>Đăng nhập</a>
+        </div>
+      )}
+      {!slugLoading && view === "groups" && meRoleLoaded && ["monitor", "admin", "accountant"].includes(meRole) && (
         <GroupsView onSelect={selectGroup} />
       )}
       {!slugLoading && view === "members" && group && (

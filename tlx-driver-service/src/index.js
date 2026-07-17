@@ -125,8 +125,13 @@ function slugify(name) {
     .replace(/-+/g, "-");
 }
 
-app.get("/api/public/groups", async (_req, res) => {
+app.get("/api/public/groups", async (req, res) => {
+  const a = tokenOf(req);
+  if (!a) return res.status(401).json({ error: "Chưa đăng nhập" });
   try {
+    const u = await dbm.getUserPublic(a.userId);
+    if (!["monitor", "admin", "accountant"].includes(u?.role))
+      return res.status(403).json({ error: "Không có quyền xem danh sách nhóm" });
     const groups = await dbm.listPublicGroups();
     res.json(groups.map(g => ({ ...g, slug: slugify(g.group_name) })));
   } catch (e) { res.status(500).json({ error: e.message }); }
