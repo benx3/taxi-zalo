@@ -134,7 +134,16 @@ export default function PendingTab({ groupId, liveItems, onProcessed }) {
               </div>
 
               {/* Nội dung chat gốc */}
-              {convo ? (
+              {convo?.text && convo?.sender && !convo?.tripText ? (
+                <div style={{ background: "rgba(0,0,0,.25)", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", marginBottom: 10, lineHeight: 1.5 }}>
+                  <div style={{ display: "flex", gap: 5 }}>
+                    <span style={{ fontSize: 10, color: "var(--ink-dim)", whiteSpace: "nowrap", paddingTop: 1 }}>{convo.time || ""}</span>
+                    <span style={{ fontSize: 11, color: "var(--ink-dim)" }}>
+                      <b style={{ color: "var(--ink)", marginRight: 3 }}>{convo.sender}:</b>{convo.text}
+                    </span>
+                  </div>
+                </div>
+              ) : convo ? (
                 <>
                   {convo.multiTrips && (
                     <div style={{ background: "rgba(245,158,11,.1)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 8, padding: "8px 11px", marginBottom: 8, fontSize: 12 }}>

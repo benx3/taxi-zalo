@@ -152,6 +152,18 @@ function ConvoThread({ raw }) {
     timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit",
   }) : "";
 
+  if (c?.text && c?.sender && !c?.tripText) {
+    return (
+      <div style={{ background: "rgba(0,0,0,.25)", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", marginBottom: 6, lineHeight: 1.4 }}>
+        <div style={{ display: "flex", gap: 6 }}>
+          <span style={{ fontSize: 10, color: "var(--ink-dim)", whiteSpace: "nowrap", paddingTop: 1 }}>{c.time || ""}</span>
+          <span style={{ fontSize: 11, color: "var(--ink-dim)" }}>
+            <b style={{ color: "var(--ink)", marginRight: 4 }}>{c.sender}:</b>{c.text}
+          </span>
+        </div>
+      </div>
+    );
+  }
   if (c?.tripText) {
     const row = (time, name, msg, color) => (
       <div style={{ display: "flex", gap: 6, marginBottom: 3 }}>
