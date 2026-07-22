@@ -838,7 +838,8 @@ async function onMessage(sess, msg) {
       // Log khi có quote nhưng không kích hoạt được (luôn hiện, không cần DEBUG_BAREM)
       if (qd && !ktMentioned) console.log(`[BAREM_E] ⚠️ quote có nhưng ktMentioned=false | mentions=${JSON.stringify(mentions.map(m=>m.uid))} selfId=${sess.selfId} group=${dbGroupId}`);
       if (process.env.DEBUG_BAREM) console.log(`[BAREM_E] hasQuote=${!!qd} ktMentioned=${ktMentioned} mentions=${JSON.stringify(mentions.map(m=>m.uid))} selfId=${sess.selfId}`);
-      // Tin không có quote → không thuộc cuốc nào, bỏ qua
+      // Tin có quote + tag KT → Section E xử lý cancel/adjust/revert
+      // Tin không có quote + tag KT → Section E.1 lưu 0đ pending (tranh chấp standalone)
       if (qd && ktMentioned) {
         const parsedBonus = parseBonus(text);
         const action = detectBaremAction(text) || (parsedBonus > 0 ? { type: 'adjust', points: parsedBonus } : null);
@@ -1074,6 +1075,24 @@ async function onMessage(sess, msg) {
             });
           }
         })()).catch(e => console.error(`[${sess.userId}] barem (E):`, e?.message || e));
+        return;
+      }
+      // (E.1) @KT không có quote → tranh chấp/thông báo standalone → lưu 0đ pending cho KT xử lý
+      if (!qd && ktMentioned) {
+        Promise.resolve((async () => {
+          // Dedup: trip_msg_id = msgId → addBaremPending tự skip nếu đã có pending cùng msgId
+          const disputeConvo = JSON.stringify({ text, sender: senderName, time, source: 'kt_dispute' });
+          const pendingId = await dbm.addBaremPending(dbGroupId, senderId, null, 0, msgId, disputeConvo);
+          // Lưu ref để Section F ghi được thread reply về sau
+          Promise.resolve(dbm.addBaremMsgRef(dbGroupId, msgId, msgId)).catch(() => {});
+          console.log(`[${sess.userId}] 📋 (E.1) @KT tranh chấp → pending 0đ id=${pendingId} sender=${senderId} "${text.slice(0, 50)}"`);
+          sess.onEvent(sess.userId, {
+            type: 'pending_transfer', txId: pendingId,
+            groupId: dbGroupId, groupName,
+            fromUid: null, fromName: '', toUid: senderId, toName: senderName,
+            points: 0, rawText: text,
+          });
+        })()).catch(e => console.error(`[${sess.userId}] (E.1) dispute pending err:`, e?.message || e));
         return;
       }
     }
