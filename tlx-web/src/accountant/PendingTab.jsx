@@ -29,7 +29,8 @@ export default function PendingTab({ groupId, liveItems, onProcessed }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(new Set());
-  const [warnId, setWarnId] = useState(null);
+  const [warnData, setWarnData] = useState(null); // { id, overridePts, fromName, fromPoints }
+  const [editPts, setEditPts] = useState({});     // id → string giá trị đang nhập
   const [page, setPage] = useState(1);
 
   const reload = () => {
@@ -47,13 +48,14 @@ export default function PendingTab({ groupId, liveItems, onProcessed }) {
   const totalPages = Math.ceil(Math.max(allItems.length, 1) / PAGE_SIZE);
   const paged = allItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const doApprove = async (id) => {
-    setWarnId(null);
+  const doApprove = async (id, overridePts) => {
+    setWarnData(null);
     setProcessing(prev => new Set(prev).add(id));
     try {
-      await api.approveTransfer(id);
+      await api.approveTransfer(id, overridePts != null ? overridePts : undefined);
       onProcessed(id);
       setItems(prev => prev.filter(i => i.id !== id));
+      setEditPts(prev => { const n = { ...prev }; delete n[id]; return n; });
     } catch (e) {
       alert(e.message);
     } finally {
@@ -61,18 +63,19 @@ export default function PendingTab({ groupId, liveItems, onProcessed }) {
     }
   };
 
-  const handle = async (id, action, fromPoints, pts) => {
+  const handle = async (id, action, fromPoints, overridePts, fromName) => {
     if (action === "approve") {
-      if (fromPoints != null && (fromPoints - pts) < 0) {
-        setWarnId(id); return;
+      if (fromPoints != null && overridePts > 0 && (fromPoints - overridePts) < 0) {
+        setWarnData({ id, overridePts, fromName, fromPoints }); return;
       }
-      return doApprove(id);
+      return doApprove(id, overridePts);
     }
     setProcessing(prev => new Set(prev).add(id));
     try {
       await api.rejectTransfer(id);
       onProcessed(id);
       setItems(prev => prev.filter(i => i.id !== id));
+      setEditPts(prev => { const n = { ...prev }; delete n[id]; return n; });
     } catch (e) {
       alert(e.message);
     } finally {
@@ -119,6 +122,11 @@ export default function PendingTab({ groupId, liveItems, onProcessed }) {
           if (isBarem && item.raw_text) {
             try { convo = JSON.parse(item.raw_text); } catch {}
           }
+
+          // Điểm có thể chỉnh sửa trực tiếp: lấy từ editPts nếu đang sửa, nếu không thì pts gốc
+          const ptsStr = editPts[id] !== undefined ? editPts[id] : (pts > 0 ? String(pts) : "");
+          const overridePts = ptsStr.trim() !== "" ? Number(ptsStr) : 0;
+          const isEdited = overridePts !== pts;
 
           return (
             <div key={id} style={{ background: "var(--card)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 14, padding: "14px 16px", marginBottom: 12 }}>
@@ -189,14 +197,29 @@ export default function PendingTab({ groupId, liveItems, onProcessed }) {
                     <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>
                       Hiện: <b style={{ color: fromPoints >= 0 ? "#34d399" : "#f87171" }}>{fmtPts(fromPoints)}</b>
                       {" → "}
-                      <b style={{ color: (fromPoints - pts) >= 0 ? "#34d399" : "#f87171" }}>{fmtPts(fromPoints - pts)}</b>
+                      <b style={{ color: (fromPoints - overridePts) >= 0 ? "#34d399" : "#f87171" }}>{fmtPts(fromPoints - overridePts)}</b>
                     </div>
                   )}
                 </div>
 
-                {/* Số điểm + mũi tên */}
+                {/* Số điểm + mũi tên — có thể chỉnh sửa trực tiếp */}
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                  <span style={{ fontWeight: 900, fontSize: 18, color: "#f59e0b" }}>{fmtPts(pts)}</span>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 1 }}>
+                    <input
+                      type="number"
+                      value={ptsStr}
+                      onChange={e => setEditPts(prev => ({ ...prev, [id]: e.target.value }))}
+                      placeholder="0"
+                      style={{
+                        width: 58, textAlign: "center", fontWeight: 900, fontSize: 18,
+                        color: isEdited ? "#fb923c" : "#f59e0b",
+                        background: "transparent", border: "none",
+                        borderBottom: `1.5px solid ${isEdited ? "rgba(251,146,60,.6)" : "rgba(245,158,11,.35)"}`,
+                        outline: "none", padding: "0 2px", MozAppearance: "textfield",
+                      }}
+                    />
+                    <span style={{ fontWeight: 700, fontSize: 13, color: isEdited ? "#fb923c" : "#f59e0b" }}>đ</span>
+                  </div>
                   <ArrowRight size={18} color="#f59e0b" />
                 </div>
 
@@ -208,7 +231,7 @@ export default function PendingTab({ groupId, liveItems, onProcessed }) {
                     <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>
                       Hiện: <b style={{ color: toPoints >= 0 ? "#34d399" : "#f87171" }}>{fmtPts(toPoints)}</b>
                       {" → "}
-                      <b style={{ color: (toPoints + pts) >= 0 ? "#34d399" : "#f87171" }}>{fmtPts(toPoints + pts)}</b>
+                      <b style={{ color: (toPoints + overridePts) >= 0 ? "#34d399" : "#f87171" }}>{fmtPts(toPoints + overridePts)}</b>
                     </div>
                   )}
                 </div>
@@ -216,31 +239,31 @@ export default function PendingTab({ groupId, liveItems, onProcessed }) {
 
               {/* Nút duyệt / từ chối */}
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => handle(id, "reject", fromPoints, pts)} disabled={busy}
+                <button onClick={() => handle(id, "reject", fromPoints, overridePts, fromName)} disabled={busy}
                   style={{ flex: 1, padding: "10px", borderRadius: 10, border: "none", cursor: busy ? "default" : "pointer", fontWeight: 700, fontSize: 13, background: "rgba(248,113,113,.12)", color: "#f87171", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, opacity: busy ? .5 : 1 }}>
                   <XCircle size={14} /> Từ chối
                 </button>
-                <button onClick={() => handle(id, "approve", fromPoints, pts)} disabled={busy}
-                  style={{ flex: 2, padding: "10px", borderRadius: 10, border: "none", cursor: busy ? "default" : "pointer", fontWeight: 800, fontSize: 13, background: "rgba(52,211,153,.15)", color: "#34d399", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, opacity: busy ? .5 : 1 }}>
-                  <CheckCircle2 size={14} /> {isBarem ? "Duyệt điểm barem" : "Duyệt san điểm"}
+                <button onClick={() => handle(id, "approve", fromPoints, overridePts, fromName)} disabled={busy}
+                  style={{ flex: 2, padding: "10px", borderRadius: 10, border: "none", cursor: busy ? "default" : "pointer", fontWeight: 800, fontSize: 13, background: isEdited ? "rgba(251,146,60,.18)" : "rgba(52,211,153,.15)", color: isEdited ? "#fb923c" : "#34d399", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, opacity: busy ? .5 : 1 }}>
+                  <CheckCircle2 size={14} /> {isEdited ? `Duyệt ${overridePts}đ` : isBarem ? "Duyệt điểm barem" : "Duyệt san điểm"}
                 </button>
               </div>
 
               {/* Cảnh báo điểm âm */}
-              {warnId === id && (
+              {warnData?.id === id && (
                 <div style={{ marginTop: 8, background: "rgba(245,158,11,.1)", border: "1px solid rgba(245,158,11,.4)", borderRadius: 10, padding: "12px 14px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13, color: "#f59e0b", marginBottom: 6 }}>
                     ⚠️ Cảnh báo: điểm người chuyển sẽ âm
                   </div>
                   <div style={{ fontSize: 12, color: "var(--ink-dim)", marginBottom: 10 }}>
-                    Sau giao dịch, <b style={{ color: "var(--ink)" }}>{fromName}</b> sẽ có <b style={{ color: "#f87171" }}>{fmtPts(fromPoints - pts)}</b>. Vẫn tiếp tục?
+                    Sau giao dịch, <b style={{ color: "var(--ink)" }}>{warnData.fromName}</b> sẽ có <b style={{ color: "#f87171" }}>{fmtPts(warnData.fromPoints - warnData.overridePts)}</b>. Vẫn tiếp tục?
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => setWarnId(null)}
+                    <button onClick={() => setWarnData(null)}
                       style={{ flex: 1, padding: "8px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent", color: "var(--ink-dim)", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>
                       Huỷ
                     </button>
-                    <button onClick={() => doApprove(id)} disabled={busy}
+                    <button onClick={() => doApprove(warnData.id, warnData.overridePts)} disabled={busy}
                       style={{ flex: 2, padding: "8px", borderRadius: 8, border: "none", background: "rgba(245,158,11,.25)", color: "#f59e0b", fontSize: 13, cursor: busy ? "default" : "pointer", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
                       <CheckCircle2 size={13} /> Vẫn duyệt
                     </button>

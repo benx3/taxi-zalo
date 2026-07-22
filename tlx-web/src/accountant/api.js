@@ -66,7 +66,7 @@ enrichMemberNames: (groupId) => req(`/api/accountant/groups/${encodeURIComponent
 
   // San điểm — giao dịch chờ duyệt
   pendingTransfers: (groupId) => req(`/api/accountant/pending-transfers?groupId=${encodeURIComponent(groupId)}`, null, "GET"),
-  approveTransfer: (id) => req(`/api/accountant/pending-transfers/${id}/approve`, {}),
+  approveTransfer: (id, pts) => req(`/api/accountant/pending-transfers/${id}/approve`, pts != null ? { points: pts } : {}),
   rejectTransfer: (id) => req(`/api/accountant/pending-transfers/${id}/reject`, {}),
 
 
