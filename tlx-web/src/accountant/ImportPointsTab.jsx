@@ -13,18 +13,33 @@ function normName(s) {
 }
 
 function findMatch(members, excelName) {
-  const norm = normName(excelName);
-  if (!norm) return null;
-  // 1. Exact alias
-  let m = members.find(m => m.alias && normName(m.alias) === norm);
-  // 2. Exact display_name
-  if (!m) m = members.find(m => normName(m.display_name) === norm);
-  // 3. Partial: one side contains the other (shortest first)
-  if (!m) m = members.find(m => {
-    const s = normName(m.alias || m.display_name);
+  const raw = (excelName || "").trim();
+  if (!raw) return null;
+  // Normalize chỉ để dự phòng (strip dấu) — KHÔNG dùng làm bước đầu
+  const norm  = normName(raw);
+  // So sánh giữ nguyên dấu, chỉ lowercase + chuẩn khoảng trắng
+  const lower = raw.toLowerCase().replace(/\s+/g, " ");
+  const mLower = (m) => (m.alias || m.display_name || "").toLowerCase().replace(/\s+/g, " ");
+  const mNorm  = (m) => normName(m.alias || m.display_name);
+
+  // 1. Exact case-insensitive WITH dấu — alias ưu tiên
+  let m = members.find(m => m.alias && m.alias.toLowerCase().replace(/\s+/g, " ") === lower);
+  if (!m) m = members.find(m => (m.display_name || "").toLowerCase().replace(/\s+/g, " ") === lower);
+  if (m) return m;
+
+  // 2. Exact normalized (strip dấu) — chỉ khi không có ambiguity
+  const normExact = members.filter(m => mNorm(m) === norm);
+  if (normExact.length === 1) return normExact[0];
+  if (normExact.length > 1) return null; // nhiều người cùng normalized → không đoán
+
+  // 3. Partial normalized — chỉ khi không có ambiguity
+  const partial = members.filter(m => {
+    const s = mNorm(m);
     return s.length >= 3 && (s.includes(norm) || norm.includes(s));
   });
-  return m || null;
+  if (partial.length === 1) return partial[0];
+
+  return null;
 }
 
 const fmtPts = (v) => { const n = Number(v) || 0; return n % 1 === 0 ? n.toFixed(0) : n.toFixed(2); };
