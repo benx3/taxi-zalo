@@ -33,14 +33,15 @@ function findMatch(members, excelName) {
   if (normExact.length > 1) return null; // nhiều người cùng normalized → không đoán
 
   // 3. Word-overlap normalized — tất cả từ của chuỗi ngắn hơn phải xuất hiện NGUYÊN VẸN
-  //    trong chuỗi dài hơn (tránh "ran" khớp "tran", "và" khớp "văn" sau khi strip dấu)
+  //    trong chuỗi dài hơn. Yêu cầu shorter >= 2 từ để tránh tên 1 từ ("Hải") khớp
+  //    mọi tên dài hơn ("Hải Đường", "Hải Long", ...).
   const partial = members.filter(m => {
     const sWords = mNorm(m).split(" ").filter(w => w.length >= 2);
     const nWords = norm.split(" ").filter(w => w.length >= 2);
     if (!sWords.length || !nWords.length) return false;
     const [shorter, longer] = sWords.length <= nWords.length
       ? [sWords, nWords] : [nWords, sWords];
-    return shorter.length > 0 && shorter.every(w => longer.includes(w));
+    return shorter.length >= 2 && shorter.every(w => longer.includes(w));
   });
   if (partial.length === 1) return partial[0];
 
