@@ -4,48 +4,12 @@ import { Download, Trash2, AlertCircle, FileSpreadsheet, CheckCircle2 } from "lu
 import { api } from "./api.js";
 
 // ---------- helpers ----------
-function normName(s) {
-  return (s || "")
-    .toLowerCase().trim()
-    .replace(/đ/g, "d")
-    .normalize("NFD").replace(/[̀-ͯ]/g, "")
-    .replace(/\s+/g, " ");
-}
+const normKey = (s) => (s || "").toLowerCase().trim().replace(/\s+/g, " ");
 
 function findMatch(members, excelName) {
-  const raw = (excelName || "").trim();
-  if (!raw) return null;
-  // Normalize chỉ để dự phòng (strip dấu) — KHÔNG dùng làm bước đầu
-  const norm  = normName(raw);
-  // So sánh giữ nguyên dấu, chỉ lowercase + chuẩn khoảng trắng
-  const lower = raw.toLowerCase().replace(/\s+/g, " ");
-  const mLower = (m) => (m.alias || m.display_name || "").toLowerCase().replace(/\s+/g, " ");
-  const mNorm  = (m) => normName(m.alias || m.display_name);
-
-  // 1. Exact case-insensitive WITH dấu — alias ưu tiên
-  let m = members.find(m => m.alias && m.alias.toLowerCase().replace(/\s+/g, " ") === lower);
-  if (!m) m = members.find(m => (m.display_name || "").toLowerCase().replace(/\s+/g, " ") === lower);
-  if (m) return m;
-
-  // 2. Exact normalized (strip dấu) — chỉ khi không có ambiguity
-  const normExact = members.filter(m => mNorm(m) === norm);
-  if (normExact.length === 1) return normExact[0];
-  if (normExact.length > 1) return null; // nhiều người cùng normalized → không đoán
-
-  // 3. Word-overlap normalized — tất cả từ của chuỗi ngắn hơn phải xuất hiện NGUYÊN VẸN
-  //    trong chuỗi dài hơn. Yêu cầu shorter >= 2 từ để tránh tên 1 từ ("Hải") khớp
-  //    mọi tên dài hơn ("Hải Đường", "Hải Long", ...).
-  const partial = members.filter(m => {
-    const sWords = mNorm(m).split(" ").filter(w => w.length >= 2);
-    const nWords = norm.split(" ").filter(w => w.length >= 2);
-    if (!sWords.length || !nWords.length) return false;
-    const [shorter, longer] = sWords.length <= nWords.length
-      ? [sWords, nWords] : [nWords, sWords];
-    return shorter.length >= 2 && shorter.every(w => longer.includes(w));
-  });
-  if (partial.length === 1) return partial[0];
-
-  return null;
+  const key = normKey(excelName);
+  if (!key) return null;
+  return members.find(m => normKey(m.alias) === key || normKey(m.display_name) === key) || null;
 }
 
 const fmtPts = (v) => { const n = Number(v) || 0; return n % 1 === 0 ? n.toFixed(0) : n.toFixed(2); };
