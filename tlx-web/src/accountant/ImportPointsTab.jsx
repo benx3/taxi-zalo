@@ -32,10 +32,15 @@ function findMatch(members, excelName) {
   if (normExact.length === 1) return normExact[0];
   if (normExact.length > 1) return null; // nhiều người cùng normalized → không đoán
 
-  // 3. Partial normalized — chỉ khi không có ambiguity
+  // 3. Word-overlap normalized — tất cả từ của chuỗi ngắn hơn phải xuất hiện NGUYÊN VẸN
+  //    trong chuỗi dài hơn (tránh "ran" khớp "tran", "và" khớp "văn" sau khi strip dấu)
   const partial = members.filter(m => {
-    const s = mNorm(m);
-    return s.length >= 3 && (s.includes(norm) || norm.includes(s));
+    const sWords = mNorm(m).split(" ").filter(w => w.length >= 2);
+    const nWords = norm.split(" ").filter(w => w.length >= 2);
+    if (!sWords.length || !nWords.length) return false;
+    const [shorter, longer] = sWords.length <= nWords.length
+      ? [sWords, nWords] : [nWords, sWords];
+    return shorter.length > 0 && shorter.every(w => longer.includes(w));
   });
   if (partial.length === 1) return partial[0];
 
