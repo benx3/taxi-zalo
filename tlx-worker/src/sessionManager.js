@@ -667,6 +667,7 @@ async function onMessage(sess, msg) {
           }
         })()).catch(e => console.error(`[${sess.userId}] auto-san:`, e?.message || e));
       }
+      return;
     }
 
     // (A) chủ cuốc xác nhận cho mình?
@@ -1078,7 +1079,7 @@ async function onMessage(sess, msg) {
         return;
       }
       // (E.1) @KT không có quote → tranh chấp/thông báo standalone → lưu 0đ pending cho KT xử lý
-      if (!qd && ktMentioned) {
+      if (!qd && ktMentioned && !/\bsan\b/i.test(text)) {
         Promise.resolve((async () => {
           // Dedup: trip_msg_id = msgId → addBaremPending tự skip nếu đã có pending cùng msgId
           const disputeConvo = JSON.stringify({ text, sender: senderName, time, source: 'kt_dispute' });
