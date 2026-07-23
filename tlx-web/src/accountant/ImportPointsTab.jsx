@@ -57,7 +57,7 @@ export default function ImportPointsTab({ groupId }) {
 
       const parsed = rawRows.map((r) => {
         const keys = Object.keys(r);
-        const find = (...names) => keys.find(k => names.some(n => normName(k).replace(/\s/g,"") === n));
+        const find = (...names) => keys.find(k => names.some(n => normKey(k).replace(/\s/g,"") === n));
         const nameKey = find("tenzalo","ten","name","hovaten","hoten","displayname","tênzalo","tên","họtên");
         const ptsKey  = find("diem","điểm","points","diemthuong","điểmthưởng","điểmthưởng","dk");
         return {
