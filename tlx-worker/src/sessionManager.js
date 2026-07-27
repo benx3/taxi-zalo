@@ -1272,9 +1272,11 @@ function detectSanDiem(text, mentions, selfUid) {
     : [...mentions];
   if (!rawRecips.length) return [];
   // Sắp xếp theo thứ tự xuất hiện trong text (mentions từ Zalo không theo thứ tự text)
+  // Dùng NFC normalization để tránh mismatch encoding dấu tiếng Việt (NFC vs NFD từ Zalo)
+  const normText = text.normalize('NFC');
   const recipients = rawRecips.map(mn => {
-    const name = mn.display_name || mn.dName || '';
-    const pos = name ? text.indexOf('@' + name) : -1;
+    const name = (mn.display_name || mn.dName || '').normalize('NFC');
+    const pos = name ? normText.indexOf('@' + name) : -1;
     return { mn, pos };
   }).sort((a, b) => {
     if (a.pos === -1 && b.pos === -1) return 0;
