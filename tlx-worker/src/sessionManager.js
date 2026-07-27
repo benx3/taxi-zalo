@@ -1267,23 +1267,34 @@ function detectSanDiem(text, mentions, selfUid) {
   if (!/\bsan\b/i.test(text)) return [];
   const selfStr = selfUid ? String(selfUid) : null;
   if (selfStr && !mentions.some(m => String(m.uid) === selfStr)) return [];
-  const recipients = selfStr
+  const rawRecips = selfStr
     ? mentions.filter(mn => String(mn.uid) !== selfStr)
     : [...mentions];
-  if (!recipients.length) return [];
+  if (!rawRecips.length) return [];
+  // Sắp xếp theo thứ tự xuất hiện trong text (mentions từ Zalo không theo thứ tự text)
+  const recipients = rawRecips.map(mn => {
+    const name = mn.display_name || mn.dName || '';
+    const pos = name ? text.indexOf('@' + name) : -1;
+    return { mn, pos };
+  }).sort((a, b) => {
+    if (a.pos === -1 && b.pos === -1) return 0;
+    if (a.pos === -1) return 1;
+    if (b.pos === -1) return -1;
+    return a.pos - b.pos;
+  });
   // Trích tất cả số điểm theo thứ tự xuất hiện
   const amounts = [];
   const amountRe = /(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ|₫|d)(?!\w)/gi;
   let m;
   while ((m = amountRe.exec(text)) !== null) {
-    const val = parseFloat(m[1].replace(",", "."));
+    const val = parseFloat(m[1].replace(',', '.'));
     if (val > 0 && val <= 20) amounts.push(val);
   }
   if (!amounts.length) return [];
-  return recipients.map((recv, i) => ({
+  return recipients.map(({ mn }, i) => ({
     amount: amounts.length === 1 ? amounts[0] : (amounts[i] ?? amounts[amounts.length - 1]),
-    toUid: recv.uid || null,
-    toName: recv.display_name || recv.dName || null,
+    toUid: mn.uid || null,
+    toName: mn.display_name || mn.dName || null,
   }));
 }
 
