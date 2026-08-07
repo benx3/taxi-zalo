@@ -433,7 +433,8 @@ app.post("/api/accountant/import-points", async (req, res) => {
         created++;
       }
       if (Math.abs(delta) < 0.0001) { skipped++; continue; }
-      await dbm.adjustPoints(groupId, uid, delta, "Import điểm", "manual");
+      const reason = String(row.note || "").trim() || "Import điểm";
+      await dbm.adjustPoints(groupId, uid, delta, reason, "manual");
       if (!row.isNew) updated++;
     } catch (e) {
       console.error(`[import-points] row ${i}:`, e?.message);

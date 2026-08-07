@@ -30,12 +30,12 @@ export default function ImportPointsTab({ groupId }) {
 
   const downloadTemplate = () => {
     const rows = [
-      { "STT": 1, "Tên Zalo": "Nguyễn Văn A", "Điểm": 2.5 },
-      { "STT": 2, "Tên Zalo": "Trần Thị B", "Điểm": 3 },
-      { "STT": 3, "Tên Zalo": "Lê Văn C", "Điểm": 1.5 },
+      { "STT": 1, "Tên Zalo": "Nguyễn Văn A", "Điểm": 2.5, "Ghi chú": "Thưởng tháng 7" },
+      { "STT": 2, "Tên Zalo": "Trần Thị B", "Điểm": 3, "Ghi chú": "" },
+      { "STT": 3, "Tên Zalo": "Lê Văn C", "Điểm": 1.5, "Ghi chú": "Bonus cuốc VIP" },
     ];
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = [{ wch: 6 }, { wch: 32 }, { wch: 10 }];
+    ws["!cols"] = [{ wch: 6 }, { wch: 32 }, { wch: 10 }, { wch: 28 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Import Điểm");
     XLSX.writeFile(wb, "mau-import-diem.xlsx");
@@ -60,9 +60,11 @@ export default function ImportPointsTab({ groupId }) {
         const find = (...names) => keys.find(k => names.some(n => normKey(k).replace(/\s/g,"") === n));
         const nameKey = find("tenzalo","ten","name","hovaten","hoten","displayname","tênzalo","tên","họtên");
         const ptsKey  = find("diem","điểm","points","diemthuong","điểmthưởng","điểmthưởng","dk");
+        const noteKey = find("ghichu","note","ghichú","notes","remark","remarks","chú","chuẩn","noidung");
         return {
           excelName:   String(r[nameKey] || "").trim(),
           excelPoints: parseFloat(String(r[ptsKey] || "0").replace(",", ".")) || 0,
+          excelNote:   String(r[noteKey] || "").trim(),
         };
       }).filter(r => r.excelName);
 
@@ -84,6 +86,7 @@ export default function ImportPointsTab({ groupId }) {
           systemPoints: sysPoints,
           excelPoints:  r.excelPoints,
           totalPoints:  +(sysPoints + r.excelPoints).toFixed(10),
+          note:         r.excelNote,
           isNew:        !matched,
         };
       });
@@ -106,6 +109,9 @@ export default function ImportPointsTab({ groupId }) {
   const updateTotal = (id, val) =>
     setPreviewRows(prev => prev.map(r => r.id === id ? { ...r, totalPoints: val } : r));
 
+  const updateNote = (id, val) =>
+    setPreviewRows(prev => prev.map(r => r.id === id ? { ...r, note: val } : r));
+
   const deleteRow = (id) =>
     setPreviewRows(prev => prev.filter(r => r.id !== id));
 
@@ -118,6 +124,7 @@ export default function ImportPointsTab({ groupId }) {
         name:          r.excelName,
         currentPoints: r.systemPoints,
         finalPoints:   Number(r.totalPoints) || 0,
+        note:          r.note || "",
         isNew:         r.isNew,
       }));
       const res = await api.importPoints(groupId, rows);
@@ -189,6 +196,7 @@ export default function ImportPointsTab({ groupId }) {
                 <th style={{ ...th, textAlign: "right" }}>Điểm HT</th>
                 <th style={{ ...th, textAlign: "right" }}>Điểm Excel</th>
                 <th style={{ ...th, textAlign: "right" }}>Điểm Tổng</th>
+                <th style={th}>Ghi chú</th>
                 <th style={{ ...th, width: 40 }}></th>
               </tr>
             </thead>
@@ -216,6 +224,15 @@ export default function ImportPointsTab({ groupId }) {
                     />
                   </td>
                   <td style={td}>
+                    <input
+                      type="text"
+                      value={r.note || ""}
+                      onChange={e => updateNote(r.id, e.target.value)}
+                      placeholder="Ghi chú..."
+                      style={{ width: 160, padding: "4px 7px", borderRadius: 7, border: "1px solid var(--line)", background: "var(--bg)", color: "var(--ink)", fontSize: 12 }}
+                    />
+                  </td>
+                  <td style={td}>
                     <button onClick={() => deleteRow(r.id)} title="Xóa dòng này"
                       style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)", padding: "4px", borderRadius: 6, display: "flex", alignItems: "center" }}
                       onMouseEnter={e => e.currentTarget.style.color = "#f87171"}
@@ -226,7 +243,7 @@ export default function ImportPointsTab({ groupId }) {
                 </tr>
               ))}
               {previewRows.length === 0 && (
-                <tr><td colSpan={7} style={{ ...td, textAlign: "center", color: "var(--ink-dim)", padding: "32px 0" }}>Không còn dòng nào</td></tr>
+                <tr><td colSpan={8} style={{ ...td, textAlign: "center", color: "var(--ink-dim)", padding: "32px 0" }}>Không còn dòng nào</td></tr>
               )}
             </tbody>
           </table>
@@ -270,7 +287,9 @@ export default function ImportPointsTab({ groupId }) {
           <div style={{ fontSize: 13, color: "var(--ink-dim)", lineHeight: 1.6 }}>
             File Excel cần có cột: <code style={{ background: "rgba(255,255,255,.07)", padding: "1px 5px", borderRadius: 4 }}>STT</code>,{" "}
             <code style={{ background: "rgba(255,255,255,.07)", padding: "1px 5px", borderRadius: 4 }}>Tên Zalo</code>,{" "}
-            <code style={{ background: "rgba(255,255,255,.07)", padding: "1px 5px", borderRadius: 4 }}>Điểm</code>
+            <code style={{ background: "rgba(255,255,255,.07)", padding: "1px 5px", borderRadius: 4 }}>Điểm</code>,{" "}
+            <code style={{ background: "rgba(255,255,255,.07)", padding: "1px 5px", borderRadius: 4 }}>Ghi chú</code>{" "}
+            <span style={{ color: "var(--ink-dim)", fontSize: 12 }}>(tùy chọn)</span>
           </div>
         </div>
         <button onClick={downloadTemplate}
