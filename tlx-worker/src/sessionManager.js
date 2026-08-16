@@ -27,6 +27,13 @@ export function getSession(userId) { return sessions.get(userId); }
 export function hasSession(userId) { return sessions.has(userId); }
 export function sessionCount() { return sessions.size; }
 
+/** Quét lại danh sách nhóm Zalo của user (khi join thêm nhóm mới) */
+export async function reloadGroups(userId) {
+  const sess = sessions.get(userId);
+  if (!sess) throw new Error("Chưa có session");
+  await loadGroups(sess);
+}
+
 export function getSessionsHealth() {
   const out = [];
   for (const [userId, sess] of sessions.entries()) {

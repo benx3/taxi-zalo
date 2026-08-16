@@ -33,6 +33,7 @@ export const api = {
   confirmGroups: () => req("/api/accountant/confirm-groups", {}),
   // Nhóm Zalo live (cần session đang chạy)
   zaloGroups: () => req("/api/accountant/zalo-groups", null, "GET"),
+  reloadZaloGroups: () => req("/api/accountant/reload-zalo-groups", {}),
   // Zalo QR
   startZaloQR: () => req("/api/zalo/login-qr", {}),
   logoutZalo: () => req("/api/zalo/logout", {}),

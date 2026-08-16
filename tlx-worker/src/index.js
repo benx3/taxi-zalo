@@ -334,6 +334,18 @@ app.get("/api/accountant/zalo-groups", async (req, res) => {
   res.json({ connected: true, groups: sess.groups, selected: [...sess.selected] });
 });
 
+// Quét lại danh sách nhóm Zalo (khi user join nhóm mới)
+app.post("/api/accountant/reload-zalo-groups", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  try {
+    await sm.reloadGroups(a.userId);
+    const sess = sm.getSession(a.userId);
+    res.json({ ok: true, count: sess?.groups?.length || 0 });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // Thành viên
 app.get("/api/accountant/members", async (req, res) => {
   const { groupId } = req.query;

@@ -190,6 +190,7 @@ function ZaloPanel({ me, worker, onClose, onConfirmed }) {
   const { wsConnected, zaloConnected, qrImage, zaloError, sessionExpired, zaloGroups, selectedGroups, setWatchedGroups, connect } = worker;
   const [generatingQR, setGeneratingQR] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [reloading, setReloading] = useState(false);
   const [err, setErr] = useState("");
   const [search, setSearch] = useState("");
   const [pendingStart, setPendingStart] = useState(false);
@@ -252,6 +253,8 @@ function ZaloPanel({ me, worker, onClose, onConfirmed }) {
   };
 
   return (
+    <>
+    <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(0,0,0,.65)", display: "flex", alignItems: "flex-start", justifyContent: "flex-end" }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ width: 400, height: "100dvh", background: "var(--card)", borderLeft: "1px solid var(--line)", display: "flex", flexDirection: "column", overflowY: "auto" }}>
         {/* Header */}
@@ -321,9 +324,23 @@ function ZaloPanel({ me, worker, onClose, onConfirmed }) {
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <span style={{ fontWeight: 700, fontSize: 13 }}>Chọn nhóm theo dõi</span>
-                <span style={{ fontSize: 12, color: selectedGroups.length >= groupLimit ? "#f59e0b" : "var(--ink-dim)" }}>
-                  {selectedGroups.length}/{groupLimit} nhóm
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, color: selectedGroups.length >= groupLimit ? "#f59e0b" : "var(--ink-dim)" }}>
+                    {selectedGroups.length}/{groupLimit} nhóm
+                  </span>
+                  <button
+                    onClick={async () => {
+                      setReloading(true); setErr("");
+                      try { await api.reloadZaloGroups(); }
+                      catch (e) { setErr("Không tải được nhóm: " + e.message); }
+                      finally { setReloading(false); }
+                    }}
+                    disabled={reloading}
+                    title="Tải lại danh sách nhóm (khi vừa join nhóm mới)"
+                    style={{ background: "none", border: "none", cursor: reloading ? "default" : "pointer", color: "var(--ink-dim)", padding: "2px 4px", borderRadius: 6, display: "flex", alignItems: "center" }}>
+                    <RefreshCw size={13} style={{ animation: reloading ? "spin 1s linear infinite" : "none" }} />
+                  </button>
+                </div>
               </div>
 
               {/* Search */}
@@ -383,6 +400,7 @@ function ZaloPanel({ me, worker, onClose, onConfirmed }) {
         </div>
       </div>
     </div>
+    </>
   );
 }
 
