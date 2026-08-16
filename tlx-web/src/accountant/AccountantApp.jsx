@@ -214,7 +214,8 @@ function ZaloPanel({ me, worker, onClose, onConfirmed }) {
     .sort((a, b) => {
       const asel = selectedGroups.includes(a.id) ? 0 : 1;
       const bsel = selectedGroups.includes(b.id) ? 0 : 1;
-      return asel - bsel;
+      if (asel !== bsel) return asel - bsel;
+      return (a.name || "").localeCompare(b.name || "", "vi");
     });
 
   const doStartQR = async () => {
