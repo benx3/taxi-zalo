@@ -673,8 +673,9 @@ async function onMessage(sess, msg) {
             }
           }
         })()).catch(e => console.error(`[${sess.userId}] auto-san:`, e?.message || e));
+        return; // có mentions → đây là san điểm thật → không xử lý tiếp barem
       }
-      return;
+      // mentions.length === 0 → "san" chỉ là một phần tên (vd: "san bay") → tiếp tục barem
     }
 
     // (A) chủ cuốc xác nhận cho mình?
