@@ -1279,33 +1279,71 @@ function detectSanDiem(text, mentions, selfUid) {
     ? mentions.filter(mn => String(mn.uid) !== selfStr)
     : [...mentions];
   if (!rawRecips.length) return [];
-  // Sắp xếp theo thứ tự xuất hiện trong text (mentions từ Zalo không theo thứ tự text)
-  // Dùng NFC normalization để tránh mismatch encoding dấu tiếng Việt (NFC vs NFD từ Zalo)
+
+  // Tách text theo "@" → mỗi segment = "tên mention + phần text tiếp theo"
+  // VD: "San @A 1đ chị @B 2đ @C" → ["A 1đ chị ", "B 2đ ", "C"]
+  // Cách này tránh hoàn toàn indexOf + mismatch encoding NFC/NFD tiếng Việt:
+  // thay vì tìm vị trí '@Name' trong cả đoạn text, ta kiểm tra segment.startsWith(name)
   const normText = text.normalize('NFC');
-  const recipients = rawRecips.map(mn => {
+  const segments = normText.split('@').slice(1); // bỏ phần trước @ đầu tiên
+  const oneAmtRe = /(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ|₫|d)(?!\w)/i;
+
+  // Ghép từng recipient với segment chứa tên họ
+  const entries = rawRecips.map(mn => {
     const name = (mn.display_name || mn.dName || '').normalize('NFC');
-    const pos = name ? normText.indexOf('@' + name) : -1;
-    return { mn, pos };
-  }).sort((a, b) => {
-    if (a.pos === -1 && b.pos === -1) return 0;
-    if (a.pos === -1) return 1;
-    if (b.pos === -1) return -1;
-    return a.pos - b.pos;
+    if (!name) return { mn, segIdx: -1, amount: null };
+    const nameLower = name.toLowerCase();
+    const segIdx = segments.findIndex(s =>
+      s.startsWith(name) || s.toLowerCase().startsWith(nameLower)
+    );
+    if (segIdx === -1) return { mn, segIdx: -1, amount: null };
+    // Trích amount đầu tiên trong phần sau tên trong segment này
+    const rest = segments[segIdx].slice(name.length);
+    const m = rest.match(oneAmtRe);
+    const val = m ? parseFloat(m[1].replace(',', '.')) : null;
+    return {
+      mn,
+      segIdx,
+      amount: (val && val > 0 && val <= 20) ? val : null,
+    };
   });
-  // Trích tất cả số điểm theo thứ tự xuất hiện
-  const amounts = [];
-  const amountRe = /(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ|₫|d)(?!\w)/gi;
-  let m;
-  while ((m = amountRe.exec(text)) !== null) {
-    const val = parseFloat(m[1].replace(',', '.'));
-    if (val > 0 && val <= 20) amounts.push(val);
+
+  // Sắp xếp theo thứ tự segment (= thứ tự xuất hiện trong text)
+  entries.sort((a, b) => {
+    if (a.segIdx === -1 && b.segIdx === -1) return 0;
+    if (a.segIdx === -1) return 1;
+    if (b.segIdx === -1) return -1;
+    return a.segIdx - b.segIdx;
+  });
+
+  // Fallback: recipient không match được segment nào (encoding quá lạ)
+  // → dùng danh sách amounts toàn văn theo thứ tự
+  const globalAmounts = [];
+  const allAmtRe = /(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ|₫|d)(?!\w)/gi;
+  let gm;
+  while ((gm = allAmtRe.exec(text)) !== null) {
+    const v = parseFloat(gm[1].replace(',', '.'));
+    if (v > 0 && v <= 20) globalAmounts.push(v);
   }
-  if (!amounts.length) return [];
-  return recipients.map(({ mn }, i) => ({
-    amount: amounts.length === 1 ? amounts[0] : (amounts[i] ?? amounts[amounts.length - 1]),
-    toUid: mn.uid || null,
-    toName: mn.display_name || mn.dName || null,
-  }));
+
+  let fbIdx = 0;
+  const results = [];
+  for (const { mn, amount } of entries) {
+    let finalAmt = amount;
+    if (finalAmt == null) {
+      finalAmt = globalAmounts.length === 1
+        ? globalAmounts[0]
+        : (globalAmounts[fbIdx] ?? globalAmounts[globalAmounts.length - 1]);
+      fbIdx++;
+    }
+    if (!finalAmt) continue; // không tìm được amount → bỏ qua recipient này
+    results.push({
+      amount: finalAmt,
+      toUid: mn.uid || null,
+      toName: mn.display_name || mn.dName || null,
+    });
+  }
+  return results;
 }
 
 function isTaggingSelf(sess, msg) {
