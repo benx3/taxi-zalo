@@ -72,28 +72,35 @@ export default function AccountantApp({ me: initMe, onLogout, worker }) {
         </div>
 
         {/* Group selector */}
-        <div style={{ padding: "12px 12px 8px", borderBottom: "1px solid var(--line)" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-dim)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>
-            Nhóm phụ trách
+        <div style={{ display: "flex", flexDirection: "column", borderBottom: "1px solid var(--line)", minHeight: 0 }}>
+          <div style={{ padding: "12px 12px 6px", flexShrink: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-dim)", textTransform: "uppercase", letterSpacing: ".05em" }}>
+              Nhóm phụ trách
+            </div>
           </div>
-          {dbGroups.length === 0
-            ? <div style={{ fontSize: 12, color: "var(--ink-dim)", padding: "6px 0" }}>Chưa chọn nhóm</div>
-            : dbGroups.map(g => (
-                <button key={g.group_id} onClick={() => setActiveGroup(g)} title={`ID: ${g.group_id}`}
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "none", textAlign: "left", cursor: "pointer", marginBottom: 2,
-                    background: activeGroup?.group_id === g.group_id ? "rgba(52,211,153,.15)" : "transparent",
-                    color: activeGroup?.group_id === g.group_id ? "var(--accent)" : "var(--ink)",
-                    fontWeight: activeGroup?.group_id === g.group_id ? 700 : 400, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                  {activeGroup?.group_id === g.group_id && <Check size={12} color="var(--accent)" />}
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.group_name || g.group_id}</span>
-                </button>
-              ))
-          }
-          {/* Zalo connect button */}
-          <button onClick={() => setShowZaloPanel(true)} style={{ width: "100%", marginTop: 6, padding: "7px 10px", borderRadius: 8, border: "1px dashed var(--line)", background: "transparent", color: zaloConnected ? "#34d399" : sessionExpired ? "#f59e0b" : "var(--ink-dim)", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
-            {zaloConnected ? <Wifi size={13} /> : <WifiOff size={13} />}
-            {sessionExpired && !zaloConnected ? "Phiên hết hạn!" : "Kết nối & chọn nhóm"}
-          </button>
+          {/* Danh sách nhóm — scrollable */}
+          <div style={{ overflowY: "auto", maxHeight: 240, padding: "0 12px 4px" }}>
+            {dbGroups.length === 0
+              ? <div style={{ fontSize: 12, color: "var(--ink-dim)", padding: "6px 0" }}>Chưa chọn nhóm</div>
+              : [...dbGroups].sort((a, b) => (a.group_name || "").localeCompare(b.group_name || "", "vi")).map(g => (
+                  <button key={g.group_id} onClick={() => setActiveGroup(g)} title={`ID: ${g.group_id}`}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "none", textAlign: "left", cursor: "pointer", marginBottom: 2,
+                      background: activeGroup?.group_id === g.group_id ? "rgba(52,211,153,.15)" : "transparent",
+                      color: activeGroup?.group_id === g.group_id ? "var(--accent)" : "var(--ink)",
+                      fontWeight: activeGroup?.group_id === g.group_id ? 700 : 400, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                    {activeGroup?.group_id === g.group_id && <Check size={12} color="var(--accent)" />}
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.group_name || g.group_id}</span>
+                  </button>
+                ))
+            }
+          </div>
+          {/* Zalo connect button — luôn hiển thị */}
+          <div style={{ padding: "4px 12px 10px", flexShrink: 0 }}>
+            <button onClick={() => setShowZaloPanel(true)} style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px dashed var(--line)", background: "transparent", color: zaloConnected ? "#34d399" : sessionExpired ? "#f59e0b" : "var(--ink-dim)", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
+              {zaloConnected ? <Wifi size={13} /> : <WifiOff size={13} />}
+              {sessionExpired && !zaloConnected ? "Phiên hết hạn!" : "Kết nối & chọn nhóm"}
+            </button>
+          </div>
         </div>
 
         {/* Nav */}
