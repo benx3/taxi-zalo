@@ -29,7 +29,7 @@ if (_geminiKey) config.geminiApiKey = _geminiKey;
 setInterval(() => dbm.purgeOld().catch(()=>{}), 6 * 3600 * 1000);
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "5mb" }));
 
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", process.env.CORS_ORIGIN || "*");
