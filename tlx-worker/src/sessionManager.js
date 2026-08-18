@@ -523,14 +523,8 @@ async function onMessage(sess, msg) {
           Promise.resolve((async () => {
             const senderMember = await dbm.getMemberByZaloUid(dbGroupId, senderId);
             const senderCanon = senderMember?.zalo_uid || senderId;
-            const senderPts = Number(senderMember?.points ?? 0);
             const txId = await dbm.createPendingTransfer(dbGroupId, senderCanon, sr.toUid, sr.amount, text, msgId);
-            if (senderPts >= sr.amount) {
-              await dbm.approvePendingTransfer(txId);
-              console.log(`[${sess.userId}] ✅ San auto-duyệt (đủ điểm ${senderPts}): ${senderCanon} → ${sr.toUid} ${sr.amount}đ`);
-              return;
-            }
-            console.log(`[${sess.userId}] 📋 San pending (thiếu điểm ${senderPts}/${sr.amount}): ${senderCanon} → ${sr.toUid}`);
+            console.log(`[${sess.userId}] 📋 San pending (chờ duyệt thủ công): ${senderCanon} → ${sr.toUid} ${sr.amount}đ`);
             sess.onEvent(sess.userId, {
               type: "pending_transfer", txId,
               groupId: dbGroupId, groupName,
@@ -556,14 +550,8 @@ async function onMessage(sess, msg) {
             Promise.resolve((async () => {
               const senderMember = await dbm.getMemberByZaloUid(dbGroupId, senderId);
               const senderCanon = senderMember?.zalo_uid || senderId;
-              const senderPts = Number(senderMember?.points ?? 0);
               const txId = await dbm.createPendingTransfer(dbGroupId, senderCanon, sr.toUid, sr.amount, text, msgId);
-              if (senderPts >= sr.amount) {
-                await dbm.approvePendingTransfer(txId);
-                console.log(`[${sess.userId}] ✅ San (self) auto-duyệt (đủ điểm ${senderPts}): → ${sr.toUid} ${sr.amount}đ`);
-                return;
-              }
-              console.log(`[${sess.userId}] 📋 San (self) pending (thiếu điểm ${senderPts}/${sr.amount})`);
+              console.log(`[${sess.userId}] 📋 San (self) pending (chờ duyệt thủ công): → ${sr.toUid} ${sr.amount}đ`);
               sess.onEvent(sess.userId, {
                 type: "pending_transfer", txId,
                 groupId: dbGroupId, groupName,
@@ -599,19 +587,13 @@ async function onMessage(sess, msg) {
               if (sr.toName) Promise.resolve(dbm.upsertMember(dbGroupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
               const senderMember = await dbm.getMemberByZaloUid(dbGroupId, senderId);
               const senderCanon = senderMember?.zalo_uid || senderId;
-              const senderPts = Number(senderMember?.points ?? 0);
               const txId = await dbm.createPendingTransfer(dbGroupId, senderCanon, sr.toUid, sr.amount, text, msgId);
-              if (senderPts >= sr.amount) {
-                await dbm.approvePendingTransfer(txId);
-                console.log(`[${sess.userId}] ✅ KT san auto-duyệt (đủ điểm ${senderPts}): ${senderCanon} → ${sr.toUid} ${sr.amount}đ nhóm=${dbGroupId}`);
-              } else {
-                console.log(`[${sess.userId}] 📋 KT san pending (thiếu điểm ${senderPts}/${sr.amount}): ${senderCanon} → ${sr.toUid} nhóm=${dbGroupId}`);
-                sess.onEvent(sess.userId, {
-                  type: "pending_transfer", txId, groupId: dbGroupId, groupName,
-                  fromUid: senderCanon, fromName: senderName,
-                  toUid: sr.toUid, toName: sr.toName || "", points: sr.amount, rawText: text,
-                });
-              }
+              console.log(`[${sess.userId}] 📋 KT san pending (chờ duyệt thủ công): ${senderCanon} → ${sr.toUid} ${sr.amount}đ nhóm=${dbGroupId}`);
+              sess.onEvent(sess.userId, {
+                type: "pending_transfer", txId, groupId: dbGroupId, groupName,
+                fromUid: senderCanon, fromName: senderName,
+                toUid: sr.toUid, toName: sr.toName || "", points: sr.amount, rawText: text,
+              });
             }
             return;
           }
@@ -631,20 +613,14 @@ async function onMessage(sess, msg) {
             if (toMName) Promise.resolve(dbm.upsertMember(dbGroupId, String(toM.uid), { display_name: toMName })).catch(() => {});
             const senderMember = await dbm.getMemberByZaloUid(dbGroupId, senderId);
             const senderCanon = senderMember?.zalo_uid || senderId;
-            const senderPts = Number(senderMember?.points ?? 0);
             const txId = await dbm.createPendingTransfer(dbGroupId, senderCanon, String(toM.uid), amounts[0], text, msgId);
-            if (senderPts >= amounts[0]) {
-              await dbm.approvePendingTransfer(txId);
-              console.log(`[${sess.userId}] ✅ Driver→KT san auto-duyệt (đủ điểm ${senderPts}): ${senderCanon} → ${toM.uid} ${amounts[0]}đ nhóm=${dbGroupId}`);
-            } else {
-              console.log(`[${sess.userId}] 📋 Driver→KT san pending (thiếu điểm ${senderPts}/${amounts[0]}): ${senderCanon} → ${toM.uid} nhóm=${dbGroupId}`);
-              sess.onEvent(sess.userId, {
-                type: "pending_transfer", txId, groupId: dbGroupId, groupName,
-                fromUid: senderCanon, fromName: senderName,
-                toUid: String(toM.uid), toName: toM.display_name || toM.dName || "",
-                points: amounts[0], rawText: text,
-              });
-            }
+            console.log(`[${sess.userId}] 📋 Driver→KT san pending (chờ duyệt thủ công): ${senderCanon} → ${toM.uid} ${amounts[0]}đ nhóm=${dbGroupId}`);
+            sess.onEvent(sess.userId, {
+              type: "pending_transfer", txId, groupId: dbGroupId, groupName,
+              fromUid: senderCanon, fromName: senderName,
+              toUid: String(toM.uid), toName: toM.display_name || toM.dName || "",
+              points: amounts[0], rawText: text,
+            });
             return;
           }
 
@@ -657,19 +633,13 @@ async function onMessage(sess, msg) {
               if (sr.toName) Promise.resolve(dbm.upsertMember(dbGroupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
               const senderMember = await dbm.getMemberByZaloUid(dbGroupId, senderId);
               const senderCanon = senderMember?.zalo_uid || senderId;
-              const senderPts = Number(senderMember?.points ?? 0);
               const txId = await dbm.createPendingTransfer(dbGroupId, senderCanon, sr.toUid, sr.amount, text, msgId);
-              if (senderPts >= sr.amount) {
-                await dbm.approvePendingTransfer(txId);
-                console.log(`[${sess.userId}] ✅ San auto-duyệt (đủ điểm ${senderPts}): ${senderCanon} → ${sr.toUid} ${sr.amount}đ nhóm=${dbGroupId}`);
-              } else {
-                console.log(`[${sess.userId}] 📋 San pending (thiếu điểm ${senderPts}/${sr.amount}): ${senderCanon} → ${sr.toUid} nhóm=${dbGroupId}`);
-                sess.onEvent(sess.userId, {
-                  type: "pending_transfer", txId, groupId: dbGroupId, groupName,
-                  fromUid: senderCanon, fromName: senderName,
-                  toUid: sr.toUid, toName: sr.toName || "", points: sr.amount, rawText: text,
-                });
-              }
+              console.log(`[${sess.userId}] 📋 San pending (chờ duyệt thủ công): ${senderCanon} → ${sr.toUid} ${sr.amount}đ nhóm=${dbGroupId}`);
+              sess.onEvent(sess.userId, {
+                type: "pending_transfer", txId, groupId: dbGroupId, groupName,
+                fromUid: senderCanon, fromName: senderName,
+                toUid: sr.toUid, toName: sr.toName || "", points: sr.amount, rawText: text,
+              });
             }
           }
         })()).catch(e => console.error(`[${sess.userId}] auto-san:`, e?.message || e));
