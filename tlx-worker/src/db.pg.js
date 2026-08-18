@@ -724,10 +724,10 @@ export async function getBaremMsgRefTripMsgId(groupId, msgId) {
   const r = await q("SELECT trip_msg_id FROM barem_msg_refs WHERE group_id=$1 AND msg_id=$2", [groupId, msgId]);
   return r.rows[0]?.trip_msg_id || null;
 }
-export async function getLatestBaremTripMsgId(groupId, memberUid) {
+export async function getLatestBaremTripMsgId(groupId, memberUid, sinceMs = 0) {
   const r = await q(
-    "SELECT trip_msg_id FROM point_transactions WHERE group_id=$1 AND type='barem' AND (to_member=$2 OR from_member=$2) ORDER BY created_at DESC LIMIT 1",
-    [groupId, memberUid]
+    "SELECT trip_msg_id FROM point_transactions WHERE group_id=$1 AND type='barem' AND (to_member=$2 OR from_member=$2) AND created_at > $3 ORDER BY created_at DESC LIMIT 1",
+    [groupId, memberUid, sinceMs]
   );
   return r.rows[0]?.trip_msg_id || null;
 }

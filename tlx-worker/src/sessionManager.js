@@ -924,12 +924,14 @@ async function onMessage(sess, msg) {
               } catch {}
             }
           }
-          // Tầng 4: fallback theo UID người gửi — lấy barem gần nhất trong 48h
+          // Tầng 4: fallback theo UID người gửi — chỉ lấy barem trong 48h gần nhất
+          // (tránh gán nhầm vào barem cũ khi cuốc mới sai cú pháp chưa có barem)
           if (!txs.length) {
+            const cutoff48h = Date.now() - 48 * 60 * 60 * 1000;
             try {
               const senderCanon = await resolveCanonicalUid(dbGroupId, senderId);
               for (const uid of [...new Set([senderId, senderCanon])]) {
-                const latestRef = await Promise.resolve(dbm.getLatestBaremTripMsgId(dbGroupId, uid));
+                const latestRef = await Promise.resolve(dbm.getLatestBaremTripMsgId(dbGroupId, uid, cutoff48h));
                 if (latestRef) {
                   txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, latestRef));
                   if (txs.length) break;

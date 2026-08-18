@@ -863,10 +863,10 @@ export function claimBaremScoring(groupId, tripMsgId) {
 export function getBaremMsgRefTripMsgId(groupId, msgId) {
   return db.prepare("SELECT trip_msg_id FROM barem_msg_refs WHERE group_id=? AND msg_id=?").get(groupId, msgId)?.trip_msg_id || null;
 }
-export function getLatestBaremTripMsgId(groupId, memberUid) {
+export function getLatestBaremTripMsgId(groupId, memberUid, sinceMs = 0) {
   return db.prepare(
-    "SELECT trip_msg_id FROM point_transactions WHERE group_id=? AND type='barem' AND (to_member=? OR from_member=?) ORDER BY created_at DESC LIMIT 1"
-  ).get(groupId, memberUid, memberUid)?.trip_msg_id || null;
+    "SELECT trip_msg_id FROM point_transactions WHERE group_id=? AND type='barem' AND (to_member=? OR from_member=?) AND created_at > ? ORDER BY created_at DESC LIMIT 1"
+  ).get(groupId, memberUid, memberUid, sinceMs)?.trip_msg_id || null;
 }
 export function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo, approvedOnly = false, search = "", offset = 0 } = {}) {
   const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name
