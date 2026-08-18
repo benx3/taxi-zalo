@@ -1127,8 +1127,18 @@ async function onMessage(sess, msg) {
         const cacheTrips = pricedTrips.length > 0 ? pricedTrips : trips.filter(t => t.route);
         if (cacheTrips.length > 0) {
           const primary = cacheTrips[0];
+          // Nếu trip có giá nhưng type "Không rõ" (vd: "15h bx ... 17h đón ... 950k"),
+          // tìm type rõ hơn từ sub-trip khác trong cùng tin (bx thường ở sub-trip đầu)
+          let primaryType = primary.type;
+          if (!primaryType || primaryType === "Không rõ") {
+            const typedTrip = trips.find(t => t.type && t.type !== "Không rõ");
+            if (typedTrip) {
+              primaryType = typedTrip.type;
+              console.log(`[${sess.userId}] 🔄 Type inherit: "${primary.type}" → "${primaryType}" từ sub-trip khác cùng tin`);
+            }
+          }
           const tripData = {
-            type: primary.type, price: primary.price || null,
+            type: primaryType, price: primary.price || null,
             senderId: primary.senderId, senderName, text, time,
             explicitPoints: primary.explicitPoints || 0,
             free: !!primary.free,
