@@ -427,33 +427,40 @@ app.post("/api/accountant/import-points", async (req, res) => {
   if (!groupId || !Array.isArray(rows)) return res.status(400).json({ error: "Thiếu groupId hoặc rows" });
   if (!await checkGroupAccess(req, res, groupId)) return;
 
-  const batchTs = Date.now();
-  let updated = 0, created = 0, skipped = 0;
+  try {
+    const batchTs = Date.now();
+    let updated = 0, created = 0, skipped = 0;
+    const errors = [];
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const finalPoints  = Number(row.finalPoints)  || 0;
-    const currentPoints = Number(row.currentPoints) || 0;
-    const delta = +((finalPoints - currentPoints).toFixed(10));
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const finalPoints   = Number(row.finalPoints)   || 0;
+      const currentPoints = Number(row.currentPoints) || 0;
+      const delta = +((finalPoints - currentPoints).toFixed(10));
 
-    let uid = row.zaloUid;
+      let uid = row.zaloUid;
 
-    try {
-      if (row.isNew) {
-        uid = `~imp_${batchTs}_${i}`;
-        await dbm.upsertMember(groupId, uid, { display_name: String(row.name || "").trim() });
-        created++;
+      try {
+        if (row.isNew) {
+          uid = `~imp_${batchTs}_${i}`;
+          await dbm.upsertMember(groupId, uid, { display_name: String(row.name || "").trim() });
+          created++;
+        }
+        if (Math.abs(delta) < 0.0001) { skipped++; continue; }
+        const reason = String(row.note || "").trim() || "Import điểm";
+        await dbm.adjustPoints(groupId, uid, delta, reason, "manual");
+        if (!row.isNew) updated++;
+      } catch (e) {
+        console.error(`[import-points] row ${i} uid=${uid}:`, e?.message);
+        errors.push({ row: i, name: row.name || uid, error: e?.message });
       }
-      if (Math.abs(delta) < 0.0001) { skipped++; continue; }
-      const reason = String(row.note || "").trim() || "Import điểm";
-      await dbm.adjustPoints(groupId, uid, delta, reason, "manual");
-      if (!row.isNew) updated++;
-    } catch (e) {
-      console.error(`[import-points] row ${i}:`, e?.message);
     }
-  }
 
-  res.json({ ok: true, updated, created, skipped });
+    res.json({ ok: true, updated, created, skipped, errors });
+  } catch (e) {
+    console.error("[import-points] fatal:", e?.message, e?.stack);
+    res.status(500).json({ error: "Import thất bại: " + (e?.message || "lỗi không xác định") });
+  }
 });
 
 // Giao dịch điểm

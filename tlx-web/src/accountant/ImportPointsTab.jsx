@@ -148,6 +148,11 @@ export default function ImportPointsTab({ groupId }) {
         Đã cập nhật <strong style={{ color: "var(--ink)" }}>{result?.updated || 0}</strong> thành viên hiện có
         {result?.created > 0 && <>, tạo mới <strong style={{ color: "#fb923c" }}>{result.created}</strong> thành viên</>}
         {result?.skipped > 0 && <>, bỏ qua <strong style={{ color: "var(--ink-dim)" }}>{result.skipped}</strong> không đổi</>}.
+        {result?.errors?.length > 0 && (
+          <div style={{ marginTop: 12, padding: "8px 12px", background: "rgba(248,113,113,.1)", borderRadius: 8, textAlign: "left", fontSize: 12, color: "#f87171" }}>
+            ⚠️ {result.errors.length} dòng lỗi: {result.errors.map(e => `${e.name}: ${e.error}`).join(" · ")}
+          </div>
+        )}
       </div>
       <button onClick={reset}
         style={{ padding: "10px 28px", borderRadius: 10, border: "none", background: "rgba(52,211,153,.2)", color: "var(--accent)", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
