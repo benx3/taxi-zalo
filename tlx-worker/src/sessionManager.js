@@ -883,6 +883,9 @@ async function onMessage(sess, msg) {
             if (txs.length) foundTier = 3;
           }
           // Tầng 3.5: quoteChain walk-up — leo ngược chuỗi reply tối đa 4 bước
+          // _chainExplored = true khi quoteChain có data và đã đi được ít nhất 1 bước
+          // → dùng để quyết định có cho tier4 chạy không
+          let _chainExplored = false;
           if (!txs.length) {
             const _visited = new Set([qGlobId, qCliId].filter(Boolean));
             let _toCheck = [..._visited];
@@ -893,6 +896,7 @@ async function onMessage(sess, msg) {
                 if (!_parents) continue;
                 for (const _p of _parents) {
                   if (!_p || _visited.has(_p)) continue;
+                  _chainExplored = true; // đã đi được ít nhất 1 bước → chain có data
                   _visited.add(_p);
                   _next.push(_p);
                   try {
@@ -925,8 +929,11 @@ async function onMessage(sess, msg) {
             }
           }
           // Tầng 4: fallback theo UID người gửi — chỉ lấy barem trong 48h gần nhất
-          // (tránh gán nhầm vào barem cũ khi cuốc mới sai cú pháp chưa có barem)
-          if (!txs.length) {
+          // KHÔNG chạy nếu tier 3.5 đã đi được ít nhất 1 bước trong quoteChain:
+          // chain có data nhưng không tìm thấy barem = cuốc mới chưa có barem,
+          // không được fallback sang barem cũ của người này.
+          // Chỉ chạy khi chain hoàn toàn không có data (session restart, cache trống).
+          if (!txs.length && !_chainExplored) {
             const cutoff48h = Date.now() - 48 * 60 * 60 * 1000;
             try {
               const senderCanon = await resolveCanonicalUid(dbGroupId, senderId);
