@@ -1278,16 +1278,47 @@ function detectSanDiem(text, mentions, selfUid) {
   const oneAmtRe = /(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ|₫|d)(?!\w)/i;
 
   // Ghép từng recipient với segment chứa tên họ
+  const usedSegIdxs = new Set();
   const entries = rawRecips.map(mn => {
     const name = (mn.display_name || mn.dName || '').normalize('NFC');
     if (!name) return { mn, segIdx: -1, amount: null };
     const nameLower = name.toLowerCase();
-    const segIdx = segments.findIndex(s =>
-      s.startsWith(name) || s.toLowerCase().startsWith(nameLower)
+
+    let segIdx = -1;
+    let sliceLen = name.length; // số ký tự cần bỏ để lấy phần sau tên
+
+    // 1. Exact match: segment bắt đầu ĐÚNG = display_name
+    const exactIdx = segments.findIndex((s, i) =>
+      !usedSegIdxs.has(i) &&
+      (s.startsWith(name) || s.toLowerCase().startsWith(nameLower))
     );
+    if (exactIdx !== -1) {
+      segIdx = exactIdx;
+      sliceLen = name.length;
+    } else {
+      // 2. Reverse match: display_name dài hơn alias trong text
+      // VD: display_name="Thuận Nguyễn Taxi", text="@Thuận 1đ"
+      // → alias="Thuận", "Thuận Nguyễn Taxi".startsWith("Thuận") → match
+      for (let i = 0; i < segments.length; i++) {
+        if (usedSegIdxs.has(i)) continue;
+        // Trích alias = phần text trước số/dấu trong segment
+        const alias = (segments[i].match(/^(.*?)(?=\s*[\d,])/)?.[1] ?? '').trimEnd();
+        const aliasLower = alias.toLowerCase();
+        // Kiểm tra word boundary: ký tự sau alias phải là khoảng trắng, số, hoặc hết segment
+        const afterAlias = segments[i][alias.length] || '';
+        const isWordBdry = !afterAlias || /[\s\d,]/.test(afterAlias);
+        if (alias.length >= 2 && isWordBdry && nameLower.startsWith(aliasLower)) {
+          segIdx = i;
+          sliceLen = alias.length;
+          break;
+        }
+      }
+    }
+
     if (segIdx === -1) return { mn, segIdx: -1, amount: null };
+    usedSegIdxs.add(segIdx);
     // Trích amount đầu tiên trong phần sau tên trong segment này
-    const rest = segments[segIdx].slice(name.length);
+    const rest = segments[segIdx].slice(sliceLen);
     const m = rest.match(oneAmtRe);
     const val = m ? parseFloat(m[1].replace(',', '.')) : null;
     return {
