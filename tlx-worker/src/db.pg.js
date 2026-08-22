@@ -822,8 +822,11 @@ export async function updateBaremPair(id1, id2, { points, reason }) {
 export async function deleteTransaction(id) {
   const r = await q("SELECT * FROM point_transactions WHERE id=$1", [id]);
   const tx = r.rows[0]; if (!tx) throw new Error("Không tìm thấy giao dịch");
-  if (tx.to_member) await q("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [tx.points, now(), tx.group_id, tx.to_member]);
-  if (tx.from_member) await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [tx.points, now(), tx.group_id, tx.from_member]);
+  // Hoàn điểm chỉ khi đã approved: pending chưa cộng điểm → không hoàn lại
+  if (tx.status !== 'pending') {
+    if (tx.to_member) await q("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [tx.points, now(), tx.group_id, tx.to_member]);
+    if (tx.from_member) await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [tx.points, now(), tx.group_id, tx.from_member]);
+  }
   await q("DELETE FROM point_transactions WHERE id=$1", [id]);
 }
 

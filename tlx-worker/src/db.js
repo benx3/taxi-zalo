@@ -956,11 +956,13 @@ export function updateBaremPair(id1, id2, { points, reason }) {
 export function deleteTransaction(id) {
   const tx = db.prepare("SELECT * FROM point_transactions WHERE id=?").get(id);
   if (!tx) throw new Error("Không tìm thấy giao dịch");
-  // Hoàn điểm: đảo ngược giao dịch (to_member nhận → trừ lại; from_member gửi → cộng lại)
-  if (tx.to_member) db.prepare("UPDATE members SET points=ROUND(points-?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
-    .run(tx.points, now(), tx.group_id, tx.to_member);
-  if (tx.from_member) db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
-    .run(tx.points, now(), tx.group_id, tx.from_member);
+  // Hoàn điểm chỉ khi đã approved: pending chưa cộng điểm → không hoàn lại
+  if (tx.status !== 'pending') {
+    if (tx.to_member) db.prepare("UPDATE members SET points=ROUND(points-?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
+      .run(tx.points, now(), tx.group_id, tx.to_member);
+    if (tx.from_member) db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
+      .run(tx.points, now(), tx.group_id, tx.from_member);
+  }
   db.prepare("DELETE FROM point_transactions WHERE id=?").run(id);
 }
 
