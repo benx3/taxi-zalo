@@ -699,7 +699,8 @@ export function mergeGroupInstancesExecute(sourceId, targetId) {
       db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
         .run(pair.src.points, nowMs, targetId, pair.tgt.uid);
       // Copy transactions từ source → target (đổi from/to uid sang target uid)
-      const srcTxs = db.prepare("SELECT * FROM point_transactions WHERE group_id=? AND (from_member=? OR to_member=?) ORDER BY created_at ASC").all(sourceId, pair.src.uid, pair.src.uid);
+      // Chỉ copy approved — pending chưa cộng điểm, không copy tránh bị duyệt 2 lần trong target
+      const srcTxs = db.prepare("SELECT * FROM point_transactions WHERE group_id=? AND (from_member=? OR to_member=?) AND (status IS NULL OR status='approved') ORDER BY created_at ASC").all(sourceId, pair.src.uid, pair.src.uid);
       for (const tx of srcTxs) {
         db.prepare(`INSERT OR IGNORE INTO point_transactions(id,group_id,trip_msg_id,from_member,to_member,points,reason,type,status,raw_text,created_at)
           VALUES(?,?,?,?,?,?,?,?,?,?,?)`)

@@ -565,7 +565,8 @@ export async function mergeGroupInstancesExecute(sourceId, targetId) {
     if (!pair.src.points) continue;
     await q("UPDATE members SET points=ROUND((points+$1)::numeric,10), updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
       [pair.src.points, nowMs, targetId, pair.tgt.uid]);
-    const txR = await q("SELECT * FROM point_transactions WHERE group_id=$1 AND (from_member=$2 OR to_member=$2) ORDER BY created_at ASC",
+    // Chỉ copy approved — pending chưa cộng điểm, không copy tránh bị duyệt 2 lần trong target
+    const txR = await q("SELECT * FROM point_transactions WHERE group_id=$1 AND (from_member=$2 OR to_member=$2) AND (status IS NULL OR status='approved') ORDER BY created_at ASC",
       [sourceId, pair.src.uid]);
     for (const tx of txR.rows) {
       await q(`INSERT INTO point_transactions(id,group_id,trip_msg_id,from_member,to_member,points,reason,type,status,raw_text,created_at)

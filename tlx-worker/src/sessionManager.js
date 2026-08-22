@@ -1044,7 +1044,10 @@ async function onMessage(sess, msg) {
             try { baseConvo = _rawSrc?.raw_text ? JSON.parse(_rawSrc.raw_text) : null; } catch {}
 
             // Đảo ngược điểm đã áp dụng (bằng cách set points=0 — updateTransaction tự hoàn điểm)
-            const approvedTxs = txs.filter(t => t.type === 'barem' && (!t.status || t.status === 'approved'));
+            // Phải zero CẢ barem_adjust: nếu đã adjust 3→4đ thì pending mới ghi currentPts=4đ
+            // mà không zero adjust → khi duyệt pending +4đ bị tính 2 lần (1đ adjust còn + 4đ pending)
+            const approvedTxs = txs.filter(t =>
+              (t.type === 'barem' || t.type === 'barem_adjust') && (!t.status || t.status === 'approved'));
             const reviewConvo = JSON.stringify({ ...(baseConvo || {}), reviewMsg: text, reviewBy: senderName, reviewTime: time });
             for (const tx of approvedTxs) {
               await dbm.updateTransaction(tx.id, { points: 0, reason: `Chờ KT review: "${text.slice(0, 50)}"`, raw_text: reviewConvo });
