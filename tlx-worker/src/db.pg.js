@@ -779,12 +779,16 @@ export async function updateTransaction(id, { reason, points, raw_text }) {
       newTo   = newIsTo ? uid : null;
       newFrom = newIsTo ? null : uid;
     }
-    // Hoàn lại hiệu ứng cũ
-    if (tx.to_member) await q("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [oldPts, now(), tx.group_id, tx.to_member]);
-    if (tx.from_member) await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [oldPts, now(), tx.group_id, tx.from_member]);
-    // Áp dụng hiệu ứng mới
-    if (newTo) await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [newAbsPts, now(), tx.group_id, newTo]);
-    if (newFrom) await q("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [newAbsPts, now(), tx.group_id, newFrom]);
+    // Chỉ điều chỉnh điểm thành viên khi giao dịch đã approved (không phải pending).
+    // pending = addBaremPending chưa cộng điểm ngay → không được "hoàn lại" điểm chưa tồn tại.
+    if (tx.status !== 'pending') {
+      // Hoàn lại hiệu ứng cũ
+      if (tx.to_member) await q("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [oldPts, now(), tx.group_id, tx.to_member]);
+      if (tx.from_member) await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [oldPts, now(), tx.group_id, tx.from_member]);
+      // Áp dụng hiệu ứng mới
+      if (newTo) await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [newAbsPts, now(), tx.group_id, newTo]);
+      if (newFrom) await q("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4", [newAbsPts, now(), tx.group_id, newFrom]);
+    }
     await q("UPDATE point_transactions SET reason=COALESCE($1,reason), points=$2, to_member=$3, from_member=$4, raw_text=COALESCE($5,raw_text) WHERE id=$6",
       [reason || null, newAbsPts, newTo || null, newFrom || null, raw_text || null, id]);
   } else {

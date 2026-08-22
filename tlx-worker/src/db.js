@@ -914,16 +914,20 @@ export function updateTransaction(id, { reason, points, raw_text }) {
       newTo   = newIsTo ? uid : null;
       newFrom = newIsTo ? null : uid;
     }
-    // Hoàn lại hiệu ứng cũ
-    if (tx.to_member) db.prepare("UPDATE members SET points=ROUND(points-?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
-      .run(oldPts, now(), tx.group_id, tx.to_member);
-    if (tx.from_member) db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
-      .run(oldPts, now(), tx.group_id, tx.from_member);
-    // Áp dụng hiệu ứng mới
-    if (newTo) db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
-      .run(newAbsPts, now(), tx.group_id, newTo);
-    if (newFrom) db.prepare("UPDATE members SET points=ROUND(points-?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
-      .run(newAbsPts, now(), tx.group_id, newFrom);
+    // Chỉ điều chỉnh điểm thành viên khi giao dịch đã approved (không phải pending).
+    // pending = addBaremPending chưa cộng điểm ngay → không được "hoàn lại" điểm chưa tồn tại.
+    if (tx.status !== 'pending') {
+      // Hoàn lại hiệu ứng cũ
+      if (tx.to_member) db.prepare("UPDATE members SET points=ROUND(points-?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
+        .run(oldPts, now(), tx.group_id, tx.to_member);
+      if (tx.from_member) db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
+        .run(oldPts, now(), tx.group_id, tx.from_member);
+      // Áp dụng hiệu ứng mới
+      if (newTo) db.prepare("UPDATE members SET points=ROUND(points+?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
+        .run(newAbsPts, now(), tx.group_id, newTo);
+      if (newFrom) db.prepare("UPDATE members SET points=ROUND(points-?,10), updated_at=? WHERE group_id=? AND zalo_uid=?")
+        .run(newAbsPts, now(), tx.group_id, newFrom);
+    }
     db.prepare("UPDATE point_transactions SET reason=COALESCE(?,reason), points=?, to_member=?, from_member=?, raw_text=COALESCE(?,raw_text) WHERE id=?")
       .run(reason || null, newAbsPts, newTo || null, newFrom || null, raw_text || null, id);
   } else {
