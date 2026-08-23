@@ -682,6 +682,23 @@ export async function getMembersByDisplayName(groupId, name) {
   return r.rows;
 }
 
+// Tái tính lại members.points từ point_transactions approved — sửa dữ liệu bị lệch do bug cũ
+export async function recalcMemberPoints(groupId) {
+  const r = await q(`
+    UPDATE members m
+    SET points = ROUND(COALESCE((
+      SELECT SUM(CASE WHEN pt.to_member = m.zalo_uid THEN pt.points ELSE -pt.points END)
+      FROM point_transactions pt
+      WHERE pt.group_id = m.group_id
+        AND (pt.to_member = m.zalo_uid OR pt.from_member = m.zalo_uid)
+        AND (pt.status IS NULL OR pt.status = 'approved')
+    ), 0)::numeric, 10),
+    updated_at = $2
+    WHERE m.group_id = $1
+  `, [groupId, now()]);
+  return r.rowCount;
+}
+
 // ---------- Kế toán: giao dịch điểm ----------
 export async function adjustPoints(groupId, zaloUid, delta, reason, type = "manual", tripMsgId = null, fromMember = null, toMember = null, rawText = null) {
   await upsertMember(groupId, zaloUid);

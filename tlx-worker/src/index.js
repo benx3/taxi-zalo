@@ -494,6 +494,17 @@ app.delete("/api/accountant/members/:groupId/:zaloUid", async (req, res) => {
     res.json({ ok: true, deleted });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
+app.post("/api/accountant/members/recalc-points", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  const { groupId } = req.body;
+  if (!groupId) return res.status(400).json({ error: "Thiếu groupId" });
+  if (!await checkGroupAccess(req, res, groupId)) return;
+  try {
+    const changed = await dbm.recalcMemberPoints(groupId);
+    res.json({ ok: true, changed });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.patch("/api/accountant/transactions/:id", async (req, res) => {
   try {
     const a = await requireAccountant(req, res); if (!a) return;

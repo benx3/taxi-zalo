@@ -47,6 +47,7 @@ export default function MembersTab({ groupId }) {
   const [importPreview, setImportPreview] = useState(null);
   const [importLoading, setImportLoading] = useState(false);
   const [importConfirming, setImportConfirming] = useState(false);
+  const [recalcing, setRecalcing] = useState(false);
 
   const reload = () => {
     if (!groupId) return;
@@ -87,6 +88,20 @@ export default function MembersTab({ groupId }) {
       setSyncMsg({ ok: false, text: e.message });
       setTimeout(() => setSyncMsg({ ok: null, text: "" }), 5000);
     } finally { setEnriching(false); }
+  };
+
+  const recalcPoints = async () => {
+    if (!groupId) return;
+    setRecalcing(true); setSyncMsg({ ok: null, text: "" });
+    try {
+      const r = await api.recalcMemberPoints(groupId);
+      await api.listMembers(groupId).then(setMembers);
+      setSyncMsg({ ok: true, text: `Tái tính xong — ${r.changed ?? r.rowCount ?? 0} thành viên được cập nhật` });
+      setTimeout(() => setSyncMsg({ ok: null, text: "" }), 6000);
+    } catch (e) {
+      setSyncMsg({ ok: false, text: e.message });
+      setTimeout(() => setSyncMsg({ ok: null, text: "" }), 5000);
+    } finally { setRecalcing(false); }
   };
 
   const filtered = useMemo(() => {
@@ -237,6 +252,11 @@ export default function MembersTab({ groupId }) {
           <RefreshCw size={14} style={{ animation: enriching ? "spin 1s linear infinite" : "none" }} />
           {enriching ? "Đang lấy tên…" : "Lấy tên"}
         </button>
+        <button onClick={recalcPoints} disabled={recalcing || syncing || enriching} title="Tái tính điểm từ lịch sử giao dịch approved — dùng khi thấy Dương/Âm sai"
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid rgba(251,146,60,.4)", background: "rgba(251,146,60,.1)", color: recalcing ? "var(--ink-dim)" : "#fb923c", fontWeight: 700, fontSize: 13, cursor: recalcing ? "default" : "pointer", whiteSpace: "nowrap", opacity: recalcing ? 0.6 : 1 }}>
+          <RefreshCw size={14} style={{ animation: recalcing ? "spin 1s linear infinite" : "none" }} />
+          {recalcing ? "Đang tái tính…" : "Tái tính"}
+        </button>
         <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }} onChange={handleImportFile} />
         <button onClick={() => importRef.current?.click()} disabled={importLoading} title="Import thành viên từ file Excel (cột STT, Tên, SĐT)"
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1px solid rgba(251,191,36,.4)", background: "rgba(251,191,36,.1)", color: importLoading ? "var(--ink-dim)" : "#fbbf24", fontWeight: 700, fontSize: 13, cursor: importLoading ? "default" : "pointer", whiteSpace: "nowrap", opacity: importLoading ? 0.6 : 1 }}>
@@ -258,9 +278,9 @@ export default function MembersTab({ groupId }) {
 
       {/* Tổng kết */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, padding: "0 24px 14px" }}>
-        <StatCard label="Thành viên" value={members.length} color="#60a5fa" />
-        <StatCard label="Dương (+)" value={members.filter(m => m.points > 0).length} color="#34d399" />
-        <StatCard label="Âm (−)" value={members.filter(m => m.points < 0).length} color="#f87171" />
+        <StatCard label="Thành viên" value={members.filter(m => !m.is_out).length} color="#60a5fa" />
+        <StatCard label="Dương (+)" value={members.filter(m => !m.is_out && Number(m.points) > 0).length} color="#34d399" />
+        <StatCard label="Âm (−)" value={members.filter(m => !m.is_out && Number(m.points) < 0).length} color="#f87171" />
       </div>
 
       {/* Danh sách */}

@@ -50,6 +50,7 @@ enrichMemberNames: (groupId) => req(`/api/accountant/groups/${encodeURIComponent
   importMembersConfirm: (groupId, rows) => req("/api/accountant/members/import-confirm", { groupId, rows }),
   importPoints: (groupId, rows) => req("/api/accountant/import-points", { groupId, rows }),
   deleteMember: (groupId, zaloUid) => req(`/api/accountant/members/${encodeURIComponent(groupId)}/${encodeURIComponent(zaloUid)}`, null, "DELETE"),
+  recalcMemberPoints: (groupId) => req("/api/accountant/members/recalc-points", { groupId }),
 
   // Giao dịch điểm
   listTransactions: (groupId, zaloUid, limit, dateFrom, dateTo) => {

@@ -825,6 +825,22 @@ export function getMembersByDisplayName(groupId, name) {
   return db.prepare("SELECT * FROM members WHERE group_id=? AND display_name=?").all(groupId, name);
 }
 
+// Tái tính lại members.points từ point_transactions approved — sửa dữ liệu bị lệch do bug cũ
+export function recalcMemberPoints(groupId) {
+  return db.prepare(`
+    UPDATE members
+    SET points = ROUND(COALESCE((
+      SELECT SUM(CASE WHEN pt.to_member = members.zalo_uid THEN pt.points ELSE -pt.points END)
+      FROM point_transactions pt
+      WHERE pt.group_id = members.group_id
+        AND (pt.to_member = members.zalo_uid OR pt.from_member = members.zalo_uid)
+        AND (pt.status IS NULL OR pt.status = 'approved')
+    ), 0), 10),
+    updated_at = ?
+    WHERE group_id = ?
+  `).run(now(), groupId).changes;
+}
+
 // ---------- Kế toán: giao dịch điểm ----------
 export function adjustPoints(groupId, zaloUid, delta, reason, type = "manual", tripMsgId = null, fromMember = null, toMember = null, rawText = null) {
   const memberId = upsertMember(groupId, zaloUid);
