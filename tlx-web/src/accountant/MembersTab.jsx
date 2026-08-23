@@ -277,11 +277,21 @@ export default function MembersTab({ groupId }) {
       )}
 
       {/* Tổng kết */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, padding: "0 24px 14px" }}>
-        <StatCard label="Thành viên" value={members.filter(m => !m.is_out).length} color="#60a5fa" />
-        <StatCard label="Dương (+)" value={members.filter(m => !m.is_out && Number(m.points) > 0).length} color="#34d399" />
-        <StatCard label="Âm (−)" value={members.filter(m => !m.is_out && Number(m.points) < 0).length} color="#f87171" />
-      </div>
+      {(() => {
+        const activeMembers = members.filter(m => !m.is_out);
+        const posMembers = activeMembers.filter(m => Number(m.points) > 0);
+        const negMembers = activeMembers.filter(m => Number(m.points) < 0);
+        const totalPos = posMembers.reduce((s, m) => s + Number(m.points), 0);
+        const totalNeg = negMembers.reduce((s, m) => s + Number(m.points), 0);
+        const fmtSum = (n) => (n >= 0 ? "+" : "") + parseFloat(n.toFixed(2)) + "đ";
+        return (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, padding: "0 24px 14px" }}>
+            <StatCard label="Thành viên" value={activeMembers.length} color="#60a5fa" />
+            <StatCard label="Dương (+)" value={fmtSum(totalPos)} sub={posMembers.length + " người"} color="#34d399" />
+            <StatCard label="Âm (−)" value={fmtSum(totalNeg)} sub={negMembers.length + " người"} color="#f87171" />
+          </div>
+        );
+      })()}
 
       {/* Danh sách */}
       <div style={{ padding: "0 24px" }}>
@@ -485,10 +495,11 @@ function ImportPreviewModal({ preview, onConfirm, onClose, confirming }) {
   );
 }
 
-function StatCard({ label, value, color }) {
+function StatCard({ label, value, sub, color }) {
   return (
     <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 12, padding: "10px 12px", textAlign: "center" }}>
       <div style={{ fontWeight: 800, fontSize: 20, color }}>{value}</div>
+      {sub != null && <div style={{ fontSize: 11, color, opacity: 0.7, marginTop: 1 }}>{sub}</div>}
       <div style={{ fontSize: 11, color: "var(--ink-dim)", marginTop: 2 }}>{label}</div>
     </div>
   );
