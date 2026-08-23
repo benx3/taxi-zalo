@@ -1249,7 +1249,8 @@ function detectBaremAction(text) {
   if (!text) return null;
   const t = noMarkLower(text);
   // "lịch hủy" / "hủy lịch" / "lich huy" / "huy lich" / "hủy" đứng một mình
-  if (/lich\s*hu[y]?|hu[y]?\s*lich|\bhuy\b/.test(t)) return { type: 'cancel' };
+  // Phải có \b trước "huy"/"hu" để tránh khớp nhầm tên người như "Thuy" → "thuy lich" → "huy lich"
+  if (/\blich\s*hu[y]?|\bhu[y]?\s*lich|\bhuy\b/.test(t)) return { type: 'cancel' };
   // "lịch free" / standalone "free/freee/fre/fer" — báo lịch miễn phí sau khi đã chốt
   if (/lich\s*(?:fre+|frr+|fii+|fer+|fee+|fri+)|\b(?:fre+|frr+|fii+|fer+|fee+|fri+)\b/.test(t)) return { type: 'free' };
   // "lịch N" / "lịch +N" / "lịch -+N" — N là số điểm thỏa thuận mới
