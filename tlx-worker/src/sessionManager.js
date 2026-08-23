@@ -1273,15 +1273,45 @@ function detectSanDiem(text, mentions, selfUid) {
     : [...mentions];
   if (!rawRecips.length) return [];
 
-  // Tách text theo "@" → mỗi segment = "tên mention + phần text tiếp theo"
-  // VD: "San @A 1đ chị @B 2đ @C" → ["A 1đ chị ", "B 2đ ", "C"]
-  // Cách này tránh hoàn toàn indexOf + mismatch encoding NFC/NFD tiếng Việt:
-  // thay vì tìm vị trí '@Name' trong cả đoạn text, ta kiểm tra segment.startsWith(name)
   const normText = text.normalize('NFC');
-  const segments = normText.split('@').slice(1); // bỏ phần trước @ đầu tiên
   const oneAmtRe = /(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ|₫|d)(?!\w)/i;
 
-  // Ghép từng recipient với segment chứa tên họ
+  // ── Path 1: dùng pos+len (Zalo gửi kèm khi mention) ──────────────────────
+  // Zalo API gửi mentions với { pos, len } — pos = offset ký tự của '@' trong text,
+  // len = độ dài alias sau '@'. Thứ tự trong mảng KHÔNG khớp thứ tự text
+  // → sort theo pos để lấy đúng thứ tự, rồi trích amount ngay sau alias.
+  // Cách này tránh hoàn toàn name-matching và fallback sai thứ tự.
+  const allHavePos = rawRecips.every(mn =>
+    typeof mn.pos === 'number' && mn.pos >= 0 &&
+    typeof mn.len === 'number' && mn.len > 0
+  );
+  if (allHavePos) {
+    const sorted = [...rawRecips].sort((a, b) => a.pos - b.pos);
+    const results = [];
+    for (const mn of sorted) {
+      // Nếu text[pos] === '@' thì alias bắt đầu từ pos+1, ngược lại pos đã là đầu alias
+      const aliasStart = normText[mn.pos] === '@' ? mn.pos + 1 : mn.pos;
+      const afterAlias = normText.slice(aliasStart + mn.len);
+      const m = afterAlias.match(oneAmtRe);
+      const val = m ? parseFloat(m[1].replace(',', '.')) : null;
+      if (val && val > 0 && val <= 20) {
+        results.push({
+          amount: val,
+          toUid: mn.uid || null,
+          toName: mn.display_name || mn.dName || null,
+        });
+      } else {
+        console.warn(`[detectSanDiem] pos-path: không tìm được amount cho ${mn.display_name || mn.uid} (afterAlias="${afterAlias.slice(0,30)}")`);
+      }
+    }
+    return results;
+  }
+
+  // ── Path 2: name-matching theo segment (fallback khi không có pos/len) ────
+  // Tách text theo "@" → mỗi segment = "alias + phần text tiếp theo sau @"
+  // VD: "San @A 1đ chị @B 2đ @C" → segments = ["A 1đ chị ", "B 2đ ", "C"]
+  const segments = normText.split('@').slice(1);
+
   const usedSegIdxs = new Set();
   const entries = rawRecips.map(mn => {
     const name = (mn.display_name || mn.dName || '').normalize('NFC');
@@ -1289,7 +1319,7 @@ function detectSanDiem(text, mentions, selfUid) {
     const nameLower = name.toLowerCase();
 
     let segIdx = -1;
-    let sliceLen = name.length; // số ký tự cần bỏ để lấy phần sau tên
+    let sliceLen = name.length;
 
     // 1. Exact match: segment bắt đầu ĐÚNG = display_name
     const exactIdx = segments.findIndex((s, i) =>
@@ -1305,10 +1335,8 @@ function detectSanDiem(text, mentions, selfUid) {
       // → alias="Thuận", "Thuận Nguyễn Taxi".startsWith("Thuận") → match
       for (let i = 0; i < segments.length; i++) {
         if (usedSegIdxs.has(i)) continue;
-        // Trích alias = phần text trước số/dấu trong segment
         const alias = (segments[i].match(/^(.*?)(?=\s*[\d,])/)?.[1] ?? '').trimEnd();
         const aliasLower = alias.toLowerCase();
-        // Kiểm tra word boundary: ký tự sau alias phải là khoảng trắng, số, hoặc hết segment
         const afterAlias = segments[i][alias.length] || '';
         const isWordBdry = !afterAlias || /[\s\d,]/.test(afterAlias);
         if (alias.length >= 2 && isWordBdry && nameLower.startsWith(aliasLower)) {
@@ -1319,9 +1347,12 @@ function detectSanDiem(text, mentions, selfUid) {
       }
     }
 
-    if (segIdx === -1) return { mn, segIdx: -1, amount: null };
+    if (segIdx === -1) {
+      // Không match được → bỏ qua, KHÔNG fallback globalAmounts vì không biết đúng amount nào
+      console.warn(`[detectSanDiem] name-path: không match segment cho "${name}" — bỏ qua recipient này`);
+      return { mn, segIdx: -1, amount: null };
+    }
     usedSegIdxs.add(segIdx);
-    // Trích amount đầu tiên trong phần sau tên trong segment này
     const rest = segments[segIdx].slice(sliceLen);
     const m = rest.match(oneAmtRe);
     const val = m ? parseFloat(m[1].replace(',', '.')) : null;
@@ -1340,29 +1371,11 @@ function detectSanDiem(text, mentions, selfUid) {
     return a.segIdx - b.segIdx;
   });
 
-  // Fallback: recipient không match được segment nào (encoding quá lạ)
-  // → dùng danh sách amounts toàn văn theo thứ tự
-  const globalAmounts = [];
-  const allAmtRe = /(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ|₫|d)(?!\w)/gi;
-  let gm;
-  while ((gm = allAmtRe.exec(text)) !== null) {
-    const v = parseFloat(gm[1].replace(',', '.'));
-    if (v > 0 && v <= 20) globalAmounts.push(v);
-  }
-
-  let fbIdx = 0;
   const results = [];
   for (const { mn, amount } of entries) {
-    let finalAmt = amount;
-    if (finalAmt == null) {
-      finalAmt = globalAmounts.length === 1
-        ? globalAmounts[0]
-        : (globalAmounts[fbIdx] ?? globalAmounts[globalAmounts.length - 1]);
-      fbIdx++;
-    }
-    if (!finalAmt) continue; // không tìm được amount → bỏ qua recipient này
+    if (!amount) continue; // segIdx=-1 hoặc không tìm được amount → bỏ qua
     results.push({
-      amount: finalAmt,
+      amount,
       toUid: mn.uid || null,
       toName: mn.display_name || mn.dName || null,
     });
