@@ -156,6 +156,10 @@ export function parseCar(t) {
   return null;
 }
 
+// Các bến xe lớn được nhận diện rõ — "bx <tên>" này là bến xe, không phải bao xe
+// Chỉ whitelist các bến xe thực sự; mọi "bx <địa danh khác>" → bao xe
+const BEN_XE_RE = /\bbx\s*(?:mỹ\s*đình|my\s*dinh|giáp\s*bát|giap\s*bat|nước\s*ngầm|nuoc\s*ngam|gia\s*lâm|gia\s*lam|yên\s*nghĩa|yen\s*nghia)\b/i;
+
 export function parseSeats(t) {
   const l = t.toLowerCase();
   // N k (standalone "k") — "1k"=1 ghế, "2k"/"3k"=N khách
@@ -166,7 +170,9 @@ export function parseSeats(t) {
   // 2 khách: 2ghế/2ghép/2kh/2gh/2g/2ghe và biến thể có khoảng trắng
   if (/2\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|ghe\b|gh\b|g\b)/.test(l)) return "2 khách";
   // Bao xe (check trước để "1bx" không nhầm thành 1 ghế)
-  if (/bao\s*hàng|bao\s*xe|bxe|1bx|\bbx\b|bx\d+/.test(l)) return "Bao xe";
+  // "bx" + tên bến xe whitelist → bến xe (không phải bao xe); còn lại → bao xe
+  if (/bao\s*hàng|bao\s*xe|bxe|1bx|bx\d+/.test(l)) return "Bao xe";
+  if (/\bbx\b/.test(l) && !BEN_XE_RE.test(l)) return "Bao xe";
   // 1 ghế: 1ghế/1ghép/1kh/1gh/1g/1ghe và biến thể có khoảng trắng
   if (/1\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|ghe\b|gh\b|g\b)/.test(l)) return "1 ghế";
   return "Không rõ";
@@ -175,8 +181,10 @@ export function parseSeats(t) {
 export function parseType(t) {
   const l = t.toLowerCase();
   if (/(bao\s*hàng|csct\s*đồ|(?:^|[\s\d,.])\s*đồ\s|gửi\s*hàng|giao\s*hàng|chở\s*hàng|ship\b|kiện\s*hàng|hàng\s+(?:nhỏ|nặng|lớn|to|bé|gọn|cồng|kềnh)|hồ\s*sơ|tài\s*liệu|giấy\s*tờ|phong\s*bì|bưu\s*phẩm)/.test(l) && !/1\s*ghế|1k\b|gái|khách/.test(l)) return "Hàng";
-  // \bbx\b(?!\s+[a-zA-Z\xC0-ỹ]): "bx" chỉ = bao xe khi KHÔNG kèm tên địa điểm (bx nước ngầm/bx giáp bát = bến xe, không phải bao xe)
-  if (/bao\s*xe|\bbxe\d*\b|\bbx\b(?!\s+[a-zA-Z\xC0-ỹ])|bx\d+|\bxe\s*7\b|7\s*chỗ|\b7c\b|\blịch\s*taxi\b|\btaxi\b/.test(l)) {
+  // "bx" + tên bến xe whitelist (Mỹ Đình/Giáp Bát/Nước Ngầm/Gia Lâm/Yên Nghĩa) → bến xe, KHÔNG phải bao xe
+  // "bx" + bất kỳ địa danh khác → bao xe (vì chỉ có vài bến xe lớn ở HN)
+  const isBaoxeBx = /\bbx\b/.test(l) && !BEN_XE_RE.test(l);
+  if (/bao\s*xe|\bbxe\d*\b|bx\d+|\bxe\s*7\b|7\s*chỗ|\b7c\b|\blịch\s*taxi\b|\btaxi\b/.test(l) || isBaoxeBx) {
     if (/bx\s*2c\b|bxe\s*2c\b|bao\s*xe\s*2c\b|2\s*chi[eề]u|2\s*chieu/.test(l)) return "Bao xe 2 chiều";
     return "Bao xe";
   }
