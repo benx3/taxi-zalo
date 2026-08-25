@@ -171,7 +171,7 @@ export function parseSeats(t) {
   if (/2\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|ghe\b|gh\b|g\b)/.test(l)) return "2 khách";
   // Bao xe (check trước để "1bx" không nhầm thành 1 ghế)
   // "bx/bxe" + tên bến xe whitelist → bến xe (không phải bao xe); còn lại → bao xe
-  if (/bao\s*hàng|bao\s*xe|1bx|bx\d+/.test(l)) return "Bao xe";
+  if (/bao\s*xe|1bx|bx\d+/.test(l)) return "Bao xe";
   if (/\bbxe?\b/.test(l) && !BEN_XE_RE.test(l)) return "Bao xe";
   // 1 ghế: 1ghế/1ghép/1kh/1gh/1g/1ghe và biến thể có khoảng trắng
   if (/1\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|ghe\b|gh\b|g\b)/.test(l)) return "1 ghế";
