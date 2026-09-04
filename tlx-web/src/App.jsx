@@ -72,7 +72,7 @@ function AdminLoginScreen({ onLogin }) {
 const DATA_TABLES = [
   { key: 'barem_trip_log',     label: 'Log cuốc xe',       note: 'Cache tạm cuốc xe',              recommend: 3  },
   { key: 'barem_claim_log',    label: 'Log claim',          note: 'Cache tạm claim tài xế',         recommend: 3  },
-  { key: 'barem_msg_refs',     label: 'Tra cứu tin nhắn',  note: 'Index hủy/điều chỉnh Section E', recommend: 7  },
+  { key: 'barem_msg_refs',     label: 'Tra cứu tin nhắn',  note: 'Index hủy/điều chỉnh Section E', recommend: 180 },
   { key: 'point_transactions', label: 'Giao dịch điểm',    note: 'Lịch sử tính điểm barem',        recommend: 30 },
   { key: 'raw_messages',       label: 'Tin nhắn thô',      note: 'Tin nhắn Zalo lưu debug',        recommend: 3  },
   { key: 'saved_trips',        label: 'Cuốc đã lưu',       note: 'Lịch sử cuốc xe tài xế',        recommend: 30 },
