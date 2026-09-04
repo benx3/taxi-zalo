@@ -648,6 +648,11 @@ async function onMessage(sess, msg) {
       // mentions.length === 0 → "san" chỉ là một phần tên (vd: "san bay") → tiếp tục barem
     }
 
+    // qd: quote data — dùng chung cho Section C/D/E (điều kiện isAccountant riêng từng block)
+    // và Section F (dùng ngoài mọi block if trên) → phải khai báo ở scope chung ở đây,
+    // nếu không Section F sẽ ném "qd is not defined" vì qd trước đó chỉ scoped local trong từng if.
+    const qd = msg.data?.quote;
+
     // (A) chủ cuốc xác nhận cho mình?
     const key = `${groupId}:${senderId}`;
     if (sess.claims.has(key) && isConfirmMessage(text) && isTaggingSelf(sess, msg)) {
@@ -660,7 +665,6 @@ async function onMessage(sess, msg) {
 
     // (C) Kế toán: phát hiện người nhận cuốc reply "Ok" quoting trip → lưu claim
     if (sess.isAccountant && senderId !== String(sess.selfId)) {
-      const qd = msg.data?.quote;
       if (qd && (isClaimMessage(text) || isConfirmMessage(text))) {
         if (process.env.DEBUG_BAREM) console.log(`[BAREM_CLAIM] from=${senderId} quote=`, JSON.stringify(qd)?.slice(0, 300));
         const quoteOwnerId = String(qd.ownerId || "");
@@ -705,7 +709,6 @@ async function onMessage(sess, msg) {
 
     // (D) Kế toán: chủ cuốc xác nhận "ok ib" cho người nhận → áp dụng barem
     if (sess.isAccountant && senderId !== String(sess.selfId) && isConfirmMessage(text)) {
-      const qd = msg.data?.quote;
       if (qd) {
         if (process.env.DEBUG_BAREM) console.log(`[BAREM_CONFIRM] from=${senderId} quote=`, JSON.stringify(qd)?.slice(0, 300));
         const qCliId2  = qd.cliMsgId != null ? String(qd.cliMsgId) : "";
@@ -806,7 +809,6 @@ async function onMessage(sess, msg) {
     // TH2: "lịch hủy @kế toán"  → đảo ngược hoàn toàn
     // TH3: "lịch free @kế toán" → không tính điểm, đảo ngược
     if (sess.isAccountant && senderId !== String(sess.selfId)) {
-      const qd = msg.data?.quote;
       const mentions = msg.data?.mentions || [];
       let ktMentioned = mentions.some(m => String(m.uid) === String(sess.selfId));
       // Cũng nhận lệnh khi nhóm tag KT người thật (ktUid) thay vì tag bot
