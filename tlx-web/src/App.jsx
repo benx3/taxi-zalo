@@ -69,13 +69,15 @@ function AdminLoginScreen({ onLogin }) {
 }
 
 /* ===== Admin: Quản lý dữ liệu hệ thống ===== */
+// Chỉ "Tra cứu tin nhắn" (barem_msg_refs) cho phép xóa thủ công — phát sinh nhiều dữ liệu.
+// Các bảng khác giữ nguyên vĩnh viễn (không xóa), chỉ hiển thị số liệu để theo dõi.
 const DATA_TABLES = [
-  { key: 'barem_trip_log',     label: 'Log cuốc xe',       note: 'Cache tạm cuốc xe',              recommend: 3  },
-  { key: 'barem_claim_log',    label: 'Log claim',          note: 'Cache tạm claim tài xế',         recommend: 3  },
-  { key: 'barem_msg_refs',     label: 'Tra cứu tin nhắn',  note: 'Index hủy/điều chỉnh Section E', recommend: 180 },
-  { key: 'point_transactions', label: 'Giao dịch điểm',    note: 'Lịch sử tính điểm barem',        recommend: 30 },
-  { key: 'raw_messages',       label: 'Tin nhắn thô',      note: 'Tin nhắn Zalo lưu debug',        recommend: 3  },
-  { key: 'saved_trips',        label: 'Cuốc đã lưu',       note: 'Lịch sử cuốc xe tài xế',        recommend: 30 },
+  { key: 'barem_trip_log',     label: 'Log cuốc xe',       note: 'Cache tạm cuốc xe' },
+  { key: 'barem_claim_log',    label: 'Log claim',          note: 'Cache tạm claim tài xế' },
+  { key: 'barem_msg_refs',     label: 'Tra cứu tin nhắn',  note: 'Index hủy/điều chỉnh Section E', recommend: 180, purgeable: true },
+  { key: 'point_transactions', label: 'Giao dịch điểm',    note: 'Lịch sử tính điểm barem' },
+  { key: 'raw_messages',       label: 'Tin nhắn thô',      note: 'Tin nhắn Zalo lưu debug' },
+  { key: 'saved_trips',        label: 'Cuốc đã lưu',       note: 'Lịch sử cuốc xe tài xế' },
 ];
 function DataManagementSection({ flash, cardStyle }) {
   const [stats, setStats] = useState(null);
@@ -127,7 +129,7 @@ function DataManagementSection({ flash, cardStyle }) {
             <div key={t.key} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:10,background:'rgba(0,0,0,.15)'}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:600,fontSize:13}}>{t.label}</div>
-                <div style={{fontSize:11,color:'var(--ink-dim)'}}>{t.note} · khuyến nghị ≤{t.recommend} ngày</div>
+                <div style={{fontSize:11,color:'var(--ink-dim)'}}>{t.note}{t.purgeable ? ` · khuyến nghị ≤${t.recommend} ngày` : ' · giữ vĩnh viễn'}</div>
               </div>
               <div style={{textAlign:'right',minWidth:72}}>
                 {stats === null
@@ -138,17 +140,19 @@ function DataManagementSection({ flash, cardStyle }) {
                     </>
                 }
               </div>
-              <button
-                onClick={() => !busy && !confirmPurge && setConfirmPurge({ table: t.key, days: t.recommend })}
-                disabled={busy || !!confirmPurge}
-                title={`Xóa dữ liệu cũ hơn ${t.recommend} ngày`}
-                style={{padding:'5px 10px',borderRadius:8,cursor:busy||confirmPurge?'default':'pointer',fontWeight:700,fontSize:12,
-                  background:'rgba(248,113,113,.08)',color:'#f87171',border:'1px solid #f8717133',whiteSpace:'nowrap',
-                  display:'flex',alignItems:'center',gap:5}}
-              >
-                <Trash2 size={11}/>
-                {busy ? '…' : `>${t.recommend}d`}
-              </button>
+              {t.purgeable && (
+                <button
+                  onClick={() => !busy && !confirmPurge && setConfirmPurge({ table: t.key, days: t.recommend })}
+                  disabled={busy || !!confirmPurge}
+                  title={`Xóa dữ liệu cũ hơn ${t.recommend} ngày`}
+                  style={{padding:'5px 10px',borderRadius:8,cursor:busy||confirmPurge?'default':'pointer',fontWeight:700,fontSize:12,
+                    background:'rgba(248,113,113,.08)',color:'#f87171',border:'1px solid #f8717133',whiteSpace:'nowrap',
+                    display:'flex',alignItems:'center',gap:5}}
+                >
+                  <Trash2 size={11}/>
+                  {busy ? '…' : `>${t.recommend}d`}
+                </button>
+              )}
             </div>
           );
         })}

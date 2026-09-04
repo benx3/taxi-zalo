@@ -1104,13 +1104,18 @@ export function clearBaremLogs() {
   console.log(`🧹 23:59 — Reset barem log: xoá ${r1.changes} trip + ${r2.changes} claim`);
 }
 
+// PURGEABLE: bảng nào hiển thị số liệu trong "Dữ liệu hệ thống".
+// PURGE_ALLOWED: bảng nào thực sự cho phép xóa thủ công — chỉ barem_msg_refs (phát sinh nhiều),
+// các bảng khác giữ vĩnh viễn theo yêu cầu, chặn ở cả backend phòng gọi API trực tiếp.
 const PURGEABLE = {
   barem_trip_log: 'created_at', barem_claim_log: 'created_at', barem_msg_refs: 'created_at',
   point_transactions: 'created_at', raw_messages: 'created_at', saved_trips: 'taken_at',
 };
+const PURGE_ALLOWED = new Set(['barem_msg_refs']);
 export function purgeTable(table, days) {
   const col = PURGEABLE[table];
   if (!col) throw new Error('Bảng không được phép xóa: ' + table);
+  if (!PURGE_ALLOWED.has(table)) throw new Error('Bảng này không cho phép xóa thủ công: ' + table);
   const cutoff = Date.now() - days * 86400000;
   return db.prepare(`DELETE FROM ${table} WHERE ${col} < ?`).run(cutoff).changes;
 }
