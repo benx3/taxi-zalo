@@ -356,6 +356,9 @@ export default function HomePage({ goLogin, goRegister }) {
             Trợ Lý Tài Xế <span style={s.accent}>AI</span>
           </span>
         </div>
+        <a href="tel:0853132353" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, color: "#34d399", fontWeight: 700, textDecoration: "none", marginBottom: 10 }}>
+          📞 Hỗ trợ: 085 313 2353
+        </a>
         <p style={{ fontSize: 12.5, color: "#4a5568", margin: 0 }}>
           © {new Date().getFullYear()} Trợ Lý Tài Xế AI · Quản lý cuốc xe & điểm thưởng thông minh
         </p>
