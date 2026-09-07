@@ -605,7 +605,8 @@ async function onMessage(sess, msg) {
             let m; const amounts = [];
             while ((m = amountRe.exec(text)) !== null) {
               const val = parseFloat(m[1].replace(",", "."));
-              if (val > 0 && val <= 20) amounts.push(val);
+              // San điểm: gộp nhiều cuốc nên trần cao hơn barem 1 cuốc (0-20), vào pending chờ KT duyệt nên an toàn
+              if (val > 0 && val <= 200) amounts.push(val);
             }
             if (!amounts.length) return;
             const toM = mentions[0];
@@ -1296,7 +1297,8 @@ function detectSanDiem(text, mentions, selfUid) {
       const afterAlias = normText.slice(aliasStart + mn.len);
       const m = afterAlias.match(oneAmtRe);
       const val = m ? parseFloat(m[1].replace(',', '.')) : null;
-      if (val && val > 0 && val <= 20) {
+      // San điểm: gộp nhiều cuốc nên trần cao hơn barem 1 cuốc (0-20), vào pending chờ KT duyệt nên an toàn
+      if (val && val > 0 && val <= 200) {
         results.push({
           amount: val,
           toUid: mn.uid || null,
@@ -1358,10 +1360,11 @@ function detectSanDiem(text, mentions, selfUid) {
     const rest = segments[segIdx].slice(sliceLen);
     const m = rest.match(oneAmtRe);
     const val = m ? parseFloat(m[1].replace(',', '.')) : null;
+    // San điểm: gộp nhiều cuốc nên trần cao hơn barem 1 cuốc (0-20), vào pending chờ KT duyệt nên an toàn
     return {
       mn,
       segIdx,
-      amount: (val && val > 0 && val <= 20) ? val : null,
+      amount: (val && val > 0 && val <= 200) ? val : null,
     };
   });
 
