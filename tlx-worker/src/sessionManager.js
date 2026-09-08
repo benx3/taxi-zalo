@@ -614,7 +614,13 @@ async function onMessage(sess, msg) {
               // San điểm: gộp nhiều cuốc nên trần cao hơn barem 1 cuốc (0-20), vào pending chờ KT duyệt nên an toàn
               if (val > 0 && val <= 200) amounts.push(val);
             }
-            if (!amounts.length) return;
+            if (!amounts.length) {
+              // Tag đúng KT + có chữ "san" nhưng không đọc ra số điểm hợp lệ
+              // (thiếu đơn vị, vượt trần 200đ…) → đẩy vào Chờ duyệt cho KT xem lại
+              return ktReviewPending(sess,
+                { dbGroupId, groupName, senderId, senderName, msgId, text, time },
+                "San điểm cho KT nhưng không đọc được số điểm hợp lệ");
+            }
             const toM = mentions[0];
             const toMName = toM.display_name || toM.dName || "";
             if (toMName) Promise.resolve(dbm.upsertMember(dbGroupId, String(toM.uid), { display_name: toMName })).catch(() => {});
@@ -632,9 +638,22 @@ async function onMessage(sess, msg) {
           }
 
           // A.1: Người khác tag KT + người nhận (ktUid khác sess.selfId)
-          if (!ktUid || ktUid === String(sess.selfId)) return;
+          const _ktTagged = mentions.some(mn => ktUids.has(String(mn.uid)));
+          const _sanReview = (why) => ktReviewPending(
+            sess, { dbGroupId, groupName, senderId, senderName, msgId, text, time }, why);
+
+          if (!ktUid || ktUid === String(sess.selfId)) {
+            // Không cấu hình được KT thật → nếu có tag KT thì vẫn đẩy cho KT xem
+            if (_ktTagged) return _sanReview("Lệnh san điểm nhưng chưa nhận dạng được người nhận/số điểm");
+            return;
+          }
           if (mentions.length >= 2) {
             const sanResults = detectSanDiem(text, mentions, ktUid);
+            if (!sanResults.length) {
+              // Có tag KT + có chữ "san" nhưng không bóc được cặp người nhận/điểm
+              // (tên không khớp, số điểm vượt trần…) → đừng bỏ im, đẩy KT xem lại
+              return _sanReview("Lệnh san điểm nhưng không bóc được người nhận / số điểm");
+            }
             for (const sr of sanResults) {
               if (!sr.toUid) continue;
               if (sr.toName) Promise.resolve(dbm.upsertMember(dbGroupId, sr.toUid, { display_name: sr.toName })).catch(() => {});
@@ -648,6 +667,9 @@ async function onMessage(sess, msg) {
                 toUid: sr.toUid, toName: sr.toName || "", points: sr.amount, rawText: text,
               });
             }
+          } else if (_ktTagged) {
+            // Chỉ tag đúng 1 người là KT nhưng A.0a phía trên không bắt được số điểm
+            return _sanReview("Tag KT kèm chữ 'san' nhưng không đọc được số điểm");
           }
         })()).catch(e => console.error(`[${sess.userId}] auto-san:`, e?.message || e));
         return; // có mentions → đây là san điểm thật → không xử lý tiếp barem
@@ -835,6 +857,9 @@ async function onMessage(sess, msg) {
         // globalMsgId trong tin nhóm Zalo = threadId (ID nhóm), lọc ra để tránh nhầm với ID tin nhắn
         const qGlobId = qd.globalMsgId != null && String(qd.globalMsgId) !== groupId ? String(qd.globalMsgId) : "";
         const qCliId  = qd.cliMsgId   != null ? String(qd.cliMsgId)   : "";
+        // Mọi nhánh không xử lý được đều gọi hàm này → tin vẫn tới tay KT
+        const _ktReview = (reason) =>
+          ktReviewPending(sess, { dbGroupId, groupName, senderId, senderName, msgId, text, time }, reason);
         Promise.resolve((async () => {
           let txs = [];
           let foundTier = 0;
@@ -931,7 +956,7 @@ async function onMessage(sess, msg) {
             // ── Có lệnh rõ ràng: cancel / free / adjust ──────────────────────
             if (!txs.length) {
               console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy tx | quoted glob=${qGlobId} cli=${qCliId} | sender=${senderId} | group=${dbGroupId}`);
-              return;
+              return _ktReview(`Lệnh "${action.type}" nhưng không tìm thấy giao dịch tương ứng`);
             }
             console.log(`[${sess.userId}] (E) barem ${action.type}: found ${txs.length} tx via tier${foundTier} | glob=${qGlobId} cli=${qCliId}`);
             // Dedup: nếu 2 KT cùng tag → chỉ 1 session được xử lý tin này
@@ -948,7 +973,7 @@ async function onMessage(sess, msg) {
             const baremPendingTx = txs.find(t => t.type === 'barem' && t.from_member && t.to_member);
             if ((!baremPosterTx || !baremTakerTx) && !baremPendingTx) {
               console.warn(`[${sess.userId}] (E) barem ${action.type}: không tìm thấy barem gốc trong ${txs.length} tx`);
-              return;
+              return _ktReview(`Lệnh "${action.type}" nhưng không xác định được cuốc barem gốc`);
             }
             const posterUid     = baremPosterTx?.to_member   ?? baremPendingTx.to_member;
             const takerUid      = baremTakerTx?.from_member  ?? baremPendingTx.from_member;
@@ -1011,8 +1036,8 @@ async function onMessage(sess, msg) {
           } else {
             // ── Không detect được lệnh: đưa cuốc về pending cho KT review ────
             if (!txs.length) {
-              console.log(`[BAREM_E] ℹ️ @kt không rõ lệnh, không truy vết được tx → bỏ qua`);
-              return;
+              console.log(`[BAREM_E] ℹ️ @kt không rõ lệnh, không truy vết được tx → đưa KT xem lại`);
+              return _ktReview("Tag KT nhưng không rõ lệnh và không truy vết được cuốc nào");
             }
             const baremPosterTx  = txs.find(t => t.type === 'barem' && t.to_member && !t.from_member);
             const baremTakerTx   = txs.find(t => t.type === 'barem' && t.from_member && !t.to_member);
@@ -1020,8 +1045,8 @@ async function onMessage(sess, msg) {
             const posterUid = baremPosterTx?.to_member   ?? baremPendingTx?.to_member;
             const takerUid  = baremTakerTx?.from_member  ?? baremPendingTx?.from_member;
             if (!posterUid || !takerUid) {
-              console.log(`[BAREM_E] ℹ️ @kt không rõ lệnh, không xác định được poster/taker → bỏ qua`);
-              return;
+              console.log(`[BAREM_E] ℹ️ @kt không rõ lệnh, không xác định được poster/taker → đưa KT xem lại`);
+              return _ktReview("Tag KT nhưng không xác định được chủ cuốc / người nhận");
             }
             const currentPts = txs.reduce((s, t) => {
               if (t.to_member === posterUid) return s + Number(t.points);
@@ -1044,7 +1069,8 @@ async function onMessage(sess, msg) {
                   Promise.resolve(dbm.addBaremMsgRef(dbGroupId, mid, origTripMsgId)).catch(() => {});
                 console.log(`[BAREM_E] 📎 @kt 0đ thread+1: "${text.slice(0, 40)}"`);
               } else {
-                console.log(`[BAREM_E] ℹ️ @kt không rõ lệnh, currentPts=${currentPts} → bỏ qua`);
+                console.log(`[BAREM_E] ℹ️ @kt không rõ lệnh, currentPts=${currentPts} → đưa KT xem lại`);
+                return _ktReview(`Tag KT trên cuốc đang ${currentPts}đ, không rõ muốn làm gì`);
               }
               return;
             }
@@ -1213,6 +1239,28 @@ async function onMessage(sess, msg) {
     }
   } catch (e) {
     console.error(`[${sess.userId}] onMessage:`, e?.message || e);
+  }
+}
+
+// Tag KT nhưng không rơi vào trường hợp nào xử lý được (không tìm ra giao dịch,
+// không rõ lệnh, san điểm parse hỏng…) → vẫn đưa vào Chờ duyệt 0đ để KT tự xem lại,
+// thay vì im lặng bỏ qua khiến tin bị trôi mất.
+// addBaremPending dedup theo trip_msg_id=msgId nên gọi nhiều lần cũng chỉ tạo 1 dòng.
+async function ktReviewPending(sess, ctx, reason) {
+  const { dbGroupId, groupName, senderId, senderName, msgId, text, time } = ctx;
+  try {
+    const convo = JSON.stringify({ text, sender: senderName, time, source: 'kt_review', reason });
+    const pendingId = await dbm.addBaremPending(dbGroupId, senderId, null, 0, msgId, convo);
+    Promise.resolve(dbm.addBaremMsgRef(dbGroupId, msgId, msgId)).catch(() => {});
+    console.log(`[${sess.userId}] 📋 (KT-review) ${reason} → pending 0đ id=${pendingId} "${text.slice(0, 50)}"`);
+    sess.onEvent(sess.userId, {
+      type: 'pending_transfer', txId: pendingId,
+      groupId: dbGroupId, groupName,
+      fromUid: null, fromName: '', toUid: senderId, toName: senderName,
+      points: 0, rawText: text,
+    });
+  } catch (e) {
+    console.error(`[${sess.userId}] (KT-review) lỗi tạo pending:`, e?.message || e);
   }
 }
 
