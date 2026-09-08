@@ -1058,6 +1058,14 @@ export async function saveRawMessage(msgId, groupId, senderId, senderName, text,
   }
 }
 
+// Điền text sau khi dịch giọng nói xong (lúc lưu ban đầu tin voice chưa có text)
+export async function updateRawMessageText(msgId, text) {
+  if (!msgId || !text) return;
+  try {
+    await q("UPDATE raw_messages SET text=$2 WHERE msg_id=$1 AND (text IS NULL OR text='')", [String(msgId), text]);
+  } catch (e) { console.warn("updateRawMessageText:", e?.message || e); }
+}
+
 // Lấy tin thô của 1 nhóm Zalo trong khung giờ — dùng cho tính điểm bù
 export async function getRawMessagesInRange(zaloGroupId, fromMs, toMs, limit = 5000) {
   const r = await q(

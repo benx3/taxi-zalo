@@ -471,44 +471,31 @@ async function onMessage(sess, msg) {
         JSON.stringify(msg.data?.content)?.slice(0, 600));
     }
 
+    const msgTs = Number(msg.data?.ts || msg.data?.createTime || msg.data?.serverTime || Date.now());
+    const rawMsgId = String(msg.data?.msgId || msg.data?.cliMsgId || "");
+
+    // Lưu tin thô NGAY ĐÂY — phải trước nhánh voice return bên dưới, nếu không
+    // cuốc đăng bằng giọng nói sẽ không vào kho và Tính điểm bù bị đứt chuỗi.
+    // Voice lưu text rỗng trước, dịch xong sẽ cập nhật lại (xem handleVoiceTrip).
+    persistRawMessage(sess, msg, { groupId, senderId, senderName, rawMsgId, msgTs });
+
     // Phát hiện tin nhắn voice → dịch bất đồng bộ, không chặn listener
     const voiceUrl = getVoiceUrl(msg.data?.content, msg.data);
     if (voiceUrl) {
       if (config.voiceEnabled) {
         cacheRawMsg(sess, msgId, msg);
-        handleVoiceTrip(sess, { groupId, groupName, senderId, senderName, msgId, time }, msg, voiceUrl)
+        handleVoiceTrip(sess, { groupId, groupName, senderId, senderName, msgId, time, rawMsgId }, msg, voiceUrl)
           .catch(e => console.error(`[${sess.userId}] voice trip:`, e?.message || e));
       }
       return; // bỏ qua voice nếu tính năng tắt (không xử lý như text)
     }
 
     const text = typeof msg.data?.content === "string" ? msg.data.content : (msg.data?.content?.title || "");
-    const msgTs = Number(msg.data?.ts || msg.data?.createTime || msg.data?.serverTime || Date.now());
 
     // Dedup: đánh dấu đã xử lý (dùng cho catchup sau downtime thay vì raw_messages DB)
-    const rawMsgId = String(msg.data?.msgId || msg.data?.cliMsgId || "");
     if (rawMsgId) {
       sess.processedMsgIds.add(rawMsgId);
       if (sess.processedMsgIds.size > 5000) sess.processedMsgIds.clear();
-    }
-
-    // Lưu tin thô (giữ 7 ngày) để tính lại điểm khi bot xử lý sót.
-    // Lưu theo groupId ZALO THẬT (không phải instance riêng từng KT) → nhiều account bot
-    // cùng nhóm dùng chung một kho, bot nào chết thì bot khác đã ghi hộ.
-    // msg_id là PRIMARY KEY + Zalo gán cùng msgId cho mọi account → ai tới trước ghi trước.
-    if (sess.isAccountant && rawMsgId) {
-      const _qr = msg.data?.quote;
-      Promise.resolve(dbm.saveRawMessage(
-        rawMsgId, groupId, senderId, senderName, text, msg.data?.msgType || 0, msgTs,
-        {
-          cliMsgId: msg.data?.cliMsgId != null ? String(msg.data.cliMsgId) : null,
-          quoteCliMsgId: _qr?.cliMsgId != null ? String(_qr.cliMsgId) : null,
-          quoteGlobalMsgId: _qr?.globalMsgId != null && String(_qr.globalMsgId) !== groupId ? String(_qr.globalMsgId) : null,
-          quoteOwnerId: _qr?.ownerId != null ? String(_qr.ownerId) : null,
-          mentions: Array.isArray(msg.data?.mentions) && msg.data.mentions.length ? msg.data.mentions : null,
-          savedBy: sess.userId,
-        }
-      )).catch(() => {});
     }
 
     // Thu thập thành viên thụ động
@@ -1229,6 +1216,27 @@ async function onMessage(sess, msg) {
   }
 }
 
+// Lưu tin thô vào DB (giữ 7 ngày) làm nguồn cho "Tính điểm bù".
+// Lưu theo groupId ZALO THẬT (không phải instance riêng từng KT) → nhiều account bot
+// cùng nhóm dùng chung một kho, bot nào chết thì bot khác đã ghi hộ.
+// msg_id là PRIMARY KEY + Zalo gán cùng msgId cho mọi account → ai tới trước ghi trước.
+function persistRawMessage(sess, msg, { groupId, senderId, senderName, rawMsgId, msgTs }) {
+  if (!sess.isAccountant || !rawMsgId) return;
+  const text = typeof msg.data?.content === "string" ? msg.data.content : (msg.data?.content?.title || "");
+  const qr = msg.data?.quote;
+  Promise.resolve(dbm.saveRawMessage(
+    rawMsgId, groupId, senderId, senderName, text, msg.data?.msgType, msgTs,
+    {
+      cliMsgId: msg.data?.cliMsgId != null ? String(msg.data.cliMsgId) : null,
+      quoteCliMsgId: qr?.cliMsgId != null ? String(qr.cliMsgId) : null,
+      quoteGlobalMsgId: qr?.globalMsgId != null && String(qr.globalMsgId) !== groupId ? String(qr.globalMsgId) : null,
+      quoteOwnerId: qr?.ownerId != null ? String(qr.ownerId) : null,
+      mentions: Array.isArray(msg.data?.mentions) && msg.data.mentions.length ? msg.data.mentions : null,
+      savedBy: sess.userId,
+    }
+  )).catch(() => {});
+}
+
 // Lưu rawMsg vào cache (giới hạn 200 tin)
 function cacheRawMsg(sess, msgId, msg) {
   sess.rawMsgById.set(msgId, msg);
@@ -1243,6 +1251,10 @@ async function handleVoiceTrip(sess, base, rawMsg, voiceUrl) {
   const text = await transcribeVoice(voiceUrl, base.msgId);
   if (!text) return;
   console.log(`[${sess.userId}] 🎤 voice "${text.slice(0, 80)}"`);
+  // Điền text đã dịch vào bản ghi raw_messages (lúc lưu ban đầu text còn rỗng)
+  if (sess.isAccountant && base.rawMsgId) {
+    Promise.resolve(dbm.updateRawMessageText(base.rawMsgId, text)).catch(() => {});
+  }
   const trips = parseMultipleTrips({ ...base, text });
   if (trips.length === 0) return;
   for (let i = 0; i < trips.length; i++) {

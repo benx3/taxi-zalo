@@ -6,38 +6,14 @@
 // KHÁC onMessage(): module này THUẦN TÍNH TOÁN — không ghi DB, không bắn
 // event real-time. KT xem trước bảng kết quả rồi mới bấm duyệt ghi thật.
 //
-// Giới hạn Zalo API: getGroupChatHistory(groupId, count) chỉ lấy được
-// "N tin gần nhất", KHÔNG có lọc theo ngày/phân trang → phải tăng dần count
-// tới khi phủ được mốc bắt đầu. Nếu chạm trần API mà vẫn chưa phủ đủ thì
-// báo rõ phần thiếu thay vì âm thầm tính sót.
+// Nguồn dữ liệu: bảng raw_messages của chính hệ thống (giữ 7 ngày).
+// KHÔNG dùng API lịch sử của Zalo vì endpoint /api/group/history đã bị Zalo
+// gỡ bỏ (trả về trang 404 HTML với mọi method/host — đã kiểm chứng 8/9/2026).
 // ============================================================
 import { parseMultipleTrips, isConfirmMessage, isClaimMessage, parseBonus } from "./parser.js";
 
-const FETCH_STEPS = [200, 500, 1000, 2000];
-
 const tsOf = (m) => Number(m?.data?.ts || m?.data?.createTime || m?.data?.serverTime || 0);
 const textOf = (m) => (typeof m?.data?.content === "string" ? m.data.content : (m?.data?.content?.title || ""));
-
-// Lấy lịch sử nhóm đủ phủ tới mốc fromMs (tăng dần count).
-export async function fetchHistoryCovering(sess, zaloGroupId, fromMs) {
-  let best = { msgs: [], oldestMs: null, covered: false, fetched: 0 };
-  for (const count of FETCH_STEPS) {
-    let msgs = [];
-    try {
-      const r = await sess.api.getGroupChatHistory(zaloGroupId, count);
-      msgs = r?.groupMsgs || [];
-    } catch (e) {
-      if (best.msgs.length) break;               // đã có data vòng trước → dùng tạm
-      throw new Error("Không lấy được lịch sử Zalo: " + (e?.message || e));
-    }
-    msgs = msgs.slice().sort((a, b) => tsOf(a) - tsOf(b));
-    const oldestMs = msgs.length ? tsOf(msgs[0]) : null;
-    best = { msgs, oldestMs, covered: oldestMs != null && oldestMs <= fromMs, fetched: msgs.length };
-    if (best.covered) break;
-    if (msgs.length < count) break;              // API trả ít hơn yêu cầu → hết lịch sử hoặc chạm trần
-  }
-  return best;
-}
 
 // Chuyển dòng raw_messages (DB) → đúng shape tin nhắn Zalo mà simulateBarem() nhận.
 // Nhờ vậy toàn bộ logic mô phỏng dùng lại nguyên vẹn, không cần sửa gì.
