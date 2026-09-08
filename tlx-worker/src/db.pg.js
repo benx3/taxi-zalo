@@ -143,6 +143,11 @@ export async function initDb() {
     created_at  BIGINT NOT NULL
   )`);
   await q("CREATE INDEX IF NOT EXISTS idx_rawmsg_group ON raw_messages(group_id, created_at DESC)");
+  // Cột phục vụ tính lại điểm: quote (nối chuỗi cuốc→ok→ok ib) + mentions (san điểm)
+  for (const col of [
+    "cli_msg_id TEXT", "quote_cli_msg_id TEXT", "quote_global_msg_id TEXT",
+    "quote_owner_id TEXT", "mentions TEXT", "saved_by TEXT",
+  ]) await q(`ALTER TABLE raw_messages ADD COLUMN IF NOT EXISTS ${col}`);
   await q(`CREATE TABLE IF NOT EXISTS barem_msg_refs (
     group_id    TEXT NOT NULL,
     msg_id      TEXT NOT NULL,
@@ -1028,14 +1033,50 @@ export async function listRawMessages(groupId, { dateFrom, dateTo, search, limit
   const r = await q(sql, params);
   return r.rows;
 }
-export async function saveRawMessage(msgId, groupId, senderId, senderName, text, msgType, ts) {
-  if (!msgId || msgId.length < 3) return;
+// Lưu tin thô để tính lại điểm khi bot xử lý sót.
+// groupId ở đây LUÔN là zalo_group_id (ID nhóm Zalo thật), KHÔNG phải instance riêng của từng KT
+// → nhiều account bot cùng nhóm dùng chung một kho; bot nào chết thì bot khác vẫn ghi hộ.
+// msg_id là PRIMARY KEY và Zalo gán cùng msgId cho mọi account nhận → ON CONFLICT DO NOTHING
+// nghĩa là "ai tới trước ghi trước", không cần bầu leader.
+export async function saveRawMessage(msgId, groupId, senderId, senderName, text, msgType, ts, extra = {}) {
+  if (!msgId || String(msgId).length < 3) return;
   try {
     await q(
-      "INSERT INTO raw_messages(msg_id,group_id,sender_id,sender_name,text,msg_type,created_at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(msg_id) DO NOTHING",
-      [msgId, groupId, senderId || null, senderName || null, text || null, msgType || 0, ts || now()]
+      `INSERT INTO raw_messages
+       (msg_id,group_id,sender_id,sender_name,text,msg_type,created_at,
+        cli_msg_id,quote_cli_msg_id,quote_global_msg_id,quote_owner_id,mentions,saved_by)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT(msg_id) DO NOTHING`,
+      [String(msgId), groupId, senderId || null, senderName || null, text || null, msgType || 0, ts || now(),
+       extra.cliMsgId || null, extra.quoteCliMsgId || null, extra.quoteGlobalMsgId || null,
+       extra.quoteOwnerId || null, extra.mentions ? JSON.stringify(extra.mentions) : null, extra.savedBy || null]
     );
-  } catch {}
+  } catch (e) {
+    if (!/duplicate key/i.test(e?.message || "")) console.warn("saveRawMessage:", e?.message || e);
+  }
+}
+
+// Lấy tin thô của 1 nhóm Zalo trong khung giờ — dùng cho tính điểm bù
+export async function getRawMessagesInRange(zaloGroupId, fromMs, toMs, limit = 5000) {
+  const r = await q(
+    `SELECT * FROM raw_messages WHERE group_id=$1 AND created_at >= $2 AND created_at <= $3
+     ORDER BY created_at ASC LIMIT $4`,
+    [String(zaloGroupId), Number(fromMs), Number(toMs), limit]
+  );
+  return r.rows;
+}
+
+// Thống kê phạm vi dữ liệu đang có của 1 nhóm (để UI báo "chỉ có dữ liệu từ ...")
+export async function getRawMessageCoverage(zaloGroupId) {
+  const r = await q(
+    "SELECT count(*)::int AS cnt, MIN(created_at) AS oldest, MAX(created_at) AS newest FROM raw_messages WHERE group_id=$1",
+    [String(zaloGroupId)]
+  );
+  const row = r.rows[0] || {};
+  return {
+    count: Number(row.cnt || 0),
+    oldestMs: row.oldest != null ? Number(row.oldest) : null,
+    newestMs: row.newest != null ? Number(row.newest) : null,
+  };
 }
 export async function hasRawMessage(msgId) {
   if (!msgId) return false;
@@ -1043,12 +1084,15 @@ export async function hasRawMessage(msgId) {
   return r.rowCount > 0;
 }
 
+// Số ngày giữ tin thô — đủ để KT phát hiện sót và tính bù, vẫn nhẹ DB (~10MB)
+export const RAW_MSG_KEEP_DAYS = 7;
+
 export async function purgeOld() {
   const cutoff = now() - 60 * 86400000;
   const r = await q("DELETE FROM saved_trips WHERE taken_at < $1", [cutoff]);
   if (r.rowCount) console.log(`🧹 Đã xoá ${r.rowCount} cuốc cũ hơn 2 tháng.`);
-  const r2 = await q("DELETE FROM raw_messages WHERE created_at < $1", [now() - 3 * 86400000]);
-  if (r2.rowCount) console.log(`🧹 Đã xoá ${r2.rowCount} raw messages cũ hơn 3 ngày.`);
+  const r2 = await q("DELETE FROM raw_messages WHERE created_at < $1", [now() - RAW_MSG_KEEP_DAYS * 86400000]);
+  if (r2.rowCount) console.log(`🧹 Đã xoá ${r2.rowCount} raw messages cũ hơn ${RAW_MSG_KEEP_DAYS} ngày.`);
 }
 
 // ---------- Barem trip/claim log (DB persistence cho tripMsgCache / claimCache) ----------
@@ -1094,7 +1138,7 @@ const PURGEABLE = {
   barem_trip_log: 'created_at', barem_claim_log: 'created_at', barem_msg_refs: 'created_at',
   point_transactions: 'created_at', raw_messages: 'created_at', saved_trips: 'taken_at',
 };
-const PURGE_ALLOWED = new Set(['barem_msg_refs']);
+const PURGE_ALLOWED = new Set(['barem_msg_refs', 'raw_messages']);
 export async function purgeTable(table, days) {
   const col = PURGEABLE[table];
   if (!col) throw new Error('Bảng không được phép xóa: ' + table);

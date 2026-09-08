@@ -49,6 +49,7 @@ export const {
   resetPassword, getRevenueStats, getUserStats,
   saveZaloSession, getZaloSession, clearZaloSession,
   saveTrip, markTripWon, deleteSavedTrip, listSavedTrips, purgeOld,
+  saveRawMessage, listRawMessages, getRawMessagesInRange, getRawMessageCoverage,
   getSetting, setSetting,
   getAccountantGroups, getAccountantGroupsForAdmin, getGroupAccountants, getGroupZaloOwner, addAccountantGroup, removeAccountantGroup, migrateGroupInstanceForAccountant, setGroupPublicVisible, mergeGroupInstancesPreview, mergeGroupInstancesExecute,
   getMonitorGroups, addMonitorGroup, removeMonitorGroup,

@@ -516,28 +516,34 @@ app.post("/api/accountant/replay/preview", async (req, res) => {
   if (Number(toMs) <= Number(fromMs)) return res.status(400).json({ error: "Giờ kết thúc phải sau giờ bắt đầu" });
   if (!await checkGroupAccess(req, res, groupId)) return;
 
-  const sess = sm.getSession(a.userId);
-  if (!sess?.api) return res.status(400).json({ error: "Chưa kết nối Zalo — hãy quét QR trước" });
-
-  // groupId trong DB có thể khác zalo_group_id → tra ngược để gọi API Zalo
+  // Tin thô lưu theo zalo_group_id (dùng chung cho mọi account bot trong nhóm)
   const myGroups = await dbm.getAccountantGroups(a.userId);
   const g = myGroups.find(x => x.group_id === groupId);
   const zaloGroupId = g?.zalo_group_id || groupId;
 
   try {
-    const hist = await replay.fetchHistoryCovering(sess, zaloGroupId, Number(fromMs));
+    // Lấy sớm hơn khung giờ 6 tiếng để bắt được cuốc đăng trước nhưng chốt trong khung
+    const LOOKBACK = 6 * 3600 * 1000;
+    const rows = await dbm.getRawMessagesInRange(zaloGroupId, Number(fromMs) - LOOKBACK, Number(toMs));
+    const cov = await dbm.getRawMessageCoverage(zaloGroupId);
     const rulesRow = await dbm.getRules(groupId);
+
     const items = replay.simulateBarem({
-      msgs: hist.msgs, fromMs: Number(fromMs), toMs: Number(toMs),
+      msgs: replay.rowsToMessages(rows, zaloGroupId),
+      fromMs: Number(fromMs), toMs: Number(toMs),
       rulesRow, groupId, calcPoints: sm.calcBaremPoints,
     });
     await replay.markExisting(dbm, groupId, items);
+
     res.json({
       items,
       coverage: {
-        covered: hist.covered,
-        oldestMs: hist.oldestMs,
-        fetched: hist.fetched,
+        // Có phủ được mốc bắt đầu không (dữ liệu cũ nhất phải <= fromMs)
+        covered: cov.oldestMs != null && cov.oldestMs <= Number(fromMs),
+        oldestMs: cov.oldestMs,
+        newestMs: cov.newestMs,
+        totalStored: cov.count,
+        fetched: rows.length,
         hasRules: !!rulesRow,
       },
     });

@@ -83,9 +83,10 @@ export default function ReplayTab({ groupId }) {
           <History size={16} style={{ color: "var(--accent)" }} /> Đọc lại tin nhắn & tính điểm bù
         </div>
         <div style={{ fontSize: 13, color: "var(--ink-dim)", lineHeight: 1.6 }}>
-          Dùng khi bot mất kết nối Zalo và bỏ sót cuốc trong một khoảng thời gian. Hệ thống đọc lại lịch sử chat
+          Dùng khi bot bỏ sót cuốc trong một khoảng thời gian. Hệ thống đọc lại tin nhắn đã lưu
           <strong style={{ color: "var(--ink)" }}> trong ngày hôm nay</strong>, dựng lại luồng đăng cuốc → nhận → xác nhận,
-          rồi cho bạn duyệt trước khi ghi điểm.
+          rồi cho bạn duyệt trước khi ghi điểm. Tin nhắn được lưu <strong style={{ color: "var(--ink)" }}>7 ngày</strong>,
+          dùng chung cho mọi tài khoản bot trong nhóm — bot này chết thì bot kia đã ghi hộ.
         </div>
       </div>
 
@@ -129,14 +130,28 @@ export default function ReplayTab({ groupId }) {
       )}
 
       {/* ── Cảnh báo phạm vi lịch sử ─────────────────────── */}
-      {coverage && !coverage.covered && (
+      {coverage && coverage.totalStored === 0 && (
         <div style={{ background: "rgba(251,191,36,.1)", border: "1px solid rgba(251,191,36,.35)", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "#fbbf24", display: "flex", gap: 8 }}>
           <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>
-            Zalo chỉ trả về được <strong>{coverage.fetched} tin</strong>, cũ nhất lúc <strong>{fmtClock(coverage.oldestMs)}</strong> —
-            chưa lùi tới mốc <strong>{fromTime}</strong> bạn yêu cầu. Kết quả dưới đây chỉ tính được phần từ {fmtClock(coverage.oldestMs)} trở đi.
-            Phần trước đó cần nhập tay hoặc dùng Import Điểm.
+            Chưa có tin nhắn nào được lưu cho nhóm này. Việc lưu tin chỉ bắt đầu từ khi bot chạy phiên bản mới —
+            các cuốc trước đó phải dùng tab <strong>Nhập cuốc tay</strong>.
           </span>
+        </div>
+      )}
+      {coverage && coverage.totalStored > 0 && !coverage.covered && (
+        <div style={{ background: "rgba(251,191,36,.1)", border: "1px solid rgba(251,191,36,.35)", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "#fbbf24", display: "flex", gap: 8 }}>
+          <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>
+            Tin lưu sớm nhất của nhóm là <strong>{fmtClock(coverage.oldestMs)}</strong> — chưa lùi tới mốc <strong>{fromTime}</strong> bạn yêu cầu.
+            Kết quả dưới đây chỉ tính được phần từ {fmtClock(coverage.oldestMs)} trở đi; phần trước đó dùng tab <strong>Nhập cuốc tay</strong>.
+          </span>
+        </div>
+      )}
+      {coverage && coverage.totalStored > 0 && (
+        <div style={{ fontSize: 12, color: "var(--ink-dim)", marginBottom: 12 }}>
+          Kho tin nhóm này: <strong style={{ color: "var(--ink)" }}>{coverage.totalStored.toLocaleString()}</strong> tin đã lưu ·
+          đọc <strong style={{ color: "var(--ink)" }}>{coverage.fetched}</strong> tin trong khung giờ
         </div>
       )}
       {coverage && !coverage.hasRules && (

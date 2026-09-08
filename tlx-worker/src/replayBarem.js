@@ -39,6 +39,37 @@ export async function fetchHistoryCovering(sess, zaloGroupId, fromMs) {
   return best;
 }
 
+// Chuyển dòng raw_messages (DB) → đúng shape tin nhắn Zalo mà simulateBarem() nhận.
+// Nhờ vậy toàn bộ logic mô phỏng dùng lại nguyên vẹn, không cần sửa gì.
+export function rowsToMessages(rows, zaloGroupId) {
+  return rows.map((r) => {
+    let mentions = null;
+    if (r.mentions) { try { mentions = JSON.parse(r.mentions); } catch { mentions = null; } }
+    const hasQuote = r.quote_cli_msg_id || r.quote_global_msg_id;
+    return {
+      threadId: String(zaloGroupId),
+      type: 1,
+      data: {
+        msgId: r.msg_id,
+        cliMsgId: r.cli_msg_id || undefined,
+        ts: Number(r.created_at),
+        uidFrom: r.sender_id,
+        dName: r.sender_name || "Không rõ",
+        content: r.text || "",
+        msgType: r.msg_type || 0,
+        ...(mentions ? { mentions } : {}),
+        ...(hasQuote ? {
+          quote: {
+            cliMsgId: r.quote_cli_msg_id || undefined,
+            globalMsgId: r.quote_global_msg_id || undefined,
+            ownerId: r.quote_owner_id || undefined,
+          },
+        } : {}),
+      },
+    };
+  });
+}
+
 // Mô phỏng luồng barem trên tập tin nhắn.
 // Cache được dựng từ TOÀN BỘ tin lấy được (kể cả trước khung giờ) để bắt được
 // cuốc đăng trước 14h nhưng chốt trong 14h-21h; nhưng chỉ XUẤT kết quả cho

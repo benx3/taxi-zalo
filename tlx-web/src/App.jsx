@@ -76,7 +76,7 @@ const DATA_TABLES = [
   { key: 'barem_claim_log',    label: 'Log claim',          note: 'Cache tạm claim tài xế' },
   { key: 'barem_msg_refs',     label: 'Tra cứu tin nhắn',  note: 'Index hủy/điều chỉnh Section E', recommend: 180, purgeable: true },
   { key: 'point_transactions', label: 'Giao dịch điểm',    note: 'Lịch sử tính điểm barem' },
-  { key: 'raw_messages',       label: 'Tin nhắn thô',      note: 'Tin nhắn Zalo lưu debug' },
+  { key: 'raw_messages',       label: 'Tin nhắn thô',      note: 'Nguồn cho Tính điểm bù', recommend: 7, purgeable: true },
   { key: 'saved_trips',        label: 'Cuốc đã lưu',       note: 'Lịch sử cuốc xe tài xế' },
 ];
 function DataManagementSection({ flash, cardStyle }) {

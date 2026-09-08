@@ -492,6 +492,25 @@ async function onMessage(sess, msg) {
       if (sess.processedMsgIds.size > 5000) sess.processedMsgIds.clear();
     }
 
+    // Lưu tin thô (giữ 7 ngày) để tính lại điểm khi bot xử lý sót.
+    // Lưu theo groupId ZALO THẬT (không phải instance riêng từng KT) → nhiều account bot
+    // cùng nhóm dùng chung một kho, bot nào chết thì bot khác đã ghi hộ.
+    // msg_id là PRIMARY KEY + Zalo gán cùng msgId cho mọi account → ai tới trước ghi trước.
+    if (sess.isAccountant && rawMsgId) {
+      const _qr = msg.data?.quote;
+      Promise.resolve(dbm.saveRawMessage(
+        rawMsgId, groupId, senderId, senderName, text, msg.data?.msgType || 0, msgTs,
+        {
+          cliMsgId: msg.data?.cliMsgId != null ? String(msg.data.cliMsgId) : null,
+          quoteCliMsgId: _qr?.cliMsgId != null ? String(_qr.cliMsgId) : null,
+          quoteGlobalMsgId: _qr?.globalMsgId != null && String(_qr.globalMsgId) !== groupId ? String(_qr.globalMsgId) : null,
+          quoteOwnerId: _qr?.ownerId != null ? String(_qr.ownerId) : null,
+          mentions: Array.isArray(msg.data?.mentions) && msg.data.mentions.length ? msg.data.mentions : null,
+          savedBy: sess.userId,
+        }
+      )).catch(() => {});
+    }
+
     // Thu thập thành viên thụ động
     if (senderId && sess.isAccountant) {
       resolveGlobalId(sess, senderId).then(async ({ globalId, phone }) => {
