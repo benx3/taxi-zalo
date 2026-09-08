@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import { Plus, Trash2, Zap, AlertCircle, CheckCircle2, PenLine, ArrowRight } from "lucide-react";
 import { api } from "./api.js";
 
@@ -13,31 +14,72 @@ const inp = {
   background: "var(--bg)", color: "var(--ink)", fontSize: 13, boxSizing: "border-box",
 };
 
-/* ── Ô chọn thành viên có tìm kiếm ───────────────────────── */
+/* ── Ô chọn thành viên có tìm kiếm ───────────────────────────
+   Menu render qua portal ra <body> với position:fixed — vì bảng cha có
+   overflow-x:auto (CSS ép trục còn lại thành auto) sẽ cắt mất menu.        */
 function MemberPicker({ members, value, onChange, placeholder, exclude }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const boxRef = useRef(null);
+  const [pos, setPos] = useState(null);
+  const trigRef = useRef(null);
+  const menuRef = useRef(null);
+  const inputRef = useRef(null);
 
   const selected = members.find(m => m.zalo_uid === value);
 
+  // Tính vị trí menu theo ô bấm; tự lật lên trên nếu dưới không đủ chỗ
+  const place = () => {
+    const el = trigRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const MENU_H = 272;
+    const below = window.innerHeight - r.bottom;
+    const up = below < MENU_H && r.top > below;
+    setPos({
+      left: r.left,
+      width: Math.max(r.width, 230),
+      top: up ? undefined : r.bottom + 4,
+      bottom: up ? window.innerHeight - r.top + 4 : undefined,
+      maxH: Math.max(160, (up ? r.top : below) - 12),
+    });
+  };
+
+  useLayoutEffect(() => { if (open) place(); }, [open]);
+
   useEffect(() => {
-    const h = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
+    if (!open) return;
+    const onDown = (e) => {
+      if (trigRef.current?.contains(e.target) || menuRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    const onMove = () => place();
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onMove);
+    window.addEventListener("scroll", onMove, true);   // true: bắt cả cuộn trong bảng
+    setTimeout(() => inputRef.current?.focus(), 0);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onMove);
+      window.removeEventListener("scroll", onMove, true);
+    };
+  }, [open]);
 
   const list = useMemo(() => {
     const kw = q.trim().toLowerCase();
     return members
       .filter(m => m.zalo_uid !== exclude)
       .filter(m => !kw || nameOf(m).toLowerCase().includes(kw))
-      .slice(0, 60);
+      .slice(0, 80);
   }, [members, q, exclude]);
 
+  const pick = (m) => { onChange(m.zalo_uid, nameOf(m)); setOpen(false); setQ(""); };
+
   return (
-    <div ref={boxRef} style={{ position: "relative" }}>
-      <div onClick={() => { setOpen(v => !v); setQ(""); }}
+    <>
+      <div ref={trigRef} onClick={() => { setQ(""); setOpen(v => !v); }}
         style={{ ...inp, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6,
                  color: selected ? "var(--ink)" : "var(--ink-dim)", minHeight: 33 }}>
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -45,18 +87,22 @@ function MemberPicker({ members, value, onChange, placeholder, exclude }) {
         </span>
         <span style={{ fontSize: 10, color: "var(--ink-dim)", flexShrink: 0 }}>▾</span>
       </div>
-      {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 40,
-                      background: "var(--card)", border: "1px solid var(--line)", borderRadius: 10,
-                      boxShadow: "0 12px 32px rgba(0,0,0,.45)", overflow: "hidden", minWidth: 190 }}>
-          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm tên…"
-            style={{ ...inp, border: "none", borderBottom: "1px solid var(--line)", borderRadius: 0 }} />
-          <div style={{ maxHeight: 220, overflowY: "auto" }}>
+
+      {open && pos && createPortal(
+        <div ref={menuRef}
+          style={{ position: "fixed", left: pos.left, top: pos.top, bottom: pos.bottom, width: pos.width, zIndex: 9999,
+                   background: "var(--card)", border: "1px solid var(--line)", borderRadius: 10,
+                   boxShadow: "0 16px 40px rgba(0,0,0,.55)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && list.length) pick(list[0]); }}
+            placeholder="Gõ để tìm tên…"
+            style={{ ...inp, border: "none", borderBottom: "1px solid var(--line)", borderRadius: 0, flexShrink: 0 }} />
+          <div style={{ overflowY: "auto", maxHeight: pos.maxH }}>
             {list.map(m => (
-              <div key={m.zalo_uid} onClick={() => { onChange(m.zalo_uid, nameOf(m)); setOpen(false); }}
-                style={{ padding: "7px 10px", cursor: "pointer", fontSize: 13, display: "flex", justifyContent: "space-between", gap: 8,
+              <div key={m.zalo_uid} onClick={() => pick(m)}
+                style={{ padding: "8px 10px", cursor: "pointer", fontSize: 13, display: "flex", justifyContent: "space-between", gap: 8,
                          background: m.zalo_uid === value ? "rgba(52,211,153,.12)" : "transparent" }}
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,.06)"}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,.07)"}
                 onMouseLeave={e => e.currentTarget.style.background = m.zalo_uid === value ? "rgba(52,211,153,.12)" : "transparent"}>
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(m)}</span>
                 <span style={{ color: Number(m.points) >= 0 ? "#34d399" : "#f87171", fontSize: 11, fontFamily: "monospace", flexShrink: 0 }}>
@@ -64,11 +110,14 @@ function MemberPicker({ members, value, onChange, placeholder, exclude }) {
                 </span>
               </div>
             ))}
-            {list.length === 0 && <div style={{ padding: "12px 10px", fontSize: 12.5, color: "var(--ink-dim)", textAlign: "center" }}>Không tìm thấy</div>}
+            {list.length === 0 && (
+              <div style={{ padding: "14px 10px", fontSize: 12.5, color: "var(--ink-dim)", textAlign: "center" }}>
+                Không tìm thấy “{q}”
+              </div>
+            )}
           </div>
-        </div>
-      )}
-    </div>
+        </div>, document.body)}
+    </>
   );
 }
 
