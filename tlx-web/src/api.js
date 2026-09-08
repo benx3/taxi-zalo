@@ -50,6 +50,9 @@ export const api = {
   setAccountantGroup: (accountantId, groupId, groupName, action) => req("/api/admin/accountant-groups", { accountantId, groupId, groupName, action }),
   getDataStats: () => req("/api/admin/data-stats", null, "GET"),
   purgeTable: (table, days) => req("/api/admin/purge", { table, days }),
+  getLogs: ({ level = "problem", search = "", limit = 300, source = "live" } = {}) =>
+    req(`/api/admin/logs?level=${level}&search=${encodeURIComponent(search)}&limit=${limit}&source=${source}`, null, "GET"),
+  clearLogs: () => req("/api/admin/logs", null, "DELETE"),
   listAccountantGroups: () => req("/api/admin/accountant-groups", null, "GET"),
   monitorGroups: (userId) => req(`/api/admin/monitor-groups/${userId}`, null, "GET"),
   setMonitorGroup: (monitorId, groupId, groupName, action) => req("/api/admin/monitor-groups", { monitorId, groupId, groupName, action }),

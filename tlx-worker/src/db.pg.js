@@ -150,6 +150,15 @@ export async function initDb() {
   ]) await q(`ALTER TABLE raw_messages ADD COLUMN IF NOT EXISTS ${col}`);
   // msgType của Zalo là chuỗi ("webchat", "chat.photo"…) chứ không phải số như schema cũ đoán
   try { await q("ALTER TABLE raw_messages ALTER COLUMN msg_type TYPE TEXT USING msg_type::TEXT"); } catch {}
+
+  await q(`CREATE TABLE IF NOT EXISTS system_logs (
+    id         BIGSERIAL PRIMARY KEY,
+    level      TEXT NOT NULL,
+    source     TEXT,
+    message    TEXT NOT NULL,
+    created_at BIGINT NOT NULL
+  )`);
+  await q("CREATE INDEX IF NOT EXISTS idx_syslog_time ON system_logs(created_at DESC)");
   await q(`CREATE TABLE IF NOT EXISTS barem_msg_refs (
     group_id    TEXT NOT NULL,
     msg_id      TEXT NOT NULL,
@@ -1058,6 +1067,31 @@ export async function saveRawMessage(msgId, groupId, senderId, senderName, text,
   }
 }
 
+// ---------- Log hệ thống (chỉ warn/error, để admin xem trên web) ----------
+export async function addSystemLog(level, source, message, ts) {
+  try {
+    await q("INSERT INTO system_logs(level,source,message,created_at) VALUES($1,$2,$3,$4)",
+      [level, source || null, String(message).slice(0, 4000), ts || now()]);
+  } catch { /* không để lỗi ghi log làm hỏng luồng chính */ }
+}
+
+export async function listSystemLogs({ level, search, limit = 300, sinceMs } = {}) {
+  let sql = "SELECT * FROM system_logs WHERE 1=1";
+  const p = []; let i = 1;
+  if (level === "error" || level === "warn") { sql += ` AND level=$${i++}`; p.push(level); }
+  if (sinceMs) { sql += ` AND created_at >= $${i++}`; p.push(Number(sinceMs)); }
+  if (search)  { sql += ` AND (LOWER(message) LIKE $${i} OR LOWER(COALESCE(source,'')) LIKE $${i})`; p.push("%" + String(search).toLowerCase() + "%"); i++; }
+  sql += ` ORDER BY created_at DESC LIMIT $${i}`;
+  p.push(Math.min(Number(limit) || 300, 1000));
+  const r = await q(sql, p);
+  return r.rows;
+}
+
+export async function clearSystemLogs() {
+  const r = await q("DELETE FROM system_logs");
+  return r.rowCount;
+}
+
 // Điền text sau khi dịch giọng nói xong (lúc lưu ban đầu tin voice chưa có text)
 export async function updateRawMessageText(msgId, text) {
   if (!msgId || !text) return;
@@ -1104,6 +1138,8 @@ export async function purgeOld() {
   if (r.rowCount) console.log(`🧹 Đã xoá ${r.rowCount} cuốc cũ hơn 2 tháng.`);
   const r2 = await q("DELETE FROM raw_messages WHERE created_at < $1", [now() - RAW_MSG_KEEP_DAYS * 86400000]);
   if (r2.rowCount) console.log(`🧹 Đã xoá ${r2.rowCount} raw messages cũ hơn ${RAW_MSG_KEEP_DAYS} ngày.`);
+  const r3 = await q("DELETE FROM system_logs WHERE created_at < $1", [now() - 7 * 86400000]);
+  if (r3.rowCount) console.log(`🧹 Đã xoá ${r3.rowCount} dòng log cũ hơn 7 ngày.`);
 }
 
 // ---------- Barem trip/claim log (DB persistence cho tripMsgCache / claimCache) ----------
@@ -1148,8 +1184,9 @@ export async function clearBaremLogs() {
 const PURGEABLE = {
   barem_trip_log: 'created_at', barem_claim_log: 'created_at', barem_msg_refs: 'created_at',
   point_transactions: 'created_at', raw_messages: 'created_at', saved_trips: 'taken_at',
+  system_logs: 'created_at',
 };
-const PURGE_ALLOWED = new Set(['barem_msg_refs', 'raw_messages']);
+const PURGE_ALLOWED = new Set(['barem_msg_refs', 'raw_messages', 'system_logs']);
 export async function purgeTable(table, days) {
   const col = PURGEABLE[table];
   if (!col) throw new Error('Bảng không được phép xóa: ' + table);

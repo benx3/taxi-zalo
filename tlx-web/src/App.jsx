@@ -3,9 +3,10 @@ import {
   Shield, CreditCard, Ban, RefreshCw, X, User, TrendingUp,
   Users, CheckCircle2, Lock, AlertTriangle, LogOut, Settings,
   Search, Phone, Mic, Eye, EyeOff, GitMerge, UserPlus, Activity, Bot,
-  Database, Trash2, Menu, Award, BarChart2
+  Database, Trash2, Menu, Award, BarChart2, ScrollText
 } from "lucide-react";
 import { api, getToken, setToken } from "./api.js";
+import LogsTab from "./LogsTab.jsx";
 
 export default function App() {
   const [me, setMe] = useState(null);
@@ -78,6 +79,7 @@ const DATA_TABLES = [
   { key: 'point_transactions', label: 'Giao dịch điểm',    note: 'Lịch sử tính điểm barem' },
   { key: 'raw_messages',       label: 'Tin nhắn thô',      note: 'Nguồn cho Tính điểm bù', recommend: 7, purgeable: true },
   { key: 'saved_trips',        label: 'Cuốc đã lưu',       note: 'Lịch sử cuốc xe tài xế' },
+  { key: 'system_logs',        label: 'Log hệ thống',      note: 'Lỗi/cảnh báo cho tab Log', recommend: 7, purgeable: true },
 ];
 function DataManagementSection({ flash, cardStyle }) {
   const [stats, setStats] = useState(null);
@@ -450,6 +452,7 @@ function AdminApp({ me, onLogout }) {
     {key:"accountant-groups",icon:CreditCard,label:"Nhóm KT"},
     {key:"group-points",icon:Award,label:"Điểm nhóm"},
     {key:"health",icon:Activity,label:"Sức khỏe"},
+    {key:"logs",icon:ScrollText,label:"Log hệ thống"},
     {key:"stats",icon:TrendingUp,label:"Thống kê"},
     {key:"settings",icon:Settings,label:"Cài đặt"},
   ];
@@ -507,6 +510,7 @@ function AdminApp({ me, onLogout }) {
           {adminTab==="accountant-groups"&&<div style={{padding:"20px 24px"}}><AccountantGroupsTab/></div>}
           {adminTab==="group-points"&&<div style={{padding:"20px 24px"}}><AdminGroupPointsTab/></div>}
           {adminTab==="health"&&<div style={{padding:"20px 24px"}}><SessionHealthTab/></div>}
+          {adminTab==="logs"&&<div style={{height:"100%"}}><LogsTab cardStyle={{background:"var(--card)",border:"1px solid var(--line)",borderRadius:12}}/></div>}
           {adminTab==="stats"&&<div style={{padding:"20px 24px"}}><AdminStatsTab/></div>}
           {adminTab==="settings"&&<div style={{padding:"20px 24px",maxWidth:560}}><AdminSettingsTab/></div>}
           {adminTab==="users"&&(

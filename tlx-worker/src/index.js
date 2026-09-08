@@ -13,9 +13,14 @@ import * as dbm from "./dbLayer.js";
 import * as sm from "./sessionManager.js";
 import * as replay from "./replayBarem.js";
 import { parseMultipleTrips } from "./parser.js";
+import * as logStore from "./logStore.js";
 import { config } from "./config.js";
 
 const PORT = Number(process.env.PORT || 8082);
+
+// Thu log hệ thống để admin xem trên web (vẫn in stdout như cũ cho PM2).
+// Bật sớm nhất có thể để bắt được cả lỗi lúc khởi động.
+logStore.initLogCapture((level, source, message, ts) => dbm.addSystemLog(level, source, message, ts));
 
 await dbm.ensureSeed();
 await dbm.purgeOld();
@@ -287,6 +292,38 @@ app.get("/api/admin/data-stats", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   res.json(await dbm.getDataStats());
 });
+// ---------- Admin: xem log hệ thống (khỏi SSH vào VPS) ----------
+app.get("/api/admin/logs", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { level = "problem", search = "", limit = 300, source = "live" } = req.query;
+  try {
+    if (source === "saved") {
+      // Từ DB — sống sót qua restart, chỉ có warn/error
+      const rows = await dbm.listSystemLogs({
+        level: level === "problem" ? null : level,
+        search, limit: Number(limit),
+      });
+      return res.json({
+        source: "saved",
+        entries: rows.map(r => ({ id: r.id, level: r.level, source: r.source, message: r.message, ts: Number(r.created_at) })),
+        stats: logStore.getLogStats(),
+      });
+    }
+    // Từ RAM — đầy đủ mọi mức của tiến trình đang chạy
+    res.json({
+      source: "live",
+      entries: logStore.getLiveLogs({ level, search, limit: Number(limit) }),
+      stats: logStore.getLogStats(),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete("/api/admin/logs", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try { res.json({ deleted: await dbm.clearSystemLogs() }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post("/api/admin/purge", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   const { table, days } = req.body;
