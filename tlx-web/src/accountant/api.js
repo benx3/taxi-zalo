@@ -56,6 +56,10 @@ enrichMemberNames: (groupId) => req(`/api/accountant/groups/${encodeURIComponent
   replayPreview: (groupId, fromMs, toMs) => req("/api/accountant/replay/preview", { groupId, fromMs, toMs }),
   replayApply: (groupId, items) => req("/api/accountant/replay/apply", { groupId, items }),
 
+  // Thêm cuốc xe thủ công
+  manualSuggest: (groupId, texts) => req("/api/accountant/manual-trips/suggest", { groupId, texts }),
+  manualApply: (groupId, rows, atMs) => req("/api/accountant/manual-trips/apply", { groupId, rows, atMs }),
+
   // Giao dịch điểm
   listTransactions: (groupId, zaloUid, limit, dateFrom, dateTo) => {
     let url = `/api/accountant/transactions?groupId=${encodeURIComponent(groupId)}`;

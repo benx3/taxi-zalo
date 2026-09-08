@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Users, Clock, BarChart2, User, LogOut, KeyRound, X, Check,
-         Wifi, WifiOff, QrCode, Bell, Lock, Search, RefreshCw, FileUp, Menu, History } from "lucide-react";
+         Wifi, WifiOff, QrCode, Bell, Lock, Search, RefreshCw, FileUp, Menu, History, PenLine } from "lucide-react";
 import { api } from "./api.js";
 import MembersTab from "./MembersTab.jsx";
 import TransactionsTab from "./TransactionsTab.jsx";
@@ -8,6 +8,7 @@ import BaremTab from "./BaremTab.jsx";
 import PendingTab from "./PendingTab.jsx";
 import ImportPointsTab from "./ImportPointsTab.jsx";
 import ReplayTab from "./ReplayTab.jsx";
+import ManualTripTab from "./ManualTripTab.jsx";
 
 const TABS = [
   { key: "members",       icon: Users,         label: "Thành viên" },
@@ -15,6 +16,7 @@ const TABS = [
   { key: "pending",       icon: Bell,           label: "Chờ duyệt" },
   { key: "barem",         icon: BarChart2,      label: "Barem" },
   { key: "import-points", icon: FileUp,         label: "Import Điểm" },
+  { key: "manual-trip",   icon: PenLine,        label: "Nhập cuốc tay" },
   { key: "replay",        icon: History,        label: "Tính điểm bù" },
   { key: "account",       icon: User,           label: "Tài khoản" },
 ];
@@ -170,6 +172,7 @@ export default function AccountantApp({ me: initMe, onLogout, worker }) {
           {activeGroup && tab === "pending"       && <PendingTab groupId={activeGroup.group_id} liveItems={pendingTransfers} onProcessed={removePending} />}
           {activeGroup && tab === "barem"         && <BaremTab groupId={activeGroup.group_id} />}
           {activeGroup && tab === "import-points" && <ImportPointsTab groupId={activeGroup.group_id} />}
+          {activeGroup && tab === "manual-trip"   && <ManualTripTab groupId={activeGroup.group_id} />}
           {activeGroup && tab === "replay"        && <ReplayTab groupId={activeGroup.group_id} />}
           {tab === "account"                      && <AccountTab me={me} onLogout={onLogout} />}
         </div>

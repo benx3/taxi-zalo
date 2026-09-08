@@ -12,6 +12,7 @@ import "dotenv/config";
 import * as dbm from "./dbLayer.js";
 import * as sm from "./sessionManager.js";
 import * as replay from "./replayBarem.js";
+import { parseMultipleTrips } from "./parser.js";
 import { config } from "./config.js";
 
 const PORT = Number(process.env.PORT || 8082);
@@ -541,6 +542,68 @@ app.post("/api/accountant/replay/preview", async (req, res) => {
       },
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------- Thêm cuốc xe thủ công ----------
+// Gợi ý điểm: parse nội dung cuốc → loại + giá → tra barem của nhóm
+app.post("/api/accountant/manual-trips/suggest", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  const { groupId, texts } = req.body;
+  if (!groupId || !Array.isArray(texts)) return res.status(400).json({ error: "Thiếu groupId hoặc nội dung" });
+  if (!await checkGroupAccess(req, res, groupId)) return;
+  try {
+    const rulesRow = await dbm.getRules(groupId);
+    const out = texts.map((text) => {
+      const trips = parseMultipleTrips({
+        groupId, groupName: "", senderId: "manual", senderName: "manual",
+        msgId: "manual", text: String(text || ""), time: "",
+      });
+      if (!trips.length) return { type: null, price: null, points: null };
+      const t = trips.find(x => x.price) || trips[0];
+      return {
+        type: t.type, price: t.price,
+        points: t.explicitPoints > 0 ? t.explicitPoints : sm.calcBaremPoints(rulesRow, t.type, t.price),
+        explicit: t.explicitPoints > 0,
+      };
+    });
+    res.json({ suggestions: out, hasRules: !!rulesRow });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Ghi thật: mỗi dòng = 1 cuốc (chủ cuốc +N, người nhận −N) — giống hệt luồng barem tự động
+app.post("/api/accountant/manual-trips/apply", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  const { groupId, rows, atMs } = req.body;
+  if (!groupId || !Array.isArray(rows) || !rows.length) return res.status(400).json({ error: "Chưa có dòng nào để ghi" });
+  if (!await checkGroupAccess(req, res, groupId)) return;
+
+  let created = 0; const errors = [];
+  const stamp = Number(atMs) || Date.now();
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    try {
+      if (!r.posterUid || !r.takerUid) throw new Error("Thiếu chủ cuốc hoặc người nhận");
+      if (r.posterUid === r.takerUid) throw new Error("Chủ cuốc và người nhận không được trùng nhau");
+      const pts = Number(r.points);
+      if (!Number.isFinite(pts) || pts < 0) throw new Error("Điểm không hợp lệ");
+
+      const txMsgId = `manual_${stamp}_${i}`;
+      const timeStr = new Date(stamp).toLocaleTimeString("vi-VN", { hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
+      const convo = JSON.stringify({
+        tripTime: timeStr, tripPoster: r.posterName || "", tripText: r.tripText || "",
+        claimTime: timeStr, claimer: r.takerName || "", claimText: "ok",
+        confirmTime: timeStr, confirmPoster: r.posterName || "", confirmText: "ok ib",
+        manual: true, enteredBy: a.userId,
+      });
+      const reason = `Nhập tay${r.note ? " — " + r.note : ""}`;
+      await dbm.adjustPoints(groupId, r.posterUid, +pts, reason, "barem", txMsgId, null, r.posterUid, convo);
+      await dbm.adjustPoints(groupId, r.takerUid,  -pts, reason, "barem", txMsgId, r.takerUid, null, convo);
+      await Promise.resolve(dbm.addBaremMsgRef(groupId, txMsgId, txMsgId)).catch(() => {});
+      created++;
+    } catch (e) { errors.push({ row: i + 1, error: e?.message || String(e) }); }
+  }
+  console.log(`[manual-trips] ${a.userId} nhóm=${groupId}: ghi ${created}/${rows.length} cuốc`);
+  res.json({ created, errors });
 });
 
 // Duyệt: ghi thật những dòng KT đã chọn
