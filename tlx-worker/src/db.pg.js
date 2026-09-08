@@ -148,6 +148,8 @@ export async function initDb() {
     "cli_msg_id TEXT", "quote_cli_msg_id TEXT", "quote_global_msg_id TEXT",
     "quote_owner_id TEXT", "mentions TEXT", "saved_by TEXT",
   ]) await q(`ALTER TABLE raw_messages ADD COLUMN IF NOT EXISTS ${col}`);
+  // msgType của Zalo là chuỗi ("webchat", "chat.photo"…) chứ không phải số như schema cũ đoán
+  try { await q("ALTER TABLE raw_messages ALTER COLUMN msg_type TYPE TEXT USING msg_type::TEXT"); } catch {}
   await q(`CREATE TABLE IF NOT EXISTS barem_msg_refs (
     group_id    TEXT NOT NULL,
     msg_id      TEXT NOT NULL,
@@ -1046,7 +1048,8 @@ export async function saveRawMessage(msgId, groupId, senderId, senderName, text,
        (msg_id,group_id,sender_id,sender_name,text,msg_type,created_at,
         cli_msg_id,quote_cli_msg_id,quote_global_msg_id,quote_owner_id,mentions,saved_by)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT(msg_id) DO NOTHING`,
-      [String(msgId), groupId, senderId || null, senderName || null, text || null, msgType || 0, ts || now(),
+      [String(msgId), groupId, senderId || null, senderName || null, text || null,
+       msgType != null ? String(msgType) : null, ts || now(),
        extra.cliMsgId || null, extra.quoteCliMsgId || null, extra.quoteGlobalMsgId || null,
        extra.quoteOwnerId || null, extra.mentions ? JSON.stringify(extra.mentions) : null, extra.savedBy || null]
     );
