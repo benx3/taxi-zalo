@@ -11,6 +11,7 @@ import "dotenv/config";
 
 import * as dbm from "./dbLayer.js";
 import * as sm from "./sessionManager.js";
+import * as replay from "./replayBarem.js";
 import { config } from "./config.js";
 
 const PORT = Number(process.env.PORT || 8082);
@@ -502,6 +503,56 @@ app.post("/api/accountant/members/recalc-points", async (req, res) => {
   try {
     const changed = await dbm.recalcMemberPoints(groupId);
     res.json({ ok: true, changed });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------- Đọc lại tin nhắn & tính điểm bù (khi bot mất kết nối) ----------
+// Xem trước: lấy lịch sử Zalo trong khung giờ, mô phỏng barem, KHÔNG ghi DB
+app.post("/api/accountant/replay/preview", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  const { groupId, fromMs, toMs } = req.body;
+  if (!groupId || !fromMs || !toMs) return res.status(400).json({ error: "Thiếu groupId hoặc khung giờ" });
+  if (Number(toMs) <= Number(fromMs)) return res.status(400).json({ error: "Giờ kết thúc phải sau giờ bắt đầu" });
+  if (!await checkGroupAccess(req, res, groupId)) return;
+
+  const sess = sm.getSession(a.userId);
+  if (!sess?.api) return res.status(400).json({ error: "Chưa kết nối Zalo — hãy quét QR trước" });
+
+  // groupId trong DB có thể khác zalo_group_id → tra ngược để gọi API Zalo
+  const myGroups = await dbm.getAccountantGroups(a.userId);
+  const g = myGroups.find(x => x.group_id === groupId);
+  const zaloGroupId = g?.zalo_group_id || groupId;
+
+  try {
+    const hist = await replay.fetchHistoryCovering(sess, zaloGroupId, Number(fromMs));
+    const rulesRow = await dbm.getRules(groupId);
+    const items = replay.simulateBarem({
+      msgs: hist.msgs, fromMs: Number(fromMs), toMs: Number(toMs),
+      rulesRow, groupId, calcPoints: sm.calcBaremPoints,
+    });
+    await replay.markExisting(dbm, groupId, items);
+    res.json({
+      items,
+      coverage: {
+        covered: hist.covered,
+        oldestMs: hist.oldestMs,
+        fetched: hist.fetched,
+        hasRules: !!rulesRow,
+      },
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Duyệt: ghi thật những dòng KT đã chọn
+app.post("/api/accountant/replay/apply", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  const { groupId, items } = req.body;
+  if (!groupId || !Array.isArray(items)) return res.status(400).json({ error: "Thiếu groupId hoặc danh sách" });
+  if (!await checkGroupAccess(req, res, groupId)) return;
+  try {
+    const r = await replay.applyItems(dbm, groupId, items);
+    console.log(`[replay] ${a.userId} nhóm=${groupId}: tạo ${r.created}, pending ${r.pending}, bỏ qua ${r.skipped}`);
+    res.json(r);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

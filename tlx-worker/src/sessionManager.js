@@ -375,7 +375,7 @@ const PARSER_TO_BAREM = {
   "Sân bay":         ["san_bay_don", "san_bay_tien", "san_bay_2c"], // fallback khi không detect được
 };
 
-function calcBaremPoints(rulesRow, parserType, price) {
+export function calcBaremPoints(rulesRow, parserType, price) {
   if (!rulesRow?.rules_json) return 0;
   let parsed;
   try { parsed = JSON.parse(rulesRow.rules_json); } catch { return 0; }

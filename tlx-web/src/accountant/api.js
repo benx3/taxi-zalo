@@ -52,6 +52,10 @@ enrichMemberNames: (groupId) => req(`/api/accountant/groups/${encodeURIComponent
   deleteMember: (groupId, zaloUid) => req(`/api/accountant/members/${encodeURIComponent(groupId)}/${encodeURIComponent(zaloUid)}`, null, "DELETE"),
   recalcMemberPoints: (groupId) => req("/api/accountant/members/recalc-points", { groupId }),
 
+  // Đọc lại tin nhắn & tính điểm bù
+  replayPreview: (groupId, fromMs, toMs) => req("/api/accountant/replay/preview", { groupId, fromMs, toMs }),
+  replayApply: (groupId, items) => req("/api/accountant/replay/apply", { groupId, items }),
+
   // Giao dịch điểm
   listTransactions: (groupId, zaloUid, limit, dateFrom, dateTo) => {
     let url = `/api/accountant/transactions?groupId=${encodeURIComponent(groupId)}`;
