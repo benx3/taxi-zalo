@@ -1,271 +1,290 @@
-# Nội Quy Đăng Cuốc Xe — Hệ Thống Tính Điểm Tự Động
+# HƯỚNG DẪN ĐĂNG & NHẬN CUỐC XE
+### Dành cho tài xế trong nhóm — Hệ thống tính điểm tự động
 
-> Hệ thống đọc tin nhắn và tính điểm tự động. Viết đúng format thì điểm tính đúng — viết sai thì hệ thống bỏ qua hoặc tính sai.
-
----
-
-## 1. QUY TẮC VÀNG — BẮT BUỘC
-
-### Tin đăng cuốc phải có GIÁ TIỀN
-Hệ thống chỉ nhận diện cuốc xe khi tin nhắn có giá. Không có giá → không tính điểm.
-
-| Viết đúng | Viết sai |
-|---|---|
-| `300k` | `ba trăm` |
-| `1tr500` | `1 triệu rưỡi` |
-| `1.500.000đ` | `1,5 triệu đ` |
+> **Đọc 2 phút, nhớ 3 điều:**
+>
+> **1.** Đăng cuốc phải có **giá tiền** — **2.** Nhận cuốc chỉ gõ **ok** (thật ngắn) — **3.** Chủ cuốc chốt bằng **ok ib**
+>
+> Hệ thống đọc tin nhắn trong nhóm và tự tính điểm. Viết đúng thì điểm vào đúng. Viết sai thì hệ thống không hiểu, điểm không được tính — mất công cả nhà.
 
 ---
 
-## 2. FORMAT TUYẾN ĐƯỜNG
+## BẢNG TRA NHANH
 
-Dùng dấu `---` hoặc `>>>` để phân tách **điểm đón → điểm trả**.
-
-```
-[điểm đón] --- [điểm trả] [giá]
-[điểm đón] >>> [điểm trả] [giá]
-```
-
-**Ví dụ đúng:**
-```
-Mỹ Đình --- Bắc Ninh 350k
-Nội Bài >>> Hà Đông 400k
-```
-
-**Lưu ý:**
-- Hệ thống lấy phần **cuối cùng trước dấu phân tách** làm điểm đón, phần **sau dấu phân tách** làm điểm trả
-- Ghi chú thêm trong ngoặc `()` không ảnh hưởng đến điểm đón/trả: `(cần có mặt 8h) Mỹ Đình --- Bắc Ninh 350k`
-- Không nhất thiết phải dùng `---`, cũng nhận: `→`, `>>`, `=>>>`
-
----
-
-## 3. LOẠI CUỐC VÀ TỪ KHOÁ NHẬN DIỆN
-
-Hệ thống tự xác định loại cuốc qua từ khoá trong tin. **Bắt buộc có từ khoá** nếu muốn tính điểm đúng barem.
-
-### 3.1 Ghép khách
-
-| Loại | Từ khoá | Ví dụ |
+| Việc cần làm | Gõ thế nào | Ví dụ |
 |---|---|---|
-| Ghép 1 ghế | `1k` hoặc `1gh` hoặc `1ghế` (hoặc không ghi) | `Mỹ Đình --- Bắc Ninh 1k 350k` |
-| Ghép 2 khách | `2k` hoặc `2gh` hoặc `2ghế` | `Mỹ Đình --- Bắc Ninh 2k 350k` |
-| Ghép 3 khách | `3k` hoặc `3gh` | `Mỹ Đình --- Bắc Ninh 3k 350k` |
-
-> Không ghi số ghế → hệ thống mặc định **Ghép 1**.
-
-### 3.2 Bao xe
-
-| Loại | Từ khoá |
-|---|---|
-| Bao xe 1 chiều | `bx`, `bxe`, `bao xe` |
-| Bao xe 2 chiều | `bx 2c`, `bxe 2c`, `bao xe 2 chiều` |
-
-**Ví dụ:**
-```
-bx Mỹ Đình --- Hải Phòng 900k
-bao xe 2c Hà Nội --- Quảng Ninh 1tr200
-```
-
-### 3.3 Sân bay
-
-Hệ thống nhận diện qua: `sân bay`, `T1`, `T2`, `NB`, `Nội Bài`, `sân quốc tế`, `sân quốc nội`, `bay quốc tế`, `bay quốc nội`, `hạ sân`, `hạ cánh`, `sảnh`.
-
-| Loại | Từ khoá nhận biết chiều |
-|---|---|
-| **Sân bay đón** (đón khách từ sân bay về) | `hạ sân`, `hạ cánh`, `đón`, `đáp xuống`, hoặc có số hiệu chuyến + giờ hạ |
-| **Sân bay tiễn** (đưa khách ra sân bay) | `tiễn`, `đưa đi` |
-| **Sân bay 2 chiều** | `2c`, `2 chiều` |
-
-**Ví dụ đúng:**
-```
-VJ933 dự 13h03 hạ sân quốc tế --- Đọi Sơn Duy Tiên 600k
-Tiễn sân bay T1 Nội Bài --- Cầu Giấy 350k
-Sân bay đón 2 chiều Nội Bài --- Hoàng Mai 700k
-```
-
-> Không ghi rõ chiều → hệ thống xếp **"Sân bay"** (kế toán có thể điều chỉnh).
-
-### 3.4 Hàng / Ship
-
-Từ khoá: `ship`, `gửi hàng`, `chở hàng`, `giao hàng`, `csct đồ`, `đồ` (đứng đầu), `kiện hàng`, `bao hàng`, `hàng nhỏ/nặng/lớn/gọn`.
-
-**Ví dụ:**
-```
-Csct đồ 45kg gọn để cốp. Lấy KCN Quang Minh --- KCN DV1 và KCN DV3 300k
-Ship hàng Cầu Giấy --- Bắc Từ Liêm 150k
-```
+| Đăng cuốc | [giờ] [loại] [điểm đón] >> [điểm đến] [giá] | `19h 1k Mỹ Đình >> Bắc Ninh 350k` |
+| Nhận cuốc | Reply tin đăng, gõ ok | `ok` |
+| Nhận kèm thỏa thuận điểm | ok [số]đ | `ok 1.5đ` |
+| Chủ cuốc chốt tài xế | Reply tin nhận, gõ ok ib | `ok ib` |
+| Chủ cuốc chốt kèm điểm | ok ib [số]đ | `ok ib 2đ` |
+| Cho điểm người khác | san @[tên] [số]đ | `san @Tuấn 5đ` |
+| Nhờ kế toán xem lại | Tag @kế toán + nói rõ việc | `@kế toán cuốc này tính nhầm` |
 
 ---
 
-## 4. THỜI GIAN
+# PHẦN 1 — ĐĂNG CUỐC
 
-| Từ khoá | Ý nghĩa |
+## 1.1. Bắt buộc phải có giá tiền
+
+Không có giá thì hệ thống **không coi là cuốc xe**.
+
+| Viết được | Không nhận |
 |---|---|
-| `csct`, `cnct`, `đi ngay`, `đi luôn`, `gấp` | Đi ngay |
-| `30p`, `15p` | Bao nhiêu phút nữa đi |
-| `8h`, `13h30`, `6h30` | Giờ cụ thể |
-| `sm`, `sáng mai`, `ngày mai`, `mai` | Ngày mai |
-| Không ghi | Linh hoạt |
+| `350k` | ba trăm rưỡi |
+| `1tr500` hoặc `1tr5` | 1 triệu rưỡi |
+| `1.500.000đ` | giá thỏa thuận |
 
----
+## 1.2. Dấu phân tách tuyến đường
 
-## 5. CÁCH NHẬN CUỐC (tài xế reply vào tin đăng)
+Ngăn **điểm đón** và **điểm đến** bằng một trong các dấu sau — dùng dấu nào cũng được:
 
-### 5.1 Nhận bình thường
+    >>      >>>      -->      --->      ->      →      ...
 
-Reply vào tin đăng cuốc bằng một trong các từ ngắn sau:
+Hoặc dùng chữ: **về · lên · đi · ra · sang**
 
-```
-ok      oke      oki      ib
-```
+Ví dụ:
 
-> **Lưu ý:** Không kèm giá tiền khi nhận. `ok 300k` bị hệ thống hiểu là cuốc mới, không phải nhận cuốc.
+    Mỹ Đình >> Bắc Ninh 350k
+    Nội Bài --> Hà Đông 400k
+    Phủ Lý về Hà Nội 500k
 
----
+## 1.3. Ghi rõ loại cuốc
 
-### 5.2 Nhận kèm thoả thuận điểm
+Không ghi loại thì hệ thống mặc định là **Ghép 1 khách** — dễ tính thiếu điểm.
 
-Nếu tài xế và chủ cuốc đã thoả thuận điểm khác barem, tài xế ghi điểm ngay trong tin nhận:
+### Ghép khách
 
-| Cú pháp | Ví dụ |
-|---|---|
-| ok + số + đơn vị | `ok 1đ` · `oke 2d` · `okie 1.5đ` |
-| ok + số + từ đầy đủ | `ok 1 điểm` · `oke 0,5 diem` |
-| ok + ký hiệu +-/−+ | `ok +-1.5` · `oke -+2d` · `okie +-1điểm` |
-
-```
-ok 1đ
-oke 1.5đ
-okie +-1d
-ok 1 điểm
-ib -+0,5đ
-```
-
-> Điểm thoả thuận trong tin nhận được **ưu tiên cao hơn barem**, nhưng thấp hơn điểm ghi trong tin xác nhận của chủ cuốc.
-
----
-
-## 6. CÁCH XÁC NHẬN CUỐC (chủ cuốc chốt tài xế)
-
-Chủ cuốc **reply vào tin nhận cuốc của tài xế** bằng:
-
-```
-ok ib      ok.ib      okib
-```
-
-Lúc này hệ thống ghi nhận giao dịch điểm và đưa vào **chờ kế toán duyệt**.
-
-### 6.1 Thoả thuận điểm khi xác nhận
-
-Chủ cuốc có thể ghi điểm kèm trong tin `ok ib` để ghi đè barem hoặc điểm tài xế đề xuất:
-
-```
-ok ib 2đ
-ok.ib 1.5d
-ok ib +-2điểm
-ok ib -+1.5đ
-```
-
-### 6.2 Thứ tự ưu tiên điểm
-
-Khi tính điểm, hệ thống theo thứ tự sau (cao → thấp):
-
-| Thứ tự | Nguồn điểm | Ví dụ |
+| Loại | Gõ | Ví dụ |
 |---|---|---|
-| **1 — cao nhất** | Điểm trong tin xác nhận `ok ib` của chủ cuốc | `ok ib 2đ` |
-| **2** | Điểm thoả thuận trong tin nhận của tài xế | `ok 1.5đ` |
-| **3** | Điểm ghi sẵn trong tin đăng cuốc | `Mỹ Đình --- HN 350k 1đ` |
-| **4 — thấp nhất** | Barem tự động theo loại cuốc + giá | (không ghi gì) |
+| Ghép 1 khách | `1k` | `19h 1k Mỹ Đình >> Bắc Ninh 350k` |
+| Ghép 2 khách | `2k` | `19h 2k Mỹ Đình >> Bắc Ninh 350k` |
+| Ghép 3 khách | `3k` | `19h 3k Mỹ Đình >> Bắc Ninh 350k` |
 
----
+### Bao xe
 
-## 7. ĐIỂM Ưu tiên TRONG TIN ĐĂNG
-
-Nếu chủ cuốc muốn gắn điểm cố định ngay từ tin đăng (không theo barem):
-
-```
-Mỹ Đình --- Hải Phòng 900k 2đ
-Sân bay T2 --- Hà Đông 400k 1.5đ
-```
-
-Định dạng điểm hợp lệ: `1đ`, `2d`, `1.5đ`, `0,5đ`, `+-2đ`, `-+1d`, `1 diem`, `1 điểm`
-
----
-
-## 8. ĐĂNG NHIỀU CUỐC TRONG 1 TIN
-
-Tách từng cuốc thành **từng dòng riêng**, mỗi dòng có giá riêng:
-
-```
-Csct đồ 45kg. Lấy KCN Quang Minh --- KCN DV1 và DV3 300k
-
-VJ933 dự 13h03 hạ sân quốc tế --- Đọi Sơn Duy Tiên 600k
-```
-
-> Khi tin có nhiều cuốc, hệ thống sẽ đưa vào **chờ kế toán xác nhận** để tránh tính sai điểm (vì không biết tài xế nhận cuốc nào).
-
----
-
-## 9. CÁC TIN NHẮN HỆ THỐNG BỎ QUA
-
-| Loại tin | Ví dụ | Lý do bỏ qua |
+| Loại | Gõ | Ví dụ |
 |---|---|---|
-| Reply bắt đầu bằng `@` | `@Anh Nam ok` | Xem là reply thường |
-| Tin hủy | `lịch hủy`, `hủy lịch` | Từ khoá hủy |
-| Thông báo đã có người | `đã có người`, `đã bay` | Từ khoá đóng cuốc |
-| San điểm | `sản giúp`, `san hộ` | Là giao dịch nội bộ |
-| Cảm ơn | `cảm ơn`, `thank`, `dbcl` | Không phải cuốc |
-| Phụ phí nghỉ | `+ 2 nghỉ 400k` | Bắt đầu bằng `+ Ngh` |
+| Bao xe | `bao xe`, `bx`, `bxe`, `bx7` | `20h bx7 Hà Nội >> Hải Phòng 900k` |
+| Bao xe 2 chiều | thêm `2c` | `bx 2c Hà Nội >> Quảng Ninh 1tr2` |
+
+> ### LƯU Ý QUAN TRỌNG VỀ CHỮ "bx"
+>
+> Chữ **bx** có 2 nghĩa: **bao xe** và **bến xe**. Hệ thống phân biệt như sau:
+>
+> **bx + 5 bến xe này = BẾN XE** (không tính bao xe):
+> **Mỹ Đình · Giáp Bát · Nước Ngầm · Gia Lâm · Yên Nghĩa**
+>
+> **bx + bất kỳ chỗ nào khác = BAO XE**
+
+| Bạn gõ | Hệ thống hiểu |
+|---|---|
+| `bx Mỹ Đình >> Bắc Ninh 300k` | Bến xe Mỹ Đình (ghép) |
+| `bx Giáp Bát >> Nam Định 250k` | Bến xe Giáp Bát (ghép) |
+| `bx Đồng Văn >> Hà Nội 400k` | **Bao xe** |
+| `bx7 Hà Nội >> Hải Phòng 900k` | **Bao xe** (có số = bao xe) |
+
+> **Muốn chắc chắn thì gõ đủ chữ: "bao xe" hoặc "bến xe".**
+
+### Sân bay
+
+Hệ thống nhận ra qua: sân bay, Nội Bài, NB, T1, T2, sảnh, hạ cánh, hạ sân.
+
+| Loại | Gõ thêm | Ví dụ |
+|---|---|---|
+| Sân bay **đón** (từ sân bay về) | đón, hạ sân, hạ cánh | `VJ933 13h hạ sân T2 >> Duy Tiên 600k` |
+| Sân bay **tiễn** (đưa ra sân bay) | tiễn, đưa đi | `Tiễn T1 Nội Bài >> Cầu Giấy 350k` |
+| Sân bay **2 chiều** | 2c | `Đón 2c Nội Bài >> Hoàng Mai 700k` |
+
+### Hàng / Ship
+
+Từ khóa: ship, gửi hàng, chở hàng, giao hàng, bao hàng, kiện hàng.
+
+    Ship hàng Cầu Giấy >> Bắc Từ Liêm 150k
+    Csct đồ 45kg gọn để cốp. KCN Quang Minh >> KCN DV1 300k
+
+## 1.4. Ghi giờ
+
+| Gõ | Nghĩa |
+|---|---|
+| `8h`, `13h30` | Giờ cụ thể |
+| `csct`, `đi ngay`, `gấp` | Đi ngay |
+| `30p` | 30 phút nữa |
+| `sm`, `sáng mai`, `mai` | Ngày mai |
+
+## 1.5. Muốn tự đặt điểm thay vì theo barem
+
+Ghi số điểm ngay trong tin đăng:
+
+    Mỹ Đình >> Hải Phòng 900k 2đ
+    Sân bay T2 >> Hà Đông 400k 1.5đ
+
+## 1.6. Đăng nhiều cuốc trong 1 tin
+
+Mỗi cuốc **một dòng riêng**, mỗi dòng có giá riêng:
+
+    19h 1k Mỹ Đình >> Bắc Ninh 350k
+
+    20h bao xe Hà Nội >> Hải Phòng 900k
+
+> Tin nhiều cuốc sẽ được đưa vào **chờ kế toán duyệt** (vì máy không biết tài xế nhận cuốc nào).
 
 ---
 
-## 10. VÍ DỤ ĐẦY ĐỦ
+# PHẦN 2 — NHẬN CUỐC
 
-### Ghép 1 ghế — đơn giản
-```
-Mỹ Đình --- Bắc Ninh 350k
-```
+## 2.1. Cách nhận
 
-### Ghép 2 khách — giờ cụ thể
-```
-8h 2k Hà Đông --- Sơn Tây 200k
-```
+**Reply (trả lời) vào đúng tin đăng cuốc**, rồi gõ một trong các chữ sau:
 
-### Bao xe — đi ngay
-```
-csct bx Long Biên --- Hải Dương 700k
-```
+    ok        oke        oki        ib
 
-### Sân bay đón
-```
-VN215 dự 14h20 hạ sân quốc tế --- Cầu Giấy 420k
-```
+> ## QUY TẮC QUAN TRỌNG NHẤT KHI NHẬN CUỐC
+>
+> ### Tin nhận cuốc phải NGẮN — dưới 25 ký tự
+>
+> Viết dài là hệ thống **không hiểu đó là nhận cuốc**, và **bạn mất điểm** mà không ai biết.
 
-### Sân bay tiễn
-```
-Tiễn sân bay T1 7h30 Đống Đa --- Nội Bài 300k
-```
+| Nhận được | MẤT ĐIỂM |
+|---|---|
+| `ok` | ok anh nhé em nhận cuốc này |
+| `ok 1.5đ` | ok Lịch tín 1.5đ. @kế toán lưu ý giúp |
+| `oke 2d` | ok để em sắp xếp xe rồi báo lại sau |
+| `ib` | ok bác ơi em đang ở gần đó |
 
-### Hàng — nhiều địa điểm trả
-```
-Csct đồ 45kg gọn để cốp. Lấy KCN Quang Minh ---- trả KCN DV1 và KCN DV3 300k
-```
+> **Muốn nói thêm gì thì gõ ok trước, rồi nhắn tin thứ hai riêng:**
 
-### Điểm thoả thuận trong tin xác nhận
-```
-[Tài xế]: ok
-[Chủ cuốc reply vào tin tài xế]: ok.ib 2đ
-```
+    Tin 1:  ok
+    Tin 2:  Anh cho em xin số khách với ạ
+
+## 2.2. Không được ghi giá tiền khi nhận
+
+`ok 300k` bị hiểu là **đăng cuốc mới**, không phải nhận cuốc.
+
+## 2.3. Nhận kèm thỏa thuận điểm
+
+Nếu đã thống nhất điểm khác với barem:
+
+    ok 1đ
+    oke 1.5đ
+    ok 0,5đ
+    ib -+0,5đ
+
+> **Nhớ có dấu cách giữa "ok" và số.** Gõ dính `ok1.5đ` thì hệ thống **không đọc được số điểm**.
 
 ---
 
-## 11. TÓM TẮT NHANH
+# PHẦN 3 — CHỦ CUỐC CHỐT TÀI XẾ
 
-```
-[thời gian] [số ghế/loại xe] [điểm đón] --- [điểm trả] [giá] [điểm nếu có]
-```
+## 3.1. Cách chốt
 
-- **Bắt buộc:** giá (`300k`, `1tr2`)
-- **Phân tách tuyến:** `---` hoặc `>>>`
-- **Nhận cuốc:** `ok` / `ib` (ngắn, không kèm giá)
-- **Chốt cuốc:** `ok ib` (chủ cuốc reply vào tin nhận của tài xế)
+**Reply vào đúng tin nhận cuốc của tài xế**, rồi gõ:
+
+    ok ib       okib       oki ib       ok.ib
+
+Lúc này hệ thống mới ghi nhận điểm.
+
+## 3.2. Chốt kèm điểm khác
+
+    ok ib 2đ
+    okib 1.5d
+    ok ib +-2điểm
+
+> **Nhớ có dấu cách trước số.** Gõ `okib1.5` thì vẫn chốt được cuốc nhưng **số 1.5 bị bỏ qua**, hệ thống tính theo barem.
+
+## 3.3. Cuốc miễn phí (không tính điểm)
+
+    ok ib free
+
+## 3.4. Thứ tự ưu tiên điểm
+
+| Ưu tiên | Nguồn | Ví dụ |
+|---|---|---|
+| 1 — cao nhất | Điểm trong tin chốt của chủ cuốc | `ok ib 2đ` |
+| 2 | Điểm trong tin nhận của tài xế | `ok 1.5đ` |
+| 3 | Điểm ghi trong tin đăng cuốc | `... 350k 1đ` |
+| 4 — thấp nhất | Barem tự động | (không ghi gì) |
+
+---
+
+# PHẦN 4 — SAN ĐIỂM (cho / chuyển điểm)
+
+## 4.1. Cho điểm người khác
+
+    san @Tuấn 5đ
+
+Cho nhiều người cùng lúc — **ghi rõ số điểm ngay sau mỗi tên**:
+
+    san @Tuấn 2đ @Hùng 3đ @Minh 1.5đ
+
+## 4.2. Trả điểm cho kế toán
+
+    san @kế toán 40đ
+
+## 4.3. Quy tắc san điểm
+
+| Quy tắc | Chi tiết |
+|---|---|
+| Tối đa | **200đ** mỗi lần |
+| Bắt buộc | Phải có đơn vị **đ** hoặc **d** sau số |
+| Bắt buộc | Số điểm ghi **ngay sau tên người nhận** |
+| Kết quả | Vào **chờ kế toán duyệt**, không trừ/cộng ngay |
+
+| Đúng | Sai |
+|---|---|
+| `san @Tuấn 5đ` | `san @Tuấn 5` (thiếu chữ đ) |
+| `san @Tuấn 2đ @Hùng 3đ` | `san 2đ cho @Tuấn` (số đứng trước tên) |
+| `san @Tuấn 100đ` | `san @Tuấn 500đ` (quá 200đ) |
+
+---
+
+# PHẦN 5 — NHỜ KẾ TOÁN XỬ LÝ
+
+## 5.1. Các lệnh với kế toán
+
+**Reply vào tin cuốc cần sửa**, tag @kế toán kèm lệnh:
+
+| Việc | Gõ | Ví dụ |
+|---|---|---|
+| Hủy cuốc, hoàn điểm | lịch hủy | `lịch hủy @kế toán` |
+| Cuốc miễn phí | lịch free | `lịch free @kế toán` |
+| Sửa lại số điểm | lịch [số] | `lịch 2đ @kế toán` |
+
+> Sửa điểm 1 cuốc tối đa **20đ**.
+
+## 5.2. Tag kế toán để nhờ xem lại
+
+Nếu có tranh chấp, thắc mắc, hoặc bất kỳ việc gì cần kế toán — **cứ tag @kế toán và nói rõ**:
+
+    @kế toán cuốc này em với anh Tuấn thỏa thuận 2đ mà máy tính 1đ
+
+> **Yên tâm:** mọi tin có tag @kế toán đều được đưa vào danh sách **chờ kế toán xem**, kể cả khi máy không hiểu bạn muốn gì. Kế toán sẽ đọc và xử lý tay. Không bị trôi mất.
+
+---
+
+# PHẦN 6 — LỖI THƯỜNG GẶP
+
+| Tình huống | Hậu quả | Cách sửa |
+|---|---|---|
+| Đăng cuốc quên giá | Không tính là cuốc xe | Luôn ghi giá: `350k` |
+| Nhận cuốc viết dài dòng | **Mất điểm**, không ai biết | Gõ `ok` thôi, nói thêm ở tin sau |
+| Nhận cuốc ghi giá `ok 300k` | Bị hiểu là cuốc mới | Chỉ ghi điểm: `ok 1đ` |
+| Gõ dính `ok1.5đ` hoặc `okib1.5` | Số điểm bị bỏ qua | Thêm dấu cách: `ok 1.5đ` |
+| Không reply mà gõ `ok` riêng | Máy không biết nhận cuốc nào | Phải **reply đúng tin** đăng cuốc |
+| Chủ cuốc tự `ok ib` tin của mình | Không tính điểm | Phải reply tin **của tài xế nhận** |
+| `san @Tuấn 5` thiếu chữ đ | Không nhận được lệnh | `san @Tuấn 5đ` |
+| San quá 200đ | Không nhận được lệnh | Chia nhiều lần |
+
+---
+
+# GHI NHỚ CUỐI CÙNG
+
+> ### 3 câu thần chú
+>
+> **Đăng cuốc** — nhớ **giá tiền** và **loại cuốc**
+>
+> **Nhận cuốc** — reply đúng tin, gõ **ok** thật ngắn
+>
+> **Chốt cuốc** — reply tin tài xế, gõ **ok ib**
+>
+> Có gì thắc mắc — tag **@kế toán** và nói rõ. Luôn có người xem.
