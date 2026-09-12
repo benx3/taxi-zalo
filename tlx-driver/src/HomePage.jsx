@@ -173,6 +173,9 @@ export default function HomePage({ goLogin, goRegister }) {
               Trợ Lý Tài Xế <span style={s.accent}>AI</span>
             </span>
           </div>
+          <a href="/huong-dan" style={{ padding: "8px 14px", borderRadius: 9, border: "1px solid #1e2740", background: "transparent", color: "#8794ad", fontSize: 13.5, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}>
+            Hướng dẫn
+          </a>
           <button onClick={goLogin} style={{ padding: "8px 18px", borderRadius: 9, border: "1px solid #1e2740", background: "transparent", color: "#8794ad", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
             Đăng nhập
           </button>
@@ -203,6 +206,9 @@ export default function HomePage({ goLogin, goRegister }) {
             </button>
             <a href={`${ADMIN_URL}/accountant`} style={s.btnOutline}>
               📊 Dành cho kế toán →
+            </a>
+            <a href="/huong-dan" style={s.btnSecondary}>
+              📖 Hướng dẫn dùng nhóm
             </a>
           </div>
           <p style={{ marginTop: 14, fontSize: 12.5, color: "#4a5568" }}>Không cần thẻ tín dụng · Dùng thử ngay hôm nay</p>
@@ -356,9 +362,14 @@ export default function HomePage({ goLogin, goRegister }) {
             Trợ Lý Tài Xế <span style={s.accent}>AI</span>
           </span>
         </div>
-        <a href="tel:0853132353" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, color: "#34d399", fontWeight: 700, textDecoration: "none", marginBottom: 10 }}>
-          📞 Hỗ trợ: 085 313 2353
-        </a>
+        <div style={{ display: "flex", gap: 18, justifyContent: "center", flexWrap: "wrap", marginBottom: 10 }}>
+          <a href="/huong-dan" style={{ fontSize: 13.5, color: "#8794ad", fontWeight: 700, textDecoration: "none" }}>
+            📖 Hướng dẫn dùng nhóm
+          </a>
+          <a href="tel:0853132353" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, color: "#34d399", fontWeight: 700, textDecoration: "none" }}>
+            📞 Hỗ trợ: 085 313 2353
+          </a>
+        </div>
         <p style={{ fontSize: 12.5, color: "#4a5568", margin: 0 }}>
           © {new Date().getFullYear()} Trợ Lý Tài Xế AI · Quản lý cuốc xe & điểm thưởng thông minh
         </p>
