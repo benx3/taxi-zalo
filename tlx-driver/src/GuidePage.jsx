@@ -24,24 +24,24 @@ const SECTIONS = [
 /* ─── Khối dùng lại ────────────────────────────────────── */
 const Code = ({ children }) => (
   <div style={{ background: "rgba(0,0,0,.35)", border: `1px solid ${C.line}`, borderRadius: 10,
-                padding: "11px 14px", fontFamily: MONO, fontSize: 13.5, lineHeight: 1.85,
+                padding: "11px 14px", fontFamily: MONO, fontSize: 15, lineHeight: 1.85,
                 color: C.ink, whiteSpace: "pre-wrap", wordBreak: "break-word", margin: "10px 0" }}>
     {children}
   </div>
 );
 
 const Kbd = ({ children }) => (
-  <span style={{ fontFamily: MONO, fontSize: "0.92em", background: "rgba(52,211,153,.12)",
+  <span style={{ fontFamily: MONO, fontSize: "0.95em", background: "rgba(52,211,153,.12)",
                  color: C.ok, padding: "2px 7px", borderRadius: 6, whiteSpace: "nowrap" }}>{children}</span>
 );
 
 function Section({ id, n, title, children }) {
   return (
     <section id={id} style={{ scrollMarginTop: 118, marginBottom: 44 }}>
-      <h2 style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: "clamp(19px,3.4vw,26px)",
+      <h2 style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: "clamp(21px,3.8vw,29px)",
                    letterSpacing: "-.02em", margin: "0 0 16px", display: "flex", alignItems: "center", gap: 11 }}>
         <span style={{ width: 30, height: 30, borderRadius: 9, background: "rgba(52,211,153,.13)",
-                       border: "1px solid rgba(52,211,153,.3)", color: C.ok, fontSize: 14,
+                       border: "1px solid rgba(52,211,153,.3)", color: C.ok, fontSize: 15.5,
                        display: "grid", placeItems: "center", flexShrink: 0 }}>{n}</span>
         {title}
       </h2>
@@ -68,14 +68,14 @@ function DoDont({ rows, okLabel = "Viết được", noLabel = "Không nhận" }
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1,
                   background: C.line, border: `1px solid ${C.line}`, borderRadius: 12, overflow: "hidden", margin: "12px 0" }}>
-      <div style={{ background: "rgba(52,211,153,.1)", padding: "8px 12px", fontSize: 12.5, fontWeight: 800, color: C.ok,
+      <div style={{ background: "rgba(52,211,153,.1)", padding: "8px 12px", fontSize: 13.5, fontWeight: 800, color: C.ok,
                     display: "flex", alignItems: "center", gap: 6 }}><Check size={13} />{okLabel}</div>
-      <div style={{ background: "rgba(248,113,113,.1)", padding: "8px 12px", fontSize: 12.5, fontWeight: 800, color: C.no,
+      <div style={{ background: "rgba(248,113,113,.1)", padding: "8px 12px", fontSize: 13.5, fontWeight: 800, color: C.no,
                     display: "flex", alignItems: "center", gap: 6 }}><X size={13} />{noLabel}</div>
       {rows.map(([a, b], i) => (
         <React.Fragment key={i}>
-          <div style={{ background: C.bg, padding: "10px 12px", fontFamily: MONO, fontSize: 12.5, color: C.ink, wordBreak: "break-word" }}>{a}</div>
-          <div style={{ background: C.bg, padding: "10px 12px", fontFamily: MONO, fontSize: 12.5, color: C.dim, wordBreak: "break-word" }}>{b}</div>
+          <div style={{ background: C.bg, padding: "10px 12px", fontFamily: MONO, fontSize: 13.5, color: C.ink, wordBreak: "break-word" }}>{a}</div>
+          <div style={{ background: C.bg, padding: "10px 12px", fontFamily: MONO, fontSize: 13.5, color: C.dim, wordBreak: "break-word" }}>{b}</div>
         </React.Fragment>
       ))}
     </div>
@@ -88,13 +88,13 @@ function Table({ head, rows, cols = "1fr 1fr 1.2fr" }) {
       <div style={{ minWidth: 440 }}>
         <div style={{ display: "grid", gridTemplateColumns: cols, background: C.card }}>
           {head.map((h, i) => (
-            <div key={i} style={{ padding: "9px 12px", fontSize: 12, fontWeight: 800, color: C.dim, letterSpacing: ".01em" }}>{h}</div>
+            <div key={i} style={{ padding: "10px 12px", fontSize: 14, fontWeight: 800, color: C.dim, letterSpacing: ".01em" }}>{h}</div>
           ))}
         </div>
         {rows.map((r, i) => (
           <div key={i} style={{ display: "grid", gridTemplateColumns: cols, borderTop: `1px solid ${C.line}` }}>
             {r.map((cell, j) => (
-              <div key={j} style={{ padding: "10px 12px", fontSize: 13, lineHeight: 1.55,
+              <div key={j} style={{ padding: "10px 12px", fontSize: 14.5, lineHeight: 1.55,
                                     color: j === 0 ? C.ink : C.dim, wordBreak: "break-word" }}>{cell}</div>
             ))}
           </div>
@@ -132,10 +132,15 @@ export default function GuidePage() {
     return () => { obs.disconnect(); window.removeEventListener("scroll", onScroll); };
   }, []);
 
-  // Cuộn chip đang chọn vào giữa thanh nav
+  // Cuộn chip đang chọn vào giữa thanh nav.
+  // Dùng scrollLeft thay cho scrollIntoView: scrollIntoView cuộn cả window
+  // (mọi ancestor cuộn được) nên trang bị giật về đầu khi đang đọc giữa chừng.
   useEffect(() => {
-    const chip = navRef.current?.querySelector(`[data-chip="${active}"]`);
-    chip?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+    const nav = navRef.current;
+    const chip = nav?.querySelector(`[data-chip="${active}"]`);
+    if (!nav || !chip) return;
+    const target = chip.offsetLeft - (nav.clientWidth - chip.offsetWidth) / 2;
+    nav.scrollTo({ left: Math.max(0, target), behavior: "smooth" });
   }, [active]);
 
   const go = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -148,12 +153,12 @@ export default function GuidePage() {
                        backdropFilter: "blur(14px)", borderBottom: `1px solid ${C.line}` }}>
         <div style={{ maxWidth: 880, margin: "0 auto", padding: "11px 16px", display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 30, height: 30, borderRadius: 9, background: "linear-gradient(135deg,#34d399,#06b6d4)",
-                        display: "grid", placeItems: "center", flexShrink: 0, fontSize: 16 }}>🚖</div>
-          <div style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 15, marginRight: "auto", letterSpacing: "-.02em" }}>
+                        display: "grid", placeItems: "center", flexShrink: 0, fontSize: 17.5 }}>🚖</div>
+          <div style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 16.5, marginRight: "auto", letterSpacing: "-.02em" }}>
             Hướng dẫn dùng nhóm
           </div>
           <a href="/" style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8,
-                               border: `1px solid ${C.line}`, color: C.dim, fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>
+                               border: `1px solid ${C.line}`, color: C.dim, fontSize: 13.5, fontWeight: 700, textDecoration: "none" }}>
             <Home size={12} /> Trang chủ
           </a>
         </div>
@@ -163,7 +168,7 @@ export default function GuidePage() {
                                    display: "flex", gap: 7, overflowX: "auto", scrollbarWidth: "none" }}>
           {SECTIONS.map(s => (
             <button key={s.id} data-chip={s.id} onClick={() => go(s.id)}
-              style={{ padding: "5px 13px", borderRadius: 99, whiteSpace: "nowrap", cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+              style={{ padding: "5px 13px", borderRadius: 99, whiteSpace: "nowrap", cursor: "pointer", fontSize: 13.5, fontWeight: 700,
                        border: active === s.id ? "1px solid rgba(52,211,153,.45)" : `1px solid ${C.line}`,
                        background: active === s.id ? "rgba(52,211,153,.14)" : "transparent",
                        color: active === s.id ? C.ok : C.dim, transition: "all .15s" }}>
@@ -179,17 +184,17 @@ export default function GuidePage() {
         <div style={{ marginBottom: 30 }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "5px 13px", borderRadius: 99,
                         background: "rgba(52,211,153,.1)", border: "1px solid rgba(52,211,153,.3)",
-                        fontSize: 12.5, color: C.ok, fontWeight: 700, marginBottom: 15 }}>
+                        fontSize: 13.5, color: C.ok, fontWeight: 700, marginBottom: 15 }}>
             <BookOpen size={13} /> Dành cho tài xế trong nhóm
           </div>
-          <h1 style={{ fontFamily: DISPLAY, fontWeight: 900, fontSize: "clamp(26px,5.5vw,42px)", lineHeight: 1.15,
+          <h1 style={{ fontFamily: DISPLAY, fontWeight: 900, fontSize: "clamp(28px,6vw,45px)", lineHeight: 1.15,
                        letterSpacing: "-.03em", margin: "0 0 14px" }}>
             Đăng & nhận cuốc<br />
             <span style={{ background: "linear-gradient(135deg,#34d399,#06b6d4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
               sao cho đúng điểm
             </span>
           </h1>
-          <p style={{ fontSize: 15, color: C.dim, lineHeight: 1.75, margin: 0, maxWidth: 620 }}>
+          <p style={{ fontSize: 16.5, color: C.dim, lineHeight: 1.75, margin: 0, maxWidth: 620 }}>
             Hệ thống đọc tin nhắn trong nhóm và tự tính điểm. Viết đúng thì điểm vào đúng —
             viết sai thì máy không hiểu, điểm không được tính mà chẳng ai biết. Đọc 2 phút là dùng được cả đời.
           </p>
@@ -204,16 +209,16 @@ export default function GuidePage() {
           ].map(x => (
             <div key={x.n} style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "16px 17px" }}>
               <div style={{ width: 27, height: 27, borderRadius: 99, background: x.c + "22", border: `1px solid ${x.c}55`,
-                            color: x.c, fontWeight: 900, fontSize: 13, display: "grid", placeItems: "center", marginBottom: 10 }}>{x.n}</div>
-              <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 5 }}>{x.t}</div>
-              <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.65 }}>{x.d}</div>
+                            color: x.c, fontWeight: 900, fontSize: 14.5, display: "grid", placeItems: "center", marginBottom: 10 }}>{x.n}</div>
+              <div style={{ fontWeight: 800, fontSize: 16.5, marginBottom: 5 }}>{x.t}</div>
+              <div style={{ fontSize: 15, color: C.dim, lineHeight: 1.65 }}>{x.d}</div>
             </div>
           ))}
         </div>
 
         {/* ── 0. Tra nhanh ──────────────────────────── */}
         <Section id="nhanh" n="0" title="Bảng tra nhanh">
-          <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.7, marginTop: 0 }}>
+          <p style={{ fontSize: 15.5, color: C.dim, lineHeight: 1.7, marginTop: 0 }}>
             Lười đọc thì chỉ cần nhớ bảng này.
           </p>
           <Table
@@ -233,24 +238,24 @@ export default function GuidePage() {
 
         {/* ── 1. Đăng cuốc ──────────────────────────── */}
         <Section id="dang" n="1" title="Đăng cuốc">
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "0 0 8px" }}>Bắt buộc có giá tiền</h3>
-          <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.7, margin: "0 0 4px" }}>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "0 0 8px" }}>Bắt buộc có giá tiền</h3>
+          <p style={{ fontSize: 15.5, color: C.dim, lineHeight: 1.7, margin: "0 0 4px" }}>
             Không có giá thì hệ thống không coi là cuốc xe.
           </p>
           <DoDont rows={[["350k", "ba trăm rưỡi"], ["1tr500  ·  1tr5", "1 triệu rưỡi"], ["1.500.000đ", "giá thỏa thuận"]]} />
 
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "24px 0 8px" }}>Dấu ngăn tuyến đường</h3>
-          <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.7, margin: "0 0 4px" }}>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "24px 0 8px" }}>Dấu ngăn tuyến đường</h3>
+          <p style={{ fontSize: 15.5, color: C.dim, lineHeight: 1.7, margin: "0 0 4px" }}>
             Ngăn <b style={{ color: C.ink }}>điểm đón</b> và <b style={{ color: C.ink }}>điểm đến</b> bằng dấu nào cũng được:
           </p>
           <Code>{">>      >>>      -->      --->      ->      →      ..."}</Code>
-          <p style={{ fontSize: 14, color: C.dim, margin: "8px 0 4px" }}>
+          <p style={{ fontSize: 15.5, color: C.dim, margin: "8px 0 4px" }}>
             Hoặc dùng chữ: <b style={{ color: C.ink }}>về · lên · đi · ra · sang</b>
           </p>
           <Code>{"Mỹ Đình >> Bắc Ninh 350k\nNội Bài --> Hà Đông 400k\nPhủ Lý về Hà Nội 500k"}</Code>
 
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "24px 0 8px" }}>Ghi rõ loại cuốc</h3>
-          <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.7, margin: "0 0 4px" }}>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "24px 0 8px" }}>Ghi rõ loại cuốc</h3>
+          <p style={{ fontSize: 15.5, color: C.dim, lineHeight: 1.7, margin: "0 0 4px" }}>
             Không ghi loại thì máy mặc định <b style={{ color: C.ink }}>Ghép 1 khách</b> — dễ tính thiếu điểm.
           </p>
           <Table
@@ -268,12 +273,12 @@ export default function GuidePage() {
           <Card tone="warn">
             <div style={{ display: "flex", gap: 9, alignItems: "flex-start", marginBottom: 10 }}>
               <AlertTriangle size={16} style={{ color: C.warn, flexShrink: 0, marginTop: 2 }} />
-              <div style={{ fontWeight: 800, fontSize: 15, color: C.warn }}>Chữ “bx” có 2 nghĩa — đọc kỹ chỗ này</div>
+              <div style={{ fontWeight: 800, fontSize: 16.5, color: C.warn }}>Chữ “bx” có 2 nghĩa — đọc kỹ chỗ này</div>
             </div>
-            <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.7, margin: "0 0 10px" }}>
+            <p style={{ fontSize: 15, color: C.dim, lineHeight: 1.7, margin: "0 0 10px" }}>
               <Kbd>bx</Kbd> vừa là <b style={{ color: C.ink }}>bao xe</b> vừa là <b style={{ color: C.ink }}>bến xe</b>. Hệ thống phân biệt:
             </p>
-            <div style={{ background: "rgba(0,0,0,.25)", borderRadius: 10, padding: "11px 13px", fontSize: 13.5, lineHeight: 1.85, marginBottom: 10 }}>
+            <div style={{ background: "rgba(0,0,0,.25)", borderRadius: 10, padding: "11px 13px", fontSize: 15, lineHeight: 1.85, marginBottom: 10 }}>
               <div><b style={{ color: C.ok }}>bx</b> + 5 bến xe sau ⟶ hiểu là <b style={{ color: C.ok }}>BẾN XE</b></div>
               <div style={{ color: C.ink, fontWeight: 700, paddingLeft: 12 }}>Mỹ Đình · Giáp Bát · Nước Ngầm · Gia Lâm · Yên Nghĩa</div>
               <div style={{ marginTop: 6 }}><b style={{ color: C.warn }}>bx</b> + chỗ khác ⟶ hiểu là <b style={{ color: C.warn }}>BAO XE</b></div>
@@ -288,13 +293,13 @@ export default function GuidePage() {
                 [<Kbd>bx7 Hà Nội {">>"} Hải Phòng 900k</Kbd>, <span style={{ color: C.warn }}>Bao xe</span>],
               ]}
             />
-            <p style={{ fontSize: 13.5, color: C.ink, margin: "10px 0 0", fontWeight: 600 }}>
+            <p style={{ fontSize: 15, color: C.ink, margin: "10px 0 0", fontWeight: 600 }}>
               Muốn chắc chắn thì gõ đủ chữ: <Kbd>bao xe</Kbd> hoặc <Kbd>bến xe</Kbd>
             </p>
           </Card>
 
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "24px 0 8px" }}>Sân bay</h3>
-          <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.7, margin: "0 0 4px" }}>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "24px 0 8px" }}>Sân bay</h3>
+          <p style={{ fontSize: 15.5, color: C.dim, lineHeight: 1.7, margin: "0 0 4px" }}>
             Máy nhận ra qua: sân bay, Nội Bài, NB, T1, T2, sảnh, hạ cánh, hạ sân.
           </p>
           <Table
@@ -307,13 +312,13 @@ export default function GuidePage() {
             ]}
           />
 
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "24px 0 8px" }}>Hàng / Ship</h3>
-          <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.7, margin: "0 0 4px" }}>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "24px 0 8px" }}>Hàng / Ship</h3>
+          <p style={{ fontSize: 15.5, color: C.dim, lineHeight: 1.7, margin: "0 0 4px" }}>
             Từ khóa: ship, gửi hàng, chở hàng, giao hàng, bao hàng, kiện hàng.
           </p>
           <Code>{"Ship hàng Cầu Giấy >> Bắc Từ Liêm 150k\nCsct đồ 45kg gọn để cốp. KCN Quang Minh >> KCN DV1 300k"}</Code>
 
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "24px 0 8px" }}>Ghi giờ</h3>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "24px 0 8px" }}>Ghi giờ</h3>
           <Table
             cols="1fr 1.6fr"
             head={["Gõ", "Nghĩa"]}
@@ -325,22 +330,22 @@ export default function GuidePage() {
             ]}
           />
 
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "24px 0 8px" }}>Tự đặt điểm thay vì theo barem</h3>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "24px 0 8px" }}>Tự đặt điểm thay vì theo barem</h3>
           <Code>{"Mỹ Đình >> Hải Phòng 900k 2đ\nSân bay T2 >> Hà Đông 400k 1.5đ"}</Code>
 
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "24px 0 8px" }}>Đăng nhiều cuốc trong 1 tin</h3>
-          <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.7, margin: "0 0 4px" }}>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "24px 0 8px" }}>Đăng nhiều cuốc trong 1 tin</h3>
+          <p style={{ fontSize: 15.5, color: C.dim, lineHeight: 1.7, margin: "0 0 4px" }}>
             Mỗi cuốc một dòng riêng, mỗi dòng có giá riêng.
           </p>
           <Code>{"19h 1k Mỹ Đình >> Bắc Ninh 350k\n\n20h bao xe Hà Nội >> Hải Phòng 900k"}</Code>
-          <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.7 }}>
+          <p style={{ fontSize: 15, color: C.dim, lineHeight: 1.7 }}>
             Tin nhiều cuốc sẽ vào <b style={{ color: C.ink }}>chờ kế toán duyệt</b>, vì máy không biết tài xế nhận cuốc nào.
           </p>
         </Section>
 
         {/* ── 2. Nhận cuốc ──────────────────────────── */}
         <Section id="nhan" n="2" title="Nhận cuốc">
-          <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.7, marginTop: 0 }}>
+          <p style={{ fontSize: 15.5, color: C.dim, lineHeight: 1.7, marginTop: 0 }}>
             <b style={{ color: C.ink }}>Reply (trả lời) đúng vào tin đăng cuốc</b>, rồi gõ một trong các chữ:
           </p>
           <Code>{"ok        oke        oki        ib"}</Code>
@@ -349,10 +354,10 @@ export default function GuidePage() {
             <div style={{ display: "flex", gap: 9, alignItems: "flex-start", marginBottom: 9 }}>
               <AlertTriangle size={17} style={{ color: C.no, flexShrink: 0, marginTop: 2 }} />
               <div>
-                <div style={{ fontWeight: 900, fontSize: 16, color: C.no, marginBottom: 4 }}>
+                <div style={{ fontWeight: 900, fontSize: 17.5, color: C.no, marginBottom: 4 }}>
                   Quan trọng nhất: tin nhận cuốc phải NGẮN
                 </div>
-                <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.7 }}>
+                <div style={{ fontSize: 15, color: C.dim, lineHeight: 1.7 }}>
                   Dưới <b style={{ color: C.ink }}>25 ký tự</b>. Viết dài là máy không hiểu đó là nhận cuốc,
                   và <b style={{ color: C.no }}>bạn mất điểm</b> mà không ai biết.
                 </div>
@@ -368,21 +373,21 @@ export default function GuidePage() {
                 ["ib", "ok bác ơi em đang ở gần đó"],
               ]}
             />
-            <p style={{ fontSize: 13.5, color: C.ink, margin: "12px 0 6px", fontWeight: 700 }}>
+            <p style={{ fontSize: 15, color: C.ink, margin: "12px 0 6px", fontWeight: 700 }}>
               Muốn nói thêm gì thì gõ ok trước, rồi nhắn tin thứ hai riêng:
             </p>
             <Code>{"Tin 1:  ok\nTin 2:  Anh cho em xin số khách với ạ"}</Code>
           </Card>
 
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "24px 0 8px" }}>Không ghi giá tiền khi nhận</h3>
-          <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.7, margin: 0 }}>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "24px 0 8px" }}>Không ghi giá tiền khi nhận</h3>
+          <p style={{ fontSize: 15.5, color: C.dim, lineHeight: 1.7, margin: 0 }}>
             <Kbd>ok 300k</Kbd> bị hiểu là <b style={{ color: C.ink }}>đăng cuốc mới</b>, không phải nhận cuốc.
           </p>
 
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "24px 0 8px" }}>Nhận kèm thỏa thuận điểm</h3>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "24px 0 8px" }}>Nhận kèm thỏa thuận điểm</h3>
           <Code>{"ok 1đ\noke 1.5đ\nok 0,5đ\nib -+0,5đ"}</Code>
           <Card tone="warn">
-            <div style={{ fontSize: 13.5, color: C.ink, lineHeight: 1.7 }}>
+            <div style={{ fontSize: 15, color: C.ink, lineHeight: 1.7 }}>
               Nhớ có <b>dấu cách</b> giữa <Kbd>ok</Kbd> và số. Gõ dính <Kbd>ok1.5đ</Kbd> thì máy
               <b style={{ color: C.warn }}> không đọc được số điểm</b>.
             </div>
@@ -391,25 +396,25 @@ export default function GuidePage() {
 
         {/* ── 3. Chốt cuốc ──────────────────────────── */}
         <Section id="chot" n="3" title="Chủ cuốc chốt tài xế">
-          <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.7, marginTop: 0 }}>
+          <p style={{ fontSize: 15.5, color: C.dim, lineHeight: 1.7, marginTop: 0 }}>
             <b style={{ color: C.ink }}>Reply đúng vào tin nhận cuốc của tài xế</b>, rồi gõ:
           </p>
           <Code>{"ok ib       okib       oki ib       ok.ib"}</Code>
-          <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.7 }}>Lúc này hệ thống mới ghi nhận điểm.</p>
+          <p style={{ fontSize: 15.5, color: C.dim, lineHeight: 1.7 }}>Lúc này hệ thống mới ghi nhận điểm.</p>
 
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "22px 0 8px" }}>Chốt kèm điểm khác</h3>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "22px 0 8px" }}>Chốt kèm điểm khác</h3>
           <Code>{"ok ib 2đ\nokib 1.5d\nok ib +-2điểm"}</Code>
           <Card tone="warn">
-            <div style={{ fontSize: 13.5, color: C.ink, lineHeight: 1.7 }}>
+            <div style={{ fontSize: 15, color: C.ink, lineHeight: 1.7 }}>
               Nhớ có <b>dấu cách</b> trước số. Gõ <Kbd>okib1.5</Kbd> thì vẫn chốt được cuốc
               nhưng <b style={{ color: C.warn }}>số 1.5 bị bỏ qua</b>, máy tính theo barem.
             </div>
           </Card>
 
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "22px 0 8px" }}>Cuốc miễn phí</h3>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "22px 0 8px" }}>Cuốc miễn phí</h3>
           <Code>{"ok ib free"}</Code>
 
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "22px 0 8px" }}>Điểm nào được ưu tiên</h3>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "22px 0 8px" }}>Điểm nào được ưu tiên</h3>
           <Table
             cols="0.75fr 1.5fr 1fr"
             head={["Ưu tiên", "Nguồn điểm", "Ví dụ"]}
@@ -424,19 +429,19 @@ export default function GuidePage() {
 
         {/* ── 4. San điểm ───────────────────────────── */}
         <Section id="san" n="4" title="San điểm (cho / chuyển điểm)">
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "0 0 8px" }}>Cho một người</h3>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "0 0 8px" }}>Cho một người</h3>
           <Code>{"san @Tuấn 5đ"}</Code>
 
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "20px 0 8px" }}>Cho nhiều người cùng lúc</h3>
-          <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.7, margin: "0 0 4px" }}>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "20px 0 8px" }}>Cho nhiều người cùng lúc</h3>
+          <p style={{ fontSize: 15.5, color: C.dim, lineHeight: 1.7, margin: "0 0 4px" }}>
             Ghi số điểm <b style={{ color: C.ink }}>ngay sau mỗi tên</b>:
           </p>
           <Code>{"san @Tuấn 2đ @Hùng 3đ @Minh 1.5đ"}</Code>
 
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "20px 0 8px" }}>Trả điểm cho kế toán</h3>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "20px 0 8px" }}>Trả điểm cho kế toán</h3>
           <Code>{"san @kế toán 40đ"}</Code>
 
-          <h3 style={{ fontSize: 16, fontWeight: 800, margin: "20px 0 8px" }}>Quy tắc</h3>
+          <h3 style={{ fontSize: 17.5, fontWeight: 800, margin: "20px 0 8px" }}>Quy tắc</h3>
           <Table
             cols="1fr 1.7fr"
             head={["Quy tắc", "Chi tiết"]}
@@ -460,7 +465,7 @@ export default function GuidePage() {
 
         {/* ── 5. Kế toán ────────────────────────────── */}
         <Section id="ketoan" n="5" title="Nhờ kế toán xử lý">
-          <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.7, marginTop: 0 }}>
+          <p style={{ fontSize: 15.5, color: C.dim, lineHeight: 1.7, marginTop: 0 }}>
             <b style={{ color: C.ink }}>Reply vào tin cuốc cần sửa</b>, tag <Kbd>@kế toán</Kbd> kèm lệnh:
           </p>
           <Table
@@ -472,19 +477,19 @@ export default function GuidePage() {
               ["Sửa lại số điểm", <Kbd>lịch [số]</Kbd>, <Kbd>lịch 2đ @kế toán</Kbd>],
             ]}
           />
-          <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.7 }}>
+          <p style={{ fontSize: 15, color: C.dim, lineHeight: 1.7 }}>
             Sửa điểm 1 cuốc tối đa <b style={{ color: C.ink }}>20đ</b>.
           </p>
 
           <Card tone="ok" style={{ marginTop: 18 }}>
-            <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 7, color: C.ok }}>
+            <div style={{ fontWeight: 800, fontSize: 16.5, marginBottom: 7, color: C.ok }}>
               Không nhớ lệnh cũng không sao
             </div>
-            <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.75, margin: "0 0 10px" }}>
+            <p style={{ fontSize: 15, color: C.dim, lineHeight: 1.75, margin: "0 0 10px" }}>
               Có tranh chấp, thắc mắc hay bất kỳ việc gì — cứ tag <Kbd>@kế toán</Kbd> rồi nói rõ bằng lời thường:
             </p>
             <Code>{"@kế toán cuốc này em với anh Tuấn thỏa thuận 2đ mà máy tính 1đ"}</Code>
-            <p style={{ fontSize: 13.5, color: C.ink, lineHeight: 1.75, margin: "10px 0 0" }}>
+            <p style={{ fontSize: 15, color: C.ink, lineHeight: 1.75, margin: "10px 0 0" }}>
               <b>Yên tâm:</b> mọi tin có tag @kế toán đều vào danh sách <b style={{ color: C.ok }}>chờ kế toán xem</b>,
               kể cả khi máy không hiểu bạn muốn gì. Kế toán sẽ đọc và xử lý tay — không bị trôi mất.
             </p>
@@ -512,24 +517,24 @@ export default function GuidePage() {
         {/* ── Kết ───────────────────────────────────── */}
         <div style={{ background: "linear-gradient(135deg,rgba(52,211,153,.1),rgba(6,182,212,.06))",
                       border: "1px solid rgba(52,211,153,.3)", borderRadius: 16, padding: "24px 22px", marginTop: 40 }}>
-          <div style={{ fontFamily: DISPLAY, fontWeight: 900, fontSize: 19, marginBottom: 14 }}>Ba câu thần chú</div>
+          <div style={{ fontFamily: DISPLAY, fontWeight: 900, fontSize: 21, marginBottom: 14 }}>Ba câu thần chú</div>
           {[
             [<>Đăng cuốc</>, <>nhớ <b style={{ color: C.ink }}>giá tiền</b> và <b style={{ color: C.ink }}>loại cuốc</b></>],
             [<>Nhận cuốc</>, <>reply đúng tin, gõ <Kbd>ok</Kbd> thật ngắn</>],
             [<>Chốt cuốc</>, <>reply tin tài xế, gõ <Kbd>ok ib</Kbd></>],
           ].map(([a, b], i) => (
-            <div key={i} style={{ display: "flex", gap: 10, alignItems: "baseline", marginBottom: 9, fontSize: 14.5, lineHeight: 1.7 }}>
+            <div key={i} style={{ display: "flex", gap: 10, alignItems: "baseline", marginBottom: 9, fontSize: 16, lineHeight: 1.7 }}>
               <span style={{ color: C.ok, fontWeight: 800, minWidth: 86 }}>{a}</span>
               <span style={{ color: C.dim }}>{b}</span>
             </div>
           ))}
-          <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 16, paddingTop: 15, fontSize: 14, color: C.dim, lineHeight: 1.75 }}>
+          <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 16, paddingTop: 15, fontSize: 15.5, color: C.dim, lineHeight: 1.75 }}>
             Có gì thắc mắc — tag <Kbd>@kế toán</Kbd> và nói rõ. Luôn có người xem.
           </div>
           <a href="tel:0853132353"
             style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 16, padding: "10px 18px",
                      borderRadius: 10, background: "rgba(52,211,153,.16)", border: "1px solid rgba(52,211,153,.4)",
-                     color: C.ok, fontWeight: 800, fontSize: 14, textDecoration: "none" }}>
+                     color: C.ok, fontWeight: 800, fontSize: 15.5, textDecoration: "none" }}>
             <Phone size={14} /> Hỗ trợ: 085 313 2353
           </a>
         </div>
@@ -537,7 +542,7 @@ export default function GuidePage() {
 
       {/* ── Chân trang ──────────────────────────────── */}
       <footer style={{ borderTop: `1px solid ${C.line}`, padding: "22px 16px", textAlign: "center" }}>
-        <p style={{ fontSize: 12.5, color: C.faint, margin: 0 }}>
+        <p style={{ fontSize: 13.5, color: C.faint, margin: 0 }}>
           © {new Date().getFullYear()} Trợ Lý Tài Xế AI · Quản lý cuốc xe & điểm thưởng thông minh
         </p>
       </footer>
