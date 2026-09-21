@@ -256,29 +256,12 @@ async function resolveCanonicalUid(groupId, uid) {
   return member?.zalo_uid || uid;
 }
 
-// Bắt kịp tin nhắn bị bỏ sót trong thời gian service down
-// Lấy 100 tin gần nhất từ Zalo, so sánh với raw_messages, xử lý những tin chưa có
-async function catchUpMissedMessages(sess, zaloGroupId) {
-  try {
-    const result = await sess.api.getGroupChatHistory(zaloGroupId, 100);
-    const msgs = (result?.groupMsgs || []);
-    // Sort cũ → mới để xử lý đúng thứ tự
-    msgs.sort((a, b) => Number(a.data?.ts || a.data?.createTime || 0) - Number(b.data?.ts || b.data?.createTime || 0));
-    let count = 0;
-    for (const msg of msgs) {
-      const rawMsgId = msg.data?.msgId || msg.data?.cliMsgId;
-      if (!rawMsgId) continue;
-      if (sess.processedMsgIds.has(String(rawMsgId))) continue;
-      // Chưa xử lý → đưa vào onMessage (sẽ lưu raw + process + dedup)
-      onMessage(sess, msg);
-      await sleep(30); // nhường event loop giữa các tin
-      count++;
-    }
-    if (count > 0) console.log(`[${sess.userId}] ↩️  Catchup ${zaloGroupId}: xử lý ${count} tin bị bỏ sót`);
-  } catch (e) {
-    console.warn(`[${sess.userId}] catchup ${zaloGroupId}:`, e?.message || e);
-  }
-}
+// ĐÃ GỠ (2026-09): catchUpMissedMessages dùng api.getGroupChatHistory() — Zalo đã gỡ hẳn
+// endpoint /api/group/history (xác nhận bằng test trực tiếp: trả về trang 404 HTML thật,
+// không phải lỗi JSON của Zalo, thử cả GET/POST/mọi host). Hàm này không bao giờ thành công
+// nữa, chỉ tạo warning rác trong tab Log hệ thống. Mục đích ban đầu (bắt tin bị bỏ sót sau
+// downtime) nay do raw_messages + tab "Tính điểm bù" đảm nhiệm — ghi liên tục theo thời gian
+// thực, nhiều account bot cùng nhóm dùng chung kho nên bot này chết thì bot khác đã ghi hộ.
 
 async function loadGroups(sess) {
   const { api } = sess;
@@ -347,15 +330,6 @@ async function loadGroups(sess) {
       }
       // Cập nhật sess.selected từ DB (dùng zalo_group_id để Zalo nhận đúng message)
       sess.selected = new Set(acctGroups.map(ag => ag.zalo_group_id || ag.group_id));
-
-      // Bắt kịp tin nhắn bị bỏ sót (sau downtime/restart)
-      // Delay nhỏ để listener ổn định trước khi gọi API lịch sử
-      await sleep(3000);
-      for (const ag of acctGroups) {
-        const zaloId = ag.zalo_group_id || ag.group_id;
-        catchUpMissedMessages(sess, zaloId).catch(() => {});
-        await sleep(500); // stagger để không spam Zalo API
-      }
     }
   } catch {}
 }
@@ -1854,29 +1828,8 @@ setInterval(() => {
     for (const [k, v] of sess.claims) if ((v.takenAt || 0) < cut) sess.claims.delete(k);
 }, 30 * 1000);
 
-// Periodic catchup mỗi 10 phút: bù tin nhắn bị bỏ sót khi WS drop âm thầm
-// Chỉ chạy cho kế toán (họ mới cần barem tracking chính xác)
-// Nếu session mới nhận tin < 5 phút → không cần catchup (WS vẫn sống)
-const CATCHUP_INTERVAL = 10 * 60 * 1000;
-const CATCHUP_SKIP_IF_RECENT = 5 * 60 * 1000;
-setInterval(async () => {
-  for (const [userId, sess] of sessions.entries()) {
-    if (!sess.isAccountant) continue;
-    const silent = Date.now() - sess.lastMsgAt;
-    if (silent < CATCHUP_SKIP_IF_RECENT) continue; // WS vẫn đang nhận tin → bỏ qua
-    try {
-      const acctGroups = await dbm.getAccountantGroups(userId);
-      for (const ag of acctGroups) {
-        const zaloId = ag.zalo_group_id || ag.group_id;
-        catchUpMissedMessages(sess, zaloId).catch(() => {});
-        await sleep(600);
-      }
-    } catch (e) {
-      console.warn(`[${userId}] periodic catchup:`, e?.message || e);
-    }
-    await sleep(3000); // stagger giữa các session
-  }
-}, CATCHUP_INTERVAL);
+// ĐÃ GỠ (2026-09): periodic catchup định kỳ — dựa trên catchUpMissedMessages đã gỡ ở trên
+// vì API history của Zalo không còn hoạt động. Xem ghi chú tại định nghĩa hàm cũ phía trên.
 
 // Startup: xóa log cũ hơn 24h (phòng service restart giữa ngày)
 Promise.resolve(dbm.purgeBaremLogs()).catch(() => {});
