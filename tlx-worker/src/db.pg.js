@@ -143,6 +143,8 @@ export async function initDb() {
     created_at  BIGINT NOT NULL
   )`);
   await q("CREATE INDEX IF NOT EXISTS idx_rawmsg_group ON raw_messages(group_id, created_at DESC)");
+  // Section E tra ngược tin được quote theo cli_msg_id → cần index, nếu không sẽ quét cả bảng
+  await q("CREATE INDEX IF NOT EXISTS idx_rawmsg_cli ON raw_messages(cli_msg_id)");
   // Cột phục vụ tính lại điểm: quote (nối chuỗi cuốc→ok→ok ib) + mentions (san điểm)
   for (const col of [
     "cli_msg_id TEXT", "quote_cli_msg_id TEXT", "quote_global_msg_id TEXT",
@@ -1123,13 +1125,15 @@ export async function getRawMessageTime(zaloGroupId, msgId) {
 
 // Tìm cuốc barem của 1 người trong KHOẢNG thời gian cụ thể (không phải "mới nhất trong 48h").
 // Section E dùng để chỉ nhận cuốc quanh thời điểm tin được quote.
-export async function getBaremTripMsgIdNear(groupId, memberUid, fromMs, toMs) {
+export async function getBaremTripMsgIdNear(groupId, memberUid, fromMs, toMs, anchorMs) {
+  // Sắp theo ĐỘ LỆCH so với mốc tin được quote, không phải "mới nhất".
+  // Nếu người đó có 2 cuốc cùng nằm trong cửa sổ, phải lấy cuốc sát mốc quote nhất.
   const r = await q(
     `SELECT trip_msg_id FROM point_transactions
      WHERE group_id=$1 AND type='barem' AND (to_member=$2 OR from_member=$2)
        AND created_at >= $3 AND created_at <= $4
-     ORDER BY created_at DESC LIMIT 1`,
-    [groupId, memberUid, Number(fromMs), Number(toMs)]
+     ORDER BY ABS(created_at - $5) ASC LIMIT 1`,
+    [groupId, memberUid, Number(fromMs), Number(toMs), Number(anchorMs ?? fromMs)]
   );
   return r.rows[0]?.trip_msg_id || null;
 }

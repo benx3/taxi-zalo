@@ -933,7 +933,7 @@ async function onMessage(sess, msg) {
               try {
                 const senderCanon = await resolveCanonicalUid(dbGroupId, senderId);
                 for (const uid of [...new Set([senderId, senderCanon])]) {
-                  const nearRef = await Promise.resolve(dbm.getBaremTripMsgIdNear(dbGroupId, uid, fromMs, toMs));
+                  const nearRef = await Promise.resolve(dbm.getBaremTripMsgIdNear(dbGroupId, uid, fromMs, toMs, quotedTs));
                   if (nearRef) {
                     txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, nearRef));
                     if (txs.length) break;
