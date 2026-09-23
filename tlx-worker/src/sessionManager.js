@@ -888,42 +888,64 @@ async function onMessage(sess, msg) {
             }
             if (txs.length) foundTier = "3.5";
           }
-          // Validate: nếu tìm được qua tier 1-3.5 nhưng sender KHÔNG phải poster/taker
-          // → có thể barem_msg_refs bị nhiễm (chain extension cũ) → clear và thử tier 4
-          if (txs.length) {
+          // Kiểm tra người gửi có đúng là poster/taker của cuốc tìm được không.
+          // Dùng cho CẢ tier 1-3.5 lẫn tier 4 — tier 4 là đoán nên càng phải soát.
+          const _validateParty = async (tierLabel) => {
+            if (!txs.length) return;
             const _vpt = txs.find(t => t.type==='barem' && t.to_member && !t.from_member);
             const _vtt = txs.find(t => t.type==='barem' && t.from_member && !t.to_member);
             const _vpd = txs.find(t => t.type==='barem' && t.from_member && t.to_member);
             const _vpU = _vpt?.to_member ?? _vpd?.to_member;
             const _vtU = _vtt?.from_member ?? _vpd?.from_member;
-            if (_vpU || _vtU) {
-              try {
-                const _vsC = await resolveCanonicalUid(dbGroupId, senderId);
-                if (![senderId, _vsC].some(u => u && (u === _vpU || u === _vtU))) {
-                  console.warn(`[${sess.userId}] (E) tier${foundTier}: sender ${senderId} không phải party (poster=${_vpU} taker=${_vtU}) → fallback tier4`);
-                  txs = []; foundTier = 0;
-                }
-              } catch {}
-            }
-          }
-          // Tầng 4: fallback theo UID người gửi — chỉ lấy barem trong 48h gần nhất
+            if (!_vpU && !_vtU) return;
+            try {
+              const _vsC = await resolveCanonicalUid(dbGroupId, senderId);
+              if (![senderId, _vsC].some(u => u && (u === _vpU || u === _vtU))) {
+                console.warn(`[${sess.userId}] (E) tier${tierLabel}: sender ${senderId} không phải party (poster=${_vpU} taker=${_vtU}) → bỏ kết quả`);
+                txs = []; foundTier = 0;
+              }
+            } catch {}
+          };
+          // Tier 1-3.5 sai party → xoá kết quả để tier 4 có cơ hội đoán lại
+          await _validateParty(foundTier);
+          // Tầng 4: đoán theo UID người gửi — CHỈ trong khoảng thời gian quanh tin được quote.
           // KHÔNG chạy nếu tier 3.5 đã đi được ít nhất 1 bước trong quoteChain:
           // chain có data nhưng không tìm thấy barem = cuốc mới chưa có barem,
           // không được fallback sang barem cũ của người này.
-          // Chỉ chạy khi chain hoàn toàn không có data (session restart, cache trống).
+          //
+          // QUAN TRỌNG — bản cũ lấy "barem mới nhất trong 48h" mà BỎ QUA tin được quote,
+          // nên khi ai đó quote vào cuốc cũ, nó chộp nhầm cuốc mới nhất của người đó và
+          // sửa điểm sai cuốc (sự cố 22/09/2026: quote cuốc 20/09 nhưng sửa cuốc 22/09).
+          // Nay phải biết tin được quote gửi lúc nào (tra kho raw_messages) và chỉ nhận
+          // cuốc phát sinh quanh mốc đó. Không biết thời điểm → KHÔNG đoán, đẩy KT xem lại.
           if (!txs.length && !_chainExplored) {
-            const cutoff48h = Date.now() - 48 * 60 * 60 * 1000;
-            try {
-              const senderCanon = await resolveCanonicalUid(dbGroupId, senderId);
-              for (const uid of [...new Set([senderId, senderCanon])]) {
-                const latestRef = await Promise.resolve(dbm.getLatestBaremTripMsgId(dbGroupId, uid, cutoff48h));
-                if (latestRef) {
-                  txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, latestRef));
-                  if (txs.length) break;
+            let quotedTs = null;
+            for (const mid of [qGlobId, qCliId].filter(Boolean)) {
+              try { quotedTs = await Promise.resolve(dbm.getRawMessageTime(groupId, mid)); } catch {}
+              if (quotedTs) break;
+            }
+            if (!quotedTs) {
+              console.warn(`[${sess.userId}] (E) tier4: không biết thời điểm tin được quote (glob=${qGlobId} cli=${qCliId}) → không đoán`);
+            } else {
+              // Cuốc được chốt trong khoảng: 1h trước → 12h sau tin claim được quote
+              const fromMs = quotedTs - 1 * 3600 * 1000;
+              const toMs   = quotedTs + 12 * 3600 * 1000;
+              try {
+                const senderCanon = await resolveCanonicalUid(dbGroupId, senderId);
+                for (const uid of [...new Set([senderId, senderCanon])]) {
+                  const nearRef = await Promise.resolve(dbm.getBaremTripMsgIdNear(dbGroupId, uid, fromMs, toMs));
+                  if (nearRef) {
+                    txs = await Promise.resolve(dbm.getTransactionsByTripMsgId(dbGroupId, nearRef));
+                    if (txs.length) break;
+                  }
                 }
+              } catch {}
+              if (txs.length) {
+                foundTier = 4;
+                console.log(`[${sess.userId}] (E) tier4: đoán theo mốc tin quote ${new Date(quotedTs).toLocaleString("vi-VN")}`);
+                await _validateParty(4);   // đoán thì phải soát lại người gửi
               }
-            } catch {}
-            if (txs.length) foundTier = 4;
+            }
           }
 
           if (action) {

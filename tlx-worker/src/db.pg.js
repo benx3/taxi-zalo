@@ -1110,6 +1110,30 @@ export async function getRawMessagesInRange(zaloGroupId, fromMs, toMs, limit = 5
   return r.rows;
 }
 
+// Thời điểm thật của 1 tin (tra theo msg_id hoặc cli_msg_id) — dùng để biết tin được
+// quote gửi lúc nào, chặn Section E đoán nhầm sang cuốc khác.
+export async function getRawMessageTime(zaloGroupId, msgId) {
+  if (!msgId) return null;
+  const r = await q(
+    "SELECT created_at FROM raw_messages WHERE group_id=$1 AND (msg_id=$2 OR cli_msg_id=$2) LIMIT 1",
+    [String(zaloGroupId), String(msgId)]
+  );
+  return r.rows[0] ? Number(r.rows[0].created_at) : null;
+}
+
+// Tìm cuốc barem của 1 người trong KHOẢNG thời gian cụ thể (không phải "mới nhất trong 48h").
+// Section E dùng để chỉ nhận cuốc quanh thời điểm tin được quote.
+export async function getBaremTripMsgIdNear(groupId, memberUid, fromMs, toMs) {
+  const r = await q(
+    `SELECT trip_msg_id FROM point_transactions
+     WHERE group_id=$1 AND type='barem' AND (to_member=$2 OR from_member=$2)
+       AND created_at >= $3 AND created_at <= $4
+     ORDER BY created_at DESC LIMIT 1`,
+    [groupId, memberUid, Number(fromMs), Number(toMs)]
+  );
+  return r.rows[0]?.trip_msg_id || null;
+}
+
 // Thống kê phạm vi dữ liệu đang có của 1 nhóm (để UI báo "chỉ có dữ liệu từ ...")
 export async function getRawMessageCoverage(zaloGroupId) {
   const r = await q(
