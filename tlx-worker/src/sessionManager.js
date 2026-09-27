@@ -1332,7 +1332,13 @@ function detectBaremAction(text) {
   // "lịch free" / standalone "free/freee/fre/fer" — báo lịch miễn phí sau khi đã chốt
   if (/lich\s*(?:fre+|frr+|fii+|fer+|fee+|fri+)|\b(?:fre+|frr+|fii+|fer+|fee+|fri+)\b/.test(t)) return { type: 'free' };
   // "lịch N" / "lịch +N" / "lịch -+N" — N là số điểm thỏa thuận mới
-  const adj = t.match(/lich[\s:]*[-+]*\s*(\d+(?:[.,]\d+)?)\s*(?:d(?:iem)?)?(?=[\s,.]|$)/);
+  //
+  // (?![.,]?\d) NGAY SAU số: ép bắt trọn cả phần thập phân, cấm regex lùi lại lấy nửa số.
+  //   Bản cũ dùng (?=[\s,.]|$) ở cuối: gặp "lịch 1,5đ@Kế Toán" (Zalo chèn mention dính liền)
+  //   thì lookahead fail sau chữ "d" → lùi về bắt mỗi "1", thấy dấu "," hợp lệ → ra 1đ.
+  //   Mất trắng phần thập phân mà không báo lỗi (sự cố 27/09/2026: thỏa thuận 1,5đ ghi thành 1đ).
+  // (?![a-z0-9]) ở cuối: vẫn chặn "lịch 2c" (2 chiều) bị hiểu nhầm thành 2 điểm.
+  const adj = t.match(/lich[\s:]*[-+]*\s*(\d+(?:[.,]\d+)?)(?![.,]?\d)\s*(?:d(?:iem)?)?(?![a-z0-9])/);
   if (adj) {
     const pts = parseFloat(adj[1].replace(',', '.'));
     if (pts > 0 && pts <= 20) return { type: 'adjust', points: pts };
