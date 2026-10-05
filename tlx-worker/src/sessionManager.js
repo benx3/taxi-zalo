@@ -813,12 +813,15 @@ async function onMessage(sess, msg) {
     // TH3: "lịch free @kế toán" → không tính điểm, đảo ngược
     if (sess.isAccountant && senderId !== String(sess.selfId)) {
       const mentions = msg.data?.mentions || [];
-      let ktMentioned = mentions.some(m => String(m.uid) === String(sess.selfId));
       // Cũng nhận lệnh khi nhóm tag KT người thật (ktUid) thay vì tag bot
-      if (!ktMentioned && mentions.length > 0) {
-        const _ktUidE = await dbm.getGroupKtUid(dbGroupId);
-        if (_ktUidE) ktMentioned = mentions.some(m => String(m.uid) === String(_ktUidE));
-      }
+      const _ktUidE = mentions.length > 0 ? await dbm.getGroupKtUid(dbGroupId) : null;
+      let ktMentioned = mentions.some(m => String(m.uid) === String(sess.selfId));
+      if (!ktMentioned && _ktUidE) ktMentioned = mentions.some(m => String(m.uid) === String(_ktUidE));
+      // Người được tag mà KHÔNG phải kế toán = đối tác của cuốc cần sửa.
+      // VD "@Anh Tuấn ok lịch 1đ @Kế Toán lưu ý" → cuốc phải có Anh Tuấn, nếu không là tìm nhầm.
+      const taggedPartyUids = mentions
+        .map(m => String(m.uid))
+        .filter(u => u && u !== String(sess.selfId) && (!_ktUidE || u !== String(_ktUidE)));
       // Log khi có quote nhưng không kích hoạt được (luôn hiện, không cần DEBUG_BAREM)
       if (qd && !ktMentioned) console.log(`[BAREM_E] ⚠️ quote có nhưng ktMentioned=false | mentions=${JSON.stringify(mentions.map(m=>m.uid))} selfId=${sess.selfId} group=${dbGroupId}`);
       if (process.env.DEBUG_BAREM) console.log(`[BAREM_E] hasQuote=${!!qd} ktMentioned=${ktMentioned} mentions=${JSON.stringify(mentions.map(m=>m.uid))} selfId=${sess.selfId}`);
@@ -903,6 +906,20 @@ async function onMessage(sess, msg) {
               if (![senderId, _vsC].some(u => u && (u === _vpU || u === _vtU))) {
                 console.warn(`[${sess.userId}] (E) tier${tierLabel}: sender ${senderId} không phải party (poster=${_vpU} taker=${_vtU}) → bỏ kết quả`);
                 txs = []; foundTier = 0;
+                return;
+              }
+              // Có tag đích danh người khác (không phải KT) → người đó BẮT BUỘC là 1 bên của cuốc.
+              // Chặn sự cố 04/10/2026: "@Anh Tuấn ok lịch 1đ @Kế Toán" bị áp nhầm sang cuốc của
+              // Tổng Đài, trong khi Anh Tuấn còn chưa có giao dịch nào — tức cuốc đó chưa được ghi,
+              // đáng lẽ phải đẩy KT xem lại chứ không được đoán sang cuốc khác.
+              if (taggedPartyUids.length) {
+                const _tagCanon = await Promise.all(taggedPartyUids.map(u =>
+                  resolveCanonicalUid(dbGroupId, u).catch(() => u)));
+                const _all = new Set([...taggedPartyUids, ..._tagCanon]);
+                if (![..._all].some(u => u === _vpU || u === _vtU)) {
+                  console.warn(`[${sess.userId}] (E) tier${tierLabel}: tag ${[...new Set(taggedPartyUids)].join(",")} nhưng cuốc là poster=${_vpU} taker=${_vtU} → bỏ kết quả`);
+                  txs = []; foundTier = 0;
+                }
               }
             } catch {}
           };
