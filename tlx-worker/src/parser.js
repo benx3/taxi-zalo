@@ -189,15 +189,21 @@ export function parseType(t) {
     return "Bao xe";
   }
   // Ghép ưu tiên trước sân bay: "2k sân bay" → Ghép, không phải Sân bay
-  if (/3\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|gh\b|g\b)|3k\b/.test(l)) return "Ghép 3";
-  if (/2\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|gh\b|g\b)|2k\b/.test(l)) return "Ghép 2";
+  // Danh sách từ khoá phải TRÙNG KHỚP với parseSeats — trước đây Ghép 2/Ghép 3 thiếu "ghe"
+  // nên "2 ghe 300k" bị xếp "Không rõ" → fallback barem ghep_1 → tính 1đ thay vì 0.5đ.
+  if (/3\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|ghe\b|gh\b|g\b)|3k\b/.test(l)) return "Ghép 3";
+  if (/2\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|ghe\b|gh\b|g\b)|2k\b/.test(l)) return "Ghép 2";
   if (/1\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|ghe\b|gh\b|g\b)|1k\b/.test(l)) return "Ghép 1";
   // Từ điển nhận diện chuyến sân bay (chỉ khi không có ghép/bao xe)
-  const AIRPORT_RE = /sân\s*bay|sân\s*qu[oô]c\s*t[eế]|sân\s*qu[oô]c\s*n[oô]i|bay\s*qu[oô]c\s*t[eế]|bay\s*qu[oô]c\s*n[oô]i|n[oô]i\s*b[àa]i|noi\s*bai|\bnb\b|\bsb\b|\bt1\b|\bt2\b|s[aả]nh\s*(?:đ[eế]n|đi\b|[tT][12]\b)|h[aạ]\s*s[aâ]n|h[aạ]\s*c[aá]nh|c[aấ]t\s*c[aá]nh|ch[uư][aâ]n\s*b[iị]\s*h[aạ]|đ[aá]p\s*xu[oô]ng|\bhạ\b(?!\s*long)/;
+  // LƯU Ý:  của JS chỉ coi [A-Za-z0-9_] là ký tự từ, nên đón và hạ KHÔNG BAO GIỜ
+  // khớp (đ và ạ không phải ASCII) → phải dùng (?<![a-zà-ỹ])…(?![a-zà-ỹ]) thay thế.
+  // Các lớp ký tự cũng phải gồm cả chữ có dấu thanh: ộ trong "nội", ố trong "quốc"/"xuống",
+  // ẩ trong "chuẩn" — vì [oô] KHÔNG chứa ộ.
+  const AIRPORT_RE = /sân\s*bay|sân\s*qu[oôố]c\s*t[eế]|sân\s*qu[oôố]c\s*n[oôộ]i|bay\s*qu[oôố]c\s*t[eế]|bay\s*qu[oôố]c\s*n[oôộ]i|n[oôộ]i\s*b[àa]i|noi\s*bai|\bnb\b|\bsb\b|\bt1\b|\bt2\b|s[aả]nh\s*(?:đ[eế]n|đi\b|[tT][12]\b)|h[aạ]\s*s[aâ]n|h[aạ]\s*c[aá]nh|c[aấ]t\s*c[aá]nh|ch[uư][aâẩ]n\s*b[iị]\s*h[aạ]|đ[aá]p\s*xu[oôố]ng|(?<![a-zà-ỹ])hạ(?![a-zà-ỹ])(?!\s*long)/;
   if (AIRPORT_RE.test(l)) {
     if (/2\s*chi[eề]u|\b2c\b/.test(l)) return "Sân bay 2 chiều";
     if (/ti[eễ]n|đưa\s*đi|dua\s*di|c[aấ]t\s*c[aá]nh/.test(l)) return "Sân bay tiễn";
-    if (/\bđón\b|\bdon\b|ra\s*đón|ra\s*don|h[aạ]\s*s[aâ]n|h[aạ]\s*c[aá]nh|đ[aá]p\s*xu[oô]ng|\bhạ\b(?!\s*long)/.test(l)) return "Sân bay đón";
+    if (/(?<![a-zà-ỹ])đón(?![a-zà-ỹ])|\bdon\b|ra\s*đón|ra\s*don|h[aạ]\s*s[aâ]n|h[aạ]\s*c[aá]nh|đ[aá]p\s*xu[oôố]ng|(?<![a-zà-ỹ])hạ(?![a-zà-ỹ])(?!\s*long)/.test(l)) return "Sân bay đón";
     return "Sân bay";
   }
   return "Không rõ";
