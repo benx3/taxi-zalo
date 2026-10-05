@@ -796,7 +796,10 @@ export async function countTransactions(groupId, { zaloUid, approvedOnly = false
   const r = await q(`${base} WHERE ${conds.join(" AND ")}`, params);
   return Number(r.rows[0]?.cnt || 0);
 }
-export async function updateTransaction(id, { reason, points, raw_text }) {
+// forUid: dấu của `points` được hiểu theo góc nhìn của thành viên nào.
+// Giao diện hiển thị delta theo người đang xem (to_member = +, from_member = −),
+// nên khi KT gõ số âm phải quy chiếu đúng người đó, nếu không sẽ sửa ngược chiều.
+export async function updateTransaction(id, { reason, points, raw_text, forUid }) {
   const r = await q("SELECT * FROM point_transactions WHERE id=$1", [id]);
   const tx = r.rows[0]; if (!tx) throw new Error("Không tìm thấy giao dịch");
 
@@ -807,7 +810,18 @@ export async function updateTransaction(id, { reason, points, raw_text }) {
     const bothSet = tx.to_member && tx.from_member; // giao dịch san điểm (2 bên)
     let newTo, newFrom;
     if (bothSet) {
-      newTo = tx.to_member; newFrom = tx.from_member; // giữ chiều cũ, chỉ đổi giá trị
+      // Trước đây luôn "giữ chiều cũ, chỉ đổi giá trị" → gõ số âm bị bỏ qua,
+      // KT không thể đảo chiều một giao dịch san điểm (sự cố 02/10/2026).
+      if (forUid && (forUid === tx.to_member || forUid === tx.from_member)) {
+        // Biết góc nhìn: người đó nhận dấu đúng như KT gõ
+        const other = forUid === tx.to_member ? tx.from_member : tx.to_member;
+        if (newRaw < 0) { newTo = other;  newFrom = forUid; }
+        else            { newTo = forUid; newFrom = other;  }
+      } else {
+        // Không biết góc nhìn → số âm = đảo chiều dòng điểm
+        if (newRaw < 0) { newTo = tx.from_member; newFrom = tx.to_member; }
+        else            { newTo = tx.to_member;   newFrom = tx.from_member; }
+      }
     } else {
       // 0 = giữ chiều cũ; Dương = to_member (cộng); Âm = from_member (trừ)
       const uid = tx.to_member || tx.from_member;

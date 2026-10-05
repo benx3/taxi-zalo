@@ -762,16 +762,19 @@ function MemberDetail({ member, groupId, onBack }) {
         <AdjustPointsModal groupId={groupId} member={m} onClose={() => setShowAdjust(false)} onDone={() => { setShowAdjust(false); reload(); }} />
       )}
       {editingTx && (
-        <EditTxModal tx={editingTx} onClose={() => setEditingTx(null)} onDone={() => { setEditingTx(null); reload(); }} />
+        <EditTxModal tx={editingTx} member={member} onClose={() => setEditingTx(null)} onDone={() => { setEditingTx(null); reload(); }} />
       )}
     </div>
   );
 }
 
 // ===== Modal sửa điểm giao dịch cụ thể =====
-function EditTxModal({ tx, onClose, onDone }) {
+function EditTxModal({ tx, member, onClose, onDone }) {
   const [reason, setReason] = useState(tx.reason || "");
-  const [points, setPoints] = useState(String(tx.points));
+  // Điền sẵn số CÓ DẤU đúng như dòng trong danh sách (to_member = +, from_member = −),
+  // để KT sửa thấy khớp với cái đang nhìn. Gõ số âm = đảo chiều dòng điểm.
+  const signed = member && tx.to_member === member.zalo_uid ? Number(tx.points) : -Number(tx.points);
+  const [points, setPoints] = useState(String(member ? signed : tx.points));
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -780,7 +783,7 @@ function EditTxModal({ tx, onClose, onDone }) {
     if (isNaN(p)) { setErr("Nhập số điểm hợp lệ"); return; }
     setSaving(true); setErr("");
     try {
-      await api.updateTransaction(tx.id, { reason, points: p });
+      await api.updateTransaction(tx.id, { reason, points: p, forUid: member?.zalo_uid });
       onDone();
     } catch (e) { setErr(e.message); setSaving(false); }
   };
@@ -793,7 +796,9 @@ function EditTxModal({ tx, onClose, onDone }) {
           <span style={{ fontWeight: 700, fontSize: 15 }}>Sửa giao dịch</span>
           <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--ink-dim)" }}><X size={18} /></button>
         </div>
-        <label style={{ display: "block", fontSize: 12, color: "var(--ink-dim)", marginBottom: 4 }}>Số điểm</label>
+        <label style={{ display: "block", fontSize: 12, color: "var(--ink-dim)", marginBottom: 4 }}>
+          Số điểm {member && <span style={{ color: "var(--ink-dim)" }}>— của {member.alias || member.display_name || "thành viên này"}; nhập số âm để trừ</span>}
+        </label>
         <input type="number" step="0.5" value={points} onChange={e => setPoints(e.target.value)}
           style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--line)", background: "rgba(0,0,0,.2)", color: "var(--ink)", fontSize: 13, outline: "none", marginBottom: 12 }} />
         <label style={{ display: "block", fontSize: 12, color: "var(--ink-dim)", marginBottom: 4 }}>Lý do</label>
