@@ -13,6 +13,31 @@ export function isConfirmMessage(text) {
   return /^\s*(?:@.+?\s+)?ib\s*$/i.test(text);
 }
 
+// Bỏ toàn bộ @mention khỏi text, dùng pos/len Zalo gửi kèm (chính xác tuyệt đối,
+// regex không thể biết tên hiển thị kết thúc ở đâu vì tên có dấu cách).
+// Cần cho các phép đo "tin phải ngắn" như isClaimMessage: tag @kế toán / @tên
+// là thao tác hệ thống khuyến khích, không được tính vào độ dài nội dung người gõ.
+export function stripMentions(text, mentions) {
+  if (!text || !Array.isArray(mentions) || !mentions.length) return text;
+  const spans = mentions
+    .filter(m => typeof m?.pos === "number" && m.pos >= 0 && typeof m?.len === "number" && m.len > 0)
+    .map(m => {
+      const start = m.pos;
+      const aliasStart = text[start] === "@" ? start + 1 : start;   // len không gồm dấu @
+      return [start, aliasStart + m.len];
+    })
+    .sort((a, b) => a[0] - b[0]);
+  if (!spans.length) return text;
+  let out = "", cur = 0;
+  for (const [s, e] of spans) {
+    if (s < cur) { cur = Math.max(cur, e); continue; }   // span chồng lấn → gộp
+    out += text.slice(cur, s) + " ";
+    cur = e;
+  }
+  out += text.slice(cur);
+  return out.replace(/\s+/g, " ").trim();
+}
+
 export function isClaimMessage(text) {
   if (!text) return false;
   const t = text.trim();

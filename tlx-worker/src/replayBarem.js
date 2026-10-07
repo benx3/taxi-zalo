@@ -10,7 +10,7 @@
 // KHÔNG dùng API lịch sử của Zalo vì endpoint /api/group/history đã bị Zalo
 // gỡ bỏ (trả về trang 404 HTML với mọi method/host — đã kiểm chứng 8/9/2026).
 // ============================================================
-import { parseMultipleTrips, isConfirmMessage, isClaimMessage, parseBonus } from "./parser.js";
+import { parseMultipleTrips, isConfirmMessage, isClaimMessage, parseBonus, stripMentions } from "./parser.js";
 
 const tsOf = (m) => Number(m?.data?.ts || m?.data?.createTime || m?.data?.serverTime || 0);
 const textOf = (m) => (typeof m?.data?.content === "string" ? m.data.content : (m?.data?.content?.title || ""));
@@ -121,7 +121,8 @@ export function simulateBarem({ msgs, fromMs, toMs, rulesRow, groupId, calcPoint
     }
 
     // ── (C) Người nhận reply "ok" vào tin cuốc → lưu claim ──────────
-    if (q && (isClaimMessage(text) || isConfirmMessage(text))) {
+    // Đo độ dài claim KHÔNG tính @tag (giống luồng realtime)
+    if (q && (isClaimMessage(stripMentions(text, msg.data?.mentions || [])) || isConfirmMessage(text))) {
       const trip = lookup(tripCache, qKeys);
       const quoteOwnerId = String(q.ownerId || "");
       if (trip && quoteOwnerId && quoteOwnerId !== senderId) {

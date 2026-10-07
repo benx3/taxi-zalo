@@ -6,7 +6,7 @@
 // nhóm đang theo dõi riêng, và các "claim" (cuốc đã xin) riêng.
 // ============================================================
 import { Zalo } from "zca-js";
-import { parseMultipleTrips, isConfirmMessage, isClaimMessage, parseBonus } from "./parser.js";
+import { parseMultipleTrips, isConfirmMessage, isClaimMessage, parseBonus, stripMentions } from "./parser.js";
 import { parseWithAI, aiToTrip } from "./aiParser.js";
 import { transcribeVoice, getVoiceUrl } from "./stt.js";
 import { config } from "./config.js";
@@ -683,6 +683,12 @@ async function onMessage(sess, msg) {
     // và Section F (dùng ngoài mọi block if trên) → phải khai báo ở scope chung ở đây,
     // nếu không Section F sẽ ném "qd is not defined" vì qd trước đó chỉ scoped local trong từng if.
     const qd = msg.data?.quote;
+    // Text đã bỏ @mention — chỉ dùng để ĐO (isClaimMessage giới hạn 25 ký tự).
+    // Mọi chỗ ghi nhận/parse điểm vẫn dùng `text` gốc.
+    const textNoTag = stripMentions(text, msg.data?.mentions || []);
+    // Section C ghi được claim từ chính tin này → Section E không được
+    // coi nó là lệnh sửa cuốc cũ nữa (điểm thỏa thuận đã nằm trong claim).
+    let claimRegistered = false;
 
     // (A) chủ cuốc xác nhận cho mình?
     const key = `${groupId}:${senderId}`;
@@ -696,7 +702,7 @@ async function onMessage(sess, msg) {
 
     // (C) Kế toán: phát hiện người nhận cuốc reply "Ok" quoting trip → lưu claim
     if (sess.isAccountant && senderId !== String(sess.selfId)) {
-      if (qd && (isClaimMessage(text) || isConfirmMessage(text))) {
+      if (qd && (isClaimMessage(textNoTag) || isConfirmMessage(text))) {
         if (process.env.DEBUG_BAREM) console.log(`[BAREM_CLAIM] from=${senderId} quote=`, JSON.stringify(qd)?.slice(0, 300));
         const quoteOwnerId = String(qd.ownerId || "");
         // TQuote không có msgId — chỉ có cliMsgId (number) và globalMsgId (number)
@@ -749,6 +755,7 @@ async function onMessage(sess, msg) {
             allTrips: cachedTrip.allTrips || null,
             tripMsgId: qCliId || qGlobId || null,
           };
+          claimRegistered = true;
           sess.claimCache.set(msgId, claimData);
           if (msg.data.cliMsgId) sess.claimCache.set(String(msg.data.cliMsgId), claimData);
           cacheRawMsg(sess, msgId, msg);
@@ -877,7 +884,9 @@ async function onMessage(sess, msg) {
       if (process.env.DEBUG_BAREM) console.log(`[BAREM_E] hasQuote=${!!qd} ktMentioned=${ktMentioned} mentions=${JSON.stringify(mentions.map(m=>m.uid))} selfId=${sess.selfId}`);
       // Tin có quote + tag KT → Section E xử lý cancel/adjust/revert
       // Tin không có quote + tag KT → Section E.1 lưu 0đ pending (tranh chấp standalone)
-      if (qd && ktMentioned) {
+      if (qd && ktMentioned && claimRegistered)
+        console.log(`[BAREM_E] ⏭️  bỏ qua: tin này đã được (C) ghi thành nhận cuốc, điểm thỏa thuận nằm trong claim`);
+      if (qd && ktMentioned && !claimRegistered) {
         const parsedBonus = parseBonus(text);
         const action = detectBaremAction(text) || (parsedBonus > 0 ? { type: 'adjust', points: parsedBonus } : null);
         if (!action) console.log(`[BAREM_E] ⚠️ ktMentioned=true nhưng không detect action | text="${text.slice(0,80)}"`);
