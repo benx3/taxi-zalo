@@ -504,10 +504,11 @@ async function onMessage(sess, msg) {
     // Không đụng ảnh/voice (có thể là cuốc thật), không đụng tin của bot/KT.
     if (sess.isAccountant && senderId !== String(sess.selfId)) {
       const _cfg = await getGroupCfg(dbGroupId);
-      if (_cfg?.iconDeleteEnabled) {
+      // Kiểm tra sticker/emoji TRƯỚC (rẻ, chạy trong RAM) rồi mới hỏi DB lấy UID kế toán,
+      // nếu không sẽ tốn 1 truy vấn DB cho MỌI tin nhắn của nhóm.
+      if (_cfg?.iconDeleteEnabled && (isStickerMsg(msg) || isEmojiOnly(text))) {
         const _ktUid = await dbm.getGroupKtUid(dbGroupId).catch(() => null);
-        const _miễnTrừ = senderId === String(_ktUid);
-        if (!_miễnTrừ && (isStickerMsg(msg) || isEmojiOnly(text))) {
+        if (senderId !== String(_ktUid)) {
           const r = await deleteGroupMessage(sess, msg, groupId, {
             dryRun: _cfg.dryRun, who: senderName,
             why: isStickerMsg(msg) ? "sticker" : "chỉ toàn emoji",
@@ -1371,6 +1372,9 @@ async function deleteGroupMessage(sess, msg, groupId, { dryRun, why, who }) {
       data: { cliMsgId: msg.data?.cliMsgId, msgId: msg.data?.msgId, uidFrom: msg.data?.uidFrom },
     }, false);          // false = xóa cho cả nhóm
     console.log(`[CẤU HÌNH] 🗑️ đã xóa tin của ${who}: "${preview}" — ${why}`);
+    // Đánh dấu trong kho tin thô để "Tính điểm bù" KHÔNG dựng lại cuốc từ tin đã bị chặn
+    const _mid = msg.data?.msgId || msg.data?.cliMsgId;
+    Promise.resolve(dbm.markRawMessageDeleted(groupId, _mid)).catch(() => {});
     return { deleted: true };
   } catch (e) {
     console.error(`[CẤU HÌNH] ❌ xóa tin của ${who} thất bại: ${e?.message || e} (bot đã là quản trị nhóm chưa?)`);

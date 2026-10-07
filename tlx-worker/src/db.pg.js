@@ -150,6 +150,9 @@ export async function initDb() {
     "cli_msg_id TEXT", "quote_cli_msg_id TEXT", "quote_global_msg_id TEXT",
     "quote_owner_id TEXT", "mentions TEXT", "saved_by TEXT",
   ]) await q(`ALTER TABLE raw_messages ADD COLUMN IF NOT EXISTS ${col}`);
+  // Đánh dấu tin bị bot xóa (luật điểm sàn / xóa icon) — để "Tính điểm bù"
+  // KHÔNG dựng lại cuốc từ những tin đã bị chặn.
+  await q("ALTER TABLE raw_messages ADD COLUMN IF NOT EXISTS deleted_at BIGINT");
   // msgType của Zalo là chuỗi ("webchat", "chat.photo"…) chứ không phải số như schema cũ đoán
   try { await q("ALTER TABLE raw_messages ALTER COLUMN msg_type TYPE TEXT USING msg_type::TEXT"); } catch {}
 
@@ -1149,10 +1152,21 @@ export async function updateRawMessageText(msgId, text) {
   } catch (e) { console.warn("updateRawMessageText:", e?.message || e); }
 }
 
+// Đánh dấu tin đã bị bot xóa khỏi nhóm. Vẫn giữ nội dung để tra cứu/đối chất,
+// nhưng loại khỏi nguồn dựng lại cuốc.
+export async function markRawMessageDeleted(zaloGroupId, msgId) {
+  if (!msgId) return;
+  try {
+    await q("UPDATE raw_messages SET deleted_at=$3 WHERE group_id=$1 AND (msg_id=$2 OR cli_msg_id=$2)",
+      [String(zaloGroupId), String(msgId), now()]);
+  } catch (e) { console.warn("markRawMessageDeleted:", e?.message || e); }
+}
+
 // Lấy tin thô của 1 nhóm Zalo trong khung giờ — dùng cho tính điểm bù
 export async function getRawMessagesInRange(zaloGroupId, fromMs, toMs, limit = 5000) {
   const r = await q(
     `SELECT * FROM raw_messages WHERE group_id=$1 AND created_at >= $2 AND created_at <= $3
+       AND deleted_at IS NULL
      ORDER BY created_at ASC LIMIT $4`,
     [String(zaloGroupId), Number(fromMs), Number(toMs), limit]
   );

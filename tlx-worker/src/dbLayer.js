@@ -50,7 +50,7 @@ export const {
   saveZaloSession, getZaloSession, clearZaloSession,
   saveTrip, markTripWon, deleteSavedTrip, listSavedTrips, purgeOld,
   saveRawMessage, listRawMessages, getRawMessagesInRange, getRawMessageCoverage, updateRawMessageText,
-  getRawMessageTime, getBaremTripMsgIdNear,
+  getRawMessageTime, getBaremTripMsgIdNear, markRawMessageDeleted,
   addSystemLog, listSystemLogs, clearSystemLogs,
   getSetting, setSetting,
   getAccountantGroups, getAccountantGroupsForAdmin, getGroupAccountants, getGroupZaloOwner, addAccountantGroup, removeAccountantGroup, migrateGroupInstanceForAccountant, setGroupPublicVisible, mergeGroupInstancesPreview, mergeGroupInstancesExecute,
