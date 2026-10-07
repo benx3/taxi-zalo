@@ -3,6 +3,20 @@
 // ============================================================
 
 const CLAIM_RE = /\b([o0ô]k[ie]{0,2}|[o0ô]kib|[o0ô]kp|[o0ô]kay|[o0ô]k[o0ô]k|[o0ô]kk+|ib)\b/i;
+// Có chữ "ok"/"ib" nhưng thực chất là HỎI hoặc TỪ CHỐI → không phải nhận cuốc.
+// Quan trọng vì tin được coi là nhận cuốc sẽ bị luật điểm sàn xóa nếu người nhận thiếu điểm.
+// JS \b chỉ hiểu ASCII → chữ có dấu dùng lookaround tiếng Việt.
+const NOT_CLAIM_RE = new RegExp([
+  /\?/,                                                                                     // câu hỏi
+  /(?<![a-zà-ỹ])(?:ko|k|không|khong|chưa|chua)\s+[o0ô]k[ie]{0,2}(?![a-zà-ỹ])/,              // ko ok, chưa ok
+  /(?<![a-zà-ỹ])[o0ô]k[ie]{0,2}\s+(?:ko|k|không|khong|hông|hong|chưa|chua)(?![a-zà-ỹ])/,    // ok ko, ok chưa
+  /(?<![a-zà-ỹ])(?:được|đc|dc|duoc)\s+(?:ko|k|không|khong|hông|hong)(?![a-zà-ỹ])/,          // được ko
+  /(?<![a-zà-ỹ])(?:nhận|nhan|đi|di|có|co)\s+chưa(?![a-zà-ỹ])/,                             // ai nhận chưa, khách có chưa
+  /(?<![a-zà-ỹ])(?:ko|k|không|khong|chưa|chua)\s+(?:đi|di|nhận|nhan|được|đc|dc)(?![a-zà-ỹ])/, // ko đi, chưa nhận
+  /đã\s+có\s+(?:người|ng)(?![a-zà-ỹ])|có\s+(?:người|ng)\s+nhận/,                            // đã có người nhận
+  /(?<![a-zà-ỹ])bận\s*(?:rồi|mất|r)(?![a-zà-ỹ])|lần\s+sau|xa\s+quá/,                        // từ chối
+  /hỏi\s*(?:thôi|chút|tí|ti)(?![a-zà-ỹ])/,                                                  // chỉ hỏi
+].map(r => r.source).join("|"), "i");
 const NOISE_RE = /(lịch hủy|huỷ lịch|hủy lịch|đã có ng|đã có người|đã bay|bay rồi|sản giúp|san giúp|san hộ|san ho|sản hộ|lưu ý|luu y|dbcl|cảm ơn|cám ơn|thank|ck rồi|đã ck|nhận luôn|nhan luon|máu ko|máu không)/i;
 
 export function isConfirmMessage(text) {
@@ -45,7 +59,7 @@ export function isClaimMessage(text) {
   // Strip leading @mention so "@Tên đầy đủ ok" still counts as a claim
   const core = t.replace(/^@.+?\s+(?=(?:[o0ô]k[ie]{0,2}|[o0ô]kib|[o0ô]kp|[o0ô]kay|ib)(?:\W|$))/i, "").trim();
   const hasPrice = /\d{2,4}\s*k|\dtr|\d{1,3}(?:[.,]\d{3})+\s*đ/i.test(t);
-  return !hasPrice && core.length <= 25 && CLAIM_RE.test(core);
+  return !hasPrice && core.length <= 35 && CLAIM_RE.test(core) && !NOT_CLAIM_RE.test(core);
 }
 
 export function isNoiseMessage(text) {

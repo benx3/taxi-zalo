@@ -683,7 +683,7 @@ async function onMessage(sess, msg) {
     // và Section F (dùng ngoài mọi block if trên) → phải khai báo ở scope chung ở đây,
     // nếu không Section F sẽ ném "qd is not defined" vì qd trước đó chỉ scoped local trong từng if.
     const qd = msg.data?.quote;
-    // Text đã bỏ @mention — chỉ dùng để ĐO (isClaimMessage giới hạn 25 ký tự).
+    // Text đã bỏ @mention — chỉ dùng để ĐO (isClaimMessage giới hạn 35 ký tự).
     // Mọi chỗ ghi nhận/parse điểm vẫn dùng `text` gốc.
     const textNoTag = stripMentions(text, msg.data?.mentions || []);
     // Section C ghi được claim từ chính tin này → Section E không được
