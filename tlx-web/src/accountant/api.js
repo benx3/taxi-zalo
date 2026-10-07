@@ -56,6 +56,10 @@ enrichMemberNames: (groupId) => req(`/api/accountant/groups/${encodeURIComponent
   replayPreview: (groupId, fromMs, toMs) => req("/api/accountant/replay/preview", { groupId, fromMs, toMs }),
   replayApply: (groupId, items) => req("/api/accountant/replay/apply", { groupId, items }),
 
+  // Cấu hình riêng từng nhóm
+  getGroupConfig: (groupId) => req(`/api/accountant/group-config/${encodeURIComponent(groupId)}`, null, "GET"),
+  saveGroupConfig: (groupId, cfg) => req(`/api/accountant/group-config/${encodeURIComponent(groupId)}`, cfg),
+
   // Thêm cuốc xe thủ công
   manualSuggest: (groupId, texts) => req("/api/accountant/manual-trips/suggest", { groupId, texts }),
   manualApply: (groupId, rows, atMs) => req("/api/accountant/manual-trips/apply", { groupId, rows, atMs }),

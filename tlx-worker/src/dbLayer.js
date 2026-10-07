@@ -65,6 +65,7 @@ export const {
   createPendingTransfer, listPendingTransfers, getPendingTxGroup, approvePendingTransfer, rejectPendingTransfer,
   lockAccountantGroups, isGroupsLocked,
   getRules, saveRules,
+  getGroupConfig, saveGroupConfig,
   getGroupKtUid, setGroupKtUid,
   purgeTable, getDataStats,
 } = impl;

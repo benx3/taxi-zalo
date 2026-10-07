@@ -499,6 +499,27 @@ async function onMessage(sess, msg) {
       }
     }
 
+    // (A.-1) Dọn icon rác: sticker hoặc tin chỉ toàn emoji, không kèm chữ nào.
+    // Đặt sớm nhất có thể nhưng SAU khi đã lưu raw_messages, để tin xóa vẫn còn vết tra cứu.
+    // Không đụng ảnh/voice (có thể là cuốc thật), không đụng tin của bot/KT.
+    if (sess.isAccountant && senderId !== String(sess.selfId)) {
+      const _cfg = await getGroupCfg(dbGroupId);
+      if (_cfg?.iconDeleteEnabled) {
+        const _ktUid = await dbm.getGroupKtUid(dbGroupId).catch(() => null);
+        const _miễnTrừ = senderId === String(_ktUid);
+        if (!_miễnTrừ && (isStickerMsg(msg) || isEmojiOnly(text))) {
+          const r = await deleteGroupMessage(sess, msg, groupId, {
+            dryRun: _cfg.dryRun, who: senderName,
+            why: isStickerMsg(msg) ? "sticker" : "chỉ toàn emoji",
+          });
+          if (r.deleted && _cfg.iconNotice) {
+            await sendNotice(sess, groupId, senderId, senderName, _cfg.iconNotice, { tên: senderName });
+          }
+          if (!_cfg.dryRun) return;   // đã xóa → không xử lý tiếp
+        }
+      }
+    }
+
     // (A.0) San điểm: ai đó tag kế toán + "san" + số điểm → tạo pending transfer
     if (senderId !== String(sess.selfId)) {
       const sanResults = detectSanDiem(text, msg.data?.mentions || [], sess.selfId);
@@ -690,6 +711,28 @@ async function onMessage(sess, msg) {
         }
         if (process.env.DEBUG_BAREM) console.log(`[BAREM_CLAIM] quoteOwnerId=${quoteOwnerId} cliMsgId=${qCliId} globalMsgId=${qGlobId} tripFound=${!!cachedTrip}`);
         if (cachedTrip && quoteOwnerId && quoteOwnerId !== senderId) {
+          // ── Luật ĐIỂM SÀN: dưới ngưỡng thì không được nhận cuốc ──────────
+          // Chỉ chặn đúng tin nhận cuốc thật (đã xác định quote trúng cuốc đang cache,
+          // và người reply không phải chủ cuốc) → "ok" trong chat thường không bị đụng.
+          const _cfgC = await getGroupCfg(dbGroupId);
+          if (_cfgC?.floorEnabled) {
+            const _mem = await dbm.getMemberByZaloUid(dbGroupId, senderId).catch(() => null);
+            const _pts = Number(_mem?.points ?? 0);
+            const _nguong = Number(_cfgC.floorPoints) || 0;
+            if (_pts < _nguong) {
+              console.log(`[CẤU HÌNH] ⛔ ${senderName} có ${_pts}đ < sàn ${_nguong}đ → chặn nhận cuốc`);
+              const r = await deleteGroupMessage(sess, msg, groupId, {
+                dryRun: _cfgC.dryRun, who: senderName,
+                why: `điểm ${_pts}đ dưới sàn ${_nguong}đ`,
+              });
+              // Xóa xong mới gửi tin nhắc rời có tag tên (theo lựa chọn của KT)
+              if (r.deleted) {
+                await sendNotice(sess, groupId, senderId, senderName, _cfgC.floorNotice,
+                  { tên: senderName, ngưỡng: _nguong, điểm: _pts });
+              }
+              if (!_cfgC.dryRun) return;   // không lưu claim → chủ cuốc không chốt được người này
+            }
+          }
           // Điểm thỏa thuận ngay trong tin ok (vd: "@A ok 2đ dbcl") > điểm explicit trong tin đăng > barem
           const claimNegotiatedPts = parseBonus(text) || 0;
           if (claimNegotiatedPts > 0) console.log(`[${sess.userId}] 💬 Claim thỏa thuận: ${claimNegotiatedPts}đ từ "${text.slice(0,50)}"`);
@@ -1258,6 +1301,101 @@ async function onMessage(sess, msg) {
     }
   } catch (e) {
     console.error(`[${sess.userId}] onMessage:`, e?.message || e);
+  }
+}
+
+// ============================================================
+// CẤU HÌNH NHÓM — điểm sàn nhận cuốc & xóa icon rác (tab Cấu hình)
+// ============================================================
+
+// Cache cấu hình 60s để không phải hỏi DB mỗi tin nhắn
+const _cfgCache = new Map();   // dbGroupId -> { cfg, at }
+async function getGroupCfg(dbGroupId) {
+  const hit = _cfgCache.get(dbGroupId);
+  if (hit && Date.now() - hit.at < 60_000) return hit.cfg;
+  let cfg;
+  try { cfg = await dbm.getGroupConfig(dbGroupId); }
+  catch { cfg = hit?.cfg || null; }
+  if (cfg) _cfgCache.set(dbGroupId, { cfg, at: Date.now() });
+  return cfg;
+}
+export function invalidateGroupCfg(dbGroupId) { _cfgCache.delete(dbGroupId); }
+
+// Tin "chỉ toàn icon": phải có ít nhất 1 emoji VÀ bỏ hết emoji đi thì không còn chữ nào.
+// "👍" → true · "😂😂" → true · "ok 👍" → false (còn chữ) · "123" → false (không có emoji)
+export function isEmojiOnly(s) {
+  const t = (s || "").trim();
+  if (!t) return false;
+  if (!/\p{Extended_Pictographic}/u.test(t)) return false;
+  const rest = t
+    .replace(/\p{Extended_Pictographic}/gu, "")
+    .replace(/[‍︎️⃣]/g, "")        // ZWJ, biến thể, keycap
+    .replace(/[\u{1F3FB}-\u{1F3FF}]/gu, "")            // tông màu da
+    .replace(/\s/g, "");
+  return rest.length === 0;
+}
+
+// Sticker Zalo — msgType chứa chữ "sticker"
+export function isStickerMsg(msg) {
+  return /sticker/i.test(String(msg?.data?.msgType || ""));
+}
+
+// Giới hạn tốc độ xóa: tránh Zalo coi là hành vi bất thường rồi khóa tài khoản bot
+const DEL_MAX_PER_MIN = 10;
+const _delLog = new Map();   // groupId -> số mốc thời gian đã xóa
+function canDelete(groupId) {
+  const now = Date.now();
+  const arr = (_delLog.get(groupId) || []).filter(t => now - t < 60_000);
+  if (arr.length >= DEL_MAX_PER_MIN) return false;
+  arr.push(now);
+  _delLog.set(groupId, arr);
+  return true;
+}
+
+// Xóa 1 tin trong nhóm (cần bot là quản trị/phó nhóm).
+// dryRun = chỉ ghi log, không đụng vào tin thật.
+async function deleteGroupMessage(sess, msg, groupId, { dryRun, why, who }) {
+  const preview = (typeof msg.data?.content === "string" ? msg.data.content : "[media]").slice(0, 60);
+  if (dryRun) {
+    console.log(`[CẤU HÌNH] 🧪 (thử) sẽ xóa tin của ${who}: "${preview}" — ${why}`);
+    return { deleted: false, dryRun: true };
+  }
+  if (!canDelete(groupId)) {
+    console.warn(`[CẤU HÌNH] ⚠️ chạm giới hạn ${DEL_MAX_PER_MIN} tin/phút, bỏ qua tin của ${who}`);
+    return { deleted: false, rateLimited: true };
+  }
+  try {
+    await sess.api.deleteMessage({
+      threadId: groupId,
+      type: 1,          // ThreadType.Group
+      data: { cliMsgId: msg.data?.cliMsgId, msgId: msg.data?.msgId, uidFrom: msg.data?.uidFrom },
+    }, false);          // false = xóa cho cả nhóm
+    console.log(`[CẤU HÌNH] 🗑️ đã xóa tin của ${who}: "${preview}" — ${why}`);
+    return { deleted: true };
+  } catch (e) {
+    console.error(`[CẤU HÌNH] ❌ xóa tin của ${who} thất bại: ${e?.message || e} (bot đã là quản trị nhóm chưa?)`);
+    return { deleted: false, error: e?.message || String(e) };
+  }
+}
+
+// Gửi tin nhắc, có tag tên người vi phạm
+async function sendNotice(sess, groupId, uid, name, template, vars = {}) {
+  const body = String(template || "").trim();
+  if (!body) return;
+  let txt = body;
+  for (const [k, v] of Object.entries(vars)) txt = txt.split(`{${k}}`).join(String(v));
+  // Nếu mẫu có {tên} thì tag thật vào đúng chỗ đó, không thì tag ở đầu tin
+  const tag = `@${name}`;
+  const hasName = txt.includes(tag);
+  const full = hasName ? txt : `${tag} ${txt}`;
+  const pos = full.indexOf(tag);
+  try {
+    await sess.api.sendMessage(
+      { msg: full, mentions: [{ pos, uid: String(uid), len: tag.length }] },
+      groupId, 1,
+    );
+  } catch (e) {
+    console.warn(`[CẤU HÌNH] không gửi được tin nhắc: ${e?.message || e}`);
   }
 }
 

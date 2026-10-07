@@ -587,6 +587,37 @@ app.post("/api/accountant/replay/preview", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ---------- Cấu hình riêng từng nhóm (tab Cấu hình) ----------
+app.get("/api/accountant/group-config/:groupId", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  const { groupId } = req.params;
+  if (!await checkGroupAccess(req, res, groupId)) return;
+  try { res.json(await dbm.getGroupConfig(groupId)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/accountant/group-config/:groupId", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  const { groupId } = req.params;
+  if (!await checkGroupAccess(req, res, groupId)) return;
+  const b = req.body || {};
+  const pts = Number(b.floorPoints);
+  if (b.floorEnabled && !Number.isFinite(pts)) return res.status(400).json({ error: "Điểm sàn không hợp lệ" });
+  try {
+    const saved = await dbm.saveGroupConfig(groupId, {
+      floorEnabled:      !!b.floorEnabled,
+      floorPoints:       Number.isFinite(pts) ? pts : 0,
+      floorNotice:       String(b.floorNotice ?? "").slice(0, 500),
+      iconDeleteEnabled: !!b.iconDeleteEnabled,
+      iconNotice:        String(b.iconNotice ?? "").slice(0, 500),
+      dryRun:            !!b.dryRun,
+    });
+    sm.invalidateGroupCfg(groupId);   // bỏ cache để áp dụng ngay, khỏi chờ 60s
+    console.log(`[CẤU HÌNH] ${a.userId} cập nhật nhóm ${groupId}: sàn=${saved.floorEnabled ? saved.floorPoints + "đ" : "tắt"}, xóa icon=${saved.iconDeleteEnabled ? "bật" : "tắt"}, chế độ thử=${saved.dryRun ? "bật" : "TẮT"}`);
+    res.json(saved);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ---------- Thêm cuốc xe thủ công ----------
 // Gợi ý điểm: parse nội dung cuốc → loại + giá → tra barem của nhóm
 app.post("/api/accountant/manual-trips/suggest", async (req, res) => {

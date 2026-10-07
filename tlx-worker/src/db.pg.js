@@ -153,6 +153,13 @@ export async function initDb() {
   // msgType của Zalo là chuỗi ("webchat", "chat.photo"…) chứ không phải số như schema cũ đoán
   try { await q("ALTER TABLE raw_messages ALTER COLUMN msg_type TYPE TEXT USING msg_type::TEXT"); } catch {}
 
+  // Cấu hình riêng từng nhóm: điểm sàn nhận cuốc, xóa icon rác… (tab Cấu hình)
+  await q(`CREATE TABLE IF NOT EXISTS group_configs (
+    group_id    TEXT PRIMARY KEY,
+    config_json TEXT NOT NULL DEFAULT '{}',
+    updated_at  BIGINT NOT NULL
+  )`);
+
   await q(`CREATE TABLE IF NOT EXISTS system_logs (
     id         BIGSERIAL PRIMARY KEY,
     level      TEXT NOT NULL,
@@ -966,6 +973,32 @@ export async function getRules(groupId) {
   const r = await q("SELECT * FROM point_rules WHERE group_id=$1", [groupId]);
   return r.rows[0] || null;
 }
+// ---------- Cấu hình riêng từng nhóm (tab Cấu hình) ----------
+// Mặc định: mọi rule TẮT, chế độ thử BẬT — nhóm chưa cấu hình thì chạy y như cũ.
+export const DEFAULT_GROUP_CONFIG = {
+  floorEnabled: false,          // bật luật điểm sàn mới được nhận cuốc
+  floorPoints: 0,               // ngưỡng điểm (cho phép số âm)
+  floorNotice: "{tên} ơi, điểm của bạn đang dưới mức tối thiểu {ngưỡng}đ của nhóm nên chưa nhận được cuốc. Vui lòng liên hệ kế toán.",
+  iconDeleteEnabled: false,     // xóa sticker / tin chỉ toàn emoji
+  iconNotice: "",               // để trống = xóa im lặng, không nhắc
+  dryRun: true,                 // CHỈ ghi log, KHÔNG xóa thật — tắt khi đã yên tâm
+};
+
+export async function getGroupConfig(groupId) {
+  const r = await q("SELECT config_json FROM group_configs WHERE group_id=$1", [groupId]);
+  let saved = {};
+  try { saved = r.rows[0]?.config_json ? JSON.parse(r.rows[0].config_json) : {}; } catch {}
+  return { ...DEFAULT_GROUP_CONFIG, ...saved };
+}
+
+export async function saveGroupConfig(groupId, cfg) {
+  const merged = { ...DEFAULT_GROUP_CONFIG, ...(cfg || {}) };
+  await q(`INSERT INTO group_configs(group_id,config_json,updated_at) VALUES($1,$2,$3)
+    ON CONFLICT(group_id) DO UPDATE SET config_json=$2, updated_at=$3`,
+    [groupId, JSON.stringify(merged), now()]);
+  return merged;
+}
+
 export async function saveRules(groupId, rulesJson, rawText) {
   await q(`INSERT INTO point_rules(group_id,rules_json,raw_text,updated_at) VALUES($1,$2,$3,$4)
     ON CONFLICT(group_id) DO UPDATE SET rules_json=$2, raw_text=$3, updated_at=$4`,
