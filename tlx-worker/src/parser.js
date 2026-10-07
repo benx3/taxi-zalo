@@ -184,7 +184,24 @@ export function parseType(t) {
   // "bx/bxe" + tên bến xe whitelist (Mỹ Đình/Giáp Bát/Nước Ngầm/Gia Lâm/Yên Nghĩa) → bến xe, KHÔNG phải bao xe
   // "bx/bxe" + bất kỳ địa danh khác → bao xe (vì chỉ có vài bến xe lớn ở HN)
   const isBaoxeBx = /\bbxe?\b/.test(l) && !BEN_XE_RE.test(l);
-  if (/bao\s*xe|bx\d+|\bxe\s*7\b|7\s*chỗ|\b7c\b|\blịch\s*taxi\b|\btaxi\b/.test(l) || isBaoxeBx) {
+
+  // Chiều đi: có từ khoá 2 chiều → 2c, còn lại (kể cả ghi rõ "1 chiều") → 1 chiều
+  const is2Chieu = /\b2\s*c\b|2\s*chi[eề]u|2\s*chieu/.test(l);
+
+  // Bao xe theo CỠ XE — phải kiểm tra TRƯỚC nhánh bao xe chung, vì nhánh chung
+  // sẽ nuốt luôn "bx5"/"bx7" qua mẫu bx\d+ rồi trả về "Bao xe" không phân cỡ.
+  // Vf6tl = VinFast VF6 (5 chỗ) · Limo Green = Xanh SM Limo (7 chỗ)
+  //
+  // Tách từ khoá MẠNH và YẾU: "x5"/"x7" trần dễ trùng số nhà ("2k nhà x5 ngõ 7"),
+  // nên chỉ coi là bao xe khi tin KHÔNG ghi số khách ghép. Các từ khoá còn lại
+  // (bx5, xe 5, bao xe 5, vf6tl, 7 chỗ, 7c, limo green) thì luôn ăn.
+  const hasGhepCount = /[123]\s*(?:khách|khach|kh\b|ghế|ghê|ghé|ghép|ghep|ghe\b|gh\b|g\b)|[123]k\b/.test(l);
+  const isBaoXe5 = /\bbx\s*5\b|\bxe\s*5\b|\bvf6\s*tl\b|bao\s*xe\s*5/.test(l) || (/\bx5\b/.test(l) && !hasGhepCount);
+  const isBaoXe7 = /\bbx\s*7\b|\bxe\s*7\b|\blimo\s*green\b|bao\s*xe\s*7|7\s*chỗ|\b7c\b/.test(l) || (/\bx7\b/.test(l) && !hasGhepCount);
+  if (isBaoXe7) return is2Chieu ? "Bao xe 7 chỗ 2 chiều" : "Bao xe 7 chỗ";
+  if (isBaoXe5) return is2Chieu ? "Bao xe 5 chỗ 2 chiều" : "Bao xe 5 chỗ";
+
+  if (/bao\s*xe|bx\d+|\blịch\s*taxi\b|\btaxi\b/.test(l) || isBaoxeBx) {
     if (/bx\s*2c\b|bxe\s*2c\b|bao\s*xe\s*2c\b|2\s*chi[eề]u|2\s*chieu/.test(l)) return "Bao xe 2 chiều";
     return "Bao xe";
   }

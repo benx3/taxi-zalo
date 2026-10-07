@@ -18,6 +18,7 @@ Trả về JSON hợp lệ duy nhất, không có markdown hay giải thích.
 VIẾT TẮT THƯỜNG GẶP:
 X4=xe 4 chỗ nhỏ (i10,Morning,Wigo,Fadil), X5=xe 5 chỗ Sedan có cốp, X7=xe 7 chỗ, X16=xe 16 chỗ, X29=xe 29 chỗ
 bx/bxe/1bx/bao xe=bao xe (charter toàn xe), ghép=xe ghép chung nhiều khách
+bx5/x5/xe 5/vf6tl=bao xe 5 chỗ; bx7/x7/xe 7/limo green=bao xe 7 chỗ; 2c/2 chiều=khứ hồi, 1c/1 chiều=một chiều
 1k=1 khách, 2k=2 khách, 3k=3 khách (k ở đây là "khách", không phải nghìn đồng)
 sb=sân bay, NB/nội bài=sân bay Nội Bài HN, T1=ga nội địa, T2=ga quốc tế
 csct/snct=càng sớm càng tốt (đi ngay/gấp), tgct=trọn gói cao tốc
@@ -40,7 +41,7 @@ TRƯỜNG JSON CẦN TRẢ VỀ:
   "from": string|null,
   "to": string|null,
   "seats": "1 ghế"|"2 khách"|"3 khách"|"Bao xe"|"Không rõ",
-  "type": "Ghép 1"|"Ghép 2"|"Ghép 3"|"Bao xe"|"Bao xe 2 chiều"|"Sân bay"|"Sân bay đón"|"Sân bay tiễn"|"Sân bay 2 chiều"|"Hàng",
+  "type": "Ghép 1"|"Ghép 2"|"Ghép 3"|"Bao xe"|"Bao xe 2 chiều"|"Bao xe 5 chỗ"|"Bao xe 5 chỗ 2 chiều"|"Bao xe 7 chỗ"|"Bao xe 7 chỗ 2 chiều"|"Sân bay"|"Sân bay đón"|"Sân bay tiễn"|"Sân bay 2 chiều"|"Hàng",
   "timeLabel": string,
   "timeBucket": "soon"|"today"|"tomorrow",
   "car": "Xe 29c"|"Xe 16c"|"Xe 7c+"|"Sedan/4c"|"Sedan/5c"|null,
@@ -77,8 +78,11 @@ QUY TẮC type:
 - "Sân bay 2 chiều": đón và tiễn cả 2 chiều (có "2c/2chiều" + sân bay)
 - "Sân bay": có sân bay nhưng không rõ chiều
 - "Hàng": ship/gửi hàng/chở hàng/kiện hàng/đồ (KHÔNG có từ "khách/người")
-- "Bao xe": bx/bxe/bao xe NHƯNG không có sân bay; hoặc không ghi số ghế (mặc định bao xe)
-- "Bao xe 2 chiều": bao xe + 2c/2chiều, không có sân bay
+- "Bao xe 5 chỗ": bx5/x5/xe 5/bao xe 5/Vf6tl (VinFast VF6) — ưu tiên hơn "Bao xe" chung
+- "Bao xe 7 chỗ": bx7/x7/xe 7/7 chỗ/7c/bao xe 7/Limo Green (Xanh SM Limo) — ưu tiên hơn "Bao xe" chung
+- Hai loại trên nếu có "2c/2 chiều" → thêm hậu tố " 2 chiều" (vd "Bao xe 7 chỗ 2 chiều")
+- "Bao xe": bx/bxe/bao xe KHÔNG rõ cỡ xe, không có sân bay; hoặc không ghi số ghế
+- "Bao xe 2 chiều": bao xe không rõ cỡ + 2c/2chiều, không có sân bay
 - "Ghép 1"/"Ghép 2"/"Ghép 3": theo số 1k/2k/3k hoặc 1 ghế/2 ghế/3 ghế, không có sân bay
 
 QUY TẮC seats:

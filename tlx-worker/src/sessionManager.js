@@ -338,6 +338,12 @@ async function loadGroups(sess) {
 const PARSER_TO_BAREM = {
   "Bao xe":          ["bao_xe"],
   "Bao xe 2 chiều":  ["bao_xe_2c"],
+  // Bao xe theo cỡ xe — thử mã riêng trước, không có thì lùi về bao xe chung
+  // để nhóm chưa cấu hình barem 5/7 chỗ vẫn tính được như cũ.
+  "Bao xe 5 chỗ":          ["bao_xe_5", "bao_xe"],
+  "Bao xe 5 chỗ 2 chiều":  ["bao_xe_5_2c", "bao_xe_2c", "bao_xe_5", "bao_xe"],
+  "Bao xe 7 chỗ":          ["bao_xe_7", "bao_xe"],
+  "Bao xe 7 chỗ 2 chiều":  ["bao_xe_7_2c", "bao_xe_2c", "bao_xe_7", "bao_xe"],
   "Ghép 1":          ["ghep_1"],
   "Ghép 2":          ["ghep_2"],
   "Ghép 3":          ["ghep_3", "ghep_2"],  // thử ghep_3 trước, fallback ghep_2
