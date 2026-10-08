@@ -984,6 +984,8 @@ export const DEFAULT_GROUP_CONFIG = {
   floorNotice: "{tên} ơi, điểm của bạn đang dưới mức tối thiểu {ngưỡng}đ của nhóm nên chưa nhận được cuốc. Vui lòng liên hệ kế toán.",
   iconDeleteEnabled: false,     // xóa sticker / tin chỉ toàn emoji
   iconNotice: "",               // để trống = xóa im lặng, không nhắc
+  linkDeleteEnabled: false,     // xóa mọi tin có link
+  linkNotice: "{tên} ơi, nhóm không cho phép gửi link nên tin của bạn đã bị xóa.",
   dryRun: true,                 // CHỈ ghi log, KHÔNG xóa thật — tắt khi đã yên tâm
 };
 

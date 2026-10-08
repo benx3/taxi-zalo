@@ -499,22 +499,26 @@ async function onMessage(sess, msg) {
       }
     }
 
-    // (A.-1) Dọn icon rác: sticker hoặc tin chỉ toàn emoji, không kèm chữ nào.
+    // (A.-1) Dọn tin rác: sticker / tin chỉ toàn icon, và tin có link (mỗi loại bật riêng).
     // Đặt sớm nhất có thể nhưng SAU khi đã lưu raw_messages, để tin xóa vẫn còn vết tra cứu.
     // Không đụng ảnh/voice (có thể là cuốc thật), không đụng tin của bot/KT.
     if (sess.isAccountant && senderId !== String(sess.selfId)) {
       const _cfg = await getGroupCfg(dbGroupId);
-      // Kiểm tra sticker/emoji TRƯỚC (rẻ, chạy trong RAM) rồi mới hỏi DB lấy UID kế toán,
+      // Kiểm tra sticker/emoji/link TRƯỚC (rẻ, chạy trong RAM) rồi mới hỏi DB lấy UID kế toán,
       // nếu không sẽ tốn 1 truy vấn DB cho MỌI tin nhắn của nhóm.
-      if (_cfg?.iconDeleteEnabled && (isStickerMsg(msg) || isEmojiOnly(text))) {
+      const _isIcon = !!_cfg?.iconDeleteEnabled && (isStickerMsg(msg) || isEmojiOnly(text));
+      const _isLink = !_isIcon && !!_cfg?.linkDeleteEnabled && isLinkMsg(msg, text);
+      if (_isIcon || _isLink) {
         const _ktUid = await dbm.getGroupKtUid(dbGroupId).catch(() => null);
         if (senderId !== String(_ktUid)) {
           const r = await deleteGroupMessage(sess, msg, groupId, {
             dryRun: _cfg.dryRun, who: senderName,
-            why: isStickerMsg(msg) ? `sticker/GIF (${msg.data?.msgType})` : "chỉ toàn icon",
+            why: _isLink ? `có link: "${text.slice(0, 60)}"`
+               : isStickerMsg(msg) ? `sticker/GIF (${msg.data?.msgType})` : "chỉ toàn icon",
           });
-          if (r.deleted && _cfg.iconNotice) {
-            await sendNotice(sess, groupId, senderId, senderName, _cfg.iconNotice, { tên: senderName });
+          const _notice = _isLink ? _cfg.linkNotice : _cfg.iconNotice;
+          if (r.deleted && _notice) {
+            await sendNotice(sess, groupId, senderId, senderName, _notice, { tên: senderName });
           }
           if (!_cfg.dryRun) return;   // đã xóa → không xử lý tiếp
         }
@@ -1366,6 +1370,21 @@ export function isEmojiOnly(s) {
 // Sticker / GIF lấy từ kho của Zalo — msgType "chat.sticker", "chat.gif"
 export function isStickerMsg(msg) {
   return /sticker|gif/i.test(String(msg?.data?.msgType || ""));
+}
+
+// Link trong chữ: có http(s):// hoặc www., hoặc tên miền trần như "zalo.me/g/abc", "bit.ly/x", "abc.com.vn".
+// Tên miền trần phải dài ≥ 2 ký tự (tránh "e.com" do gõ dính "em.com…"), riêng t.me (Telegram) cho phép.
+// Không bắt email (abc@gmail.com), giờ (8.30), giá (1.5tr) vì không có đuôi tên miền.
+const LINK_RE = new RegExp([
+  /(?:https?:\/\/|www\.)\S+/,
+  /(?<![@\w.-])t\.me\/\S+/,
+  /(?<![@\w.-])(?:[a-z0-9][a-z0-9-]*[a-z0-9]\.)+(?:com|vn|net|org|me|ly|io|info|xyz|link|site|online|shop|store|app|gg|tk|top|biz|asia|club|cc|edu|gov|page|live|pro|ai)(?![a-z0-9-])(?:\/\S*)?/,
+].map(r => r.source).join("|"), "i");
+
+// Tin có link: thẻ link Zalo (msgType "chat.link") hoặc chữ/chú thích ảnh có chứa link
+export function isLinkMsg(msg, text) {
+  if (/link/i.test(String(msg?.data?.msgType || ""))) return true;
+  return LINK_RE.test(text || "");
 }
 
 // Giới hạn tốc độ xóa: tránh Zalo coi là hành vi bất thường rồi khóa tài khoản bot

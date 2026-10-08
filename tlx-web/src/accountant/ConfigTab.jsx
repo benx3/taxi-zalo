@@ -167,6 +167,42 @@ export default function ConfigTab({ groupId }) {
         )}
       </div>
 
+      {/* ── Xóa link ───────────────────────────────── */}
+      <div style={card}>
+        <Toggle on={cfg.linkDeleteEnabled} onChange={v => set({ linkDeleteEnabled: v })}
+          label="Không cho gửi link" color="#60a5fa"
+          desc="Ai gửi tin có link, bot xóa tin đó. Chặn quảng cáo, link mời vào nhóm khác." />
+
+        {cfg.linkDeleteEnabled && (
+          <div style={{ marginTop: 16, paddingLeft: 55 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+              <div style={{ padding: "10px 12px", borderRadius: 9, background: "rgba(248,113,113,.07)", border: "1px solid rgba(248,113,113,.25)" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#f87171", marginBottom: 6 }}>BỊ XÓA</div>
+                <div style={{ fontSize: 12.5, color: "var(--ink-dim)", lineHeight: 1.8 }}>
+                  · Link https://…, www.…<br />· zalo.me/g/…, bit.ly/…, t.me/…<br />· Thẻ link chia sẻ, ảnh kèm link
+                </div>
+              </div>
+              <div style={{ padding: "10px 12px", borderRadius: 9, background: "rgba(52,211,153,.07)", border: "1px solid rgba(52,211,153,.25)" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#34d399", marginBottom: 6 }}>GIỮ NGUYÊN</div>
+                <div style={{ fontSize: 12.5, color: "var(--ink-dim)", lineHeight: 1.8 }}>
+                  · Số điện thoại, email<br />· Giờ "8.30", điểm "1.5đ"<br />· Tin của kế toán
+                </div>
+              </div>
+            </div>
+
+            <label style={{ display: "block", fontSize: 12.5, color: "var(--ink-dim)", marginBottom: 5, fontWeight: 600 }}>
+              Tin bot gửi khi xóa link
+            </label>
+            <textarea rows={2} value={cfg.linkNotice} onChange={e => set({ linkNotice: e.target.value })}
+              placeholder="Để trống = xóa im lặng, không nhắc gì"
+              style={{ ...inp, resize: "vertical", lineHeight: 1.6, fontFamily: "inherit" }} />
+            <div style={{ fontSize: 12, color: "var(--ink-dim)", marginTop: 6, lineHeight: 1.7 }}>
+              Dùng được: <code style={{ background: "rgba(52,211,153,.12)", color: "#34d399", padding: "1px 5px", borderRadius: 4 }}>{"{tên}"}</code> (tag người gửi)
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ── Lưu ────────────────────────────────────── */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 20 }}>
         <button onClick={save} disabled={saving}
