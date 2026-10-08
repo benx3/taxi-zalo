@@ -640,11 +640,13 @@ app.post("/api/accountant/group-config/:groupId", async (req, res) => {
       iconNotice:        String(b.iconNotice ?? "").slice(0, 500),
       linkDeleteEnabled: !!b.linkDeleteEnabled,
       linkNotice:        String(b.linkNotice ?? "").slice(0, 500),
+      recallWarnEnabled: !!b.recallWarnEnabled,
+      recallNotice:      String(b.recallNotice ?? "").slice(0, 800),
       deleteMaxPerMin:   maxDel,
       dryRun:            !!b.dryRun,
     });
     sm.invalidateGroupCfg(groupId);   // bỏ cache để áp dụng ngay, khỏi chờ 60s
-    console.log(`[CẤU HÌNH] ${a.userId} cập nhật nhóm ${groupId}: sàn=${saved.floorEnabled ? saved.floorPoints + "đ" : "tắt"}, xóa icon=${saved.iconDeleteEnabled ? "bật" : "tắt"}, xóa link=${saved.linkDeleteEnabled ? "bật" : "tắt"}, tối đa=${saved.deleteMaxPerMin || "∞"} tin/phút, chế độ thử=${saved.dryRun ? "bật" : "TẮT"}`);
+    console.log(`[CẤU HÌNH] ${a.userId} cập nhật nhóm ${groupId}: sàn=${saved.floorEnabled ? saved.floorPoints + "đ" : "tắt"}, xóa icon=${saved.iconDeleteEnabled ? "bật" : "tắt"}, xóa link=${saved.linkDeleteEnabled ? "bật" : "tắt"}, cảnh báo thu hồi=${saved.recallWarnEnabled ? "bật" : "tắt"}, tối đa=${saved.deleteMaxPerMin || "∞"} tin/phút, chế độ thử=${saved.dryRun ? "bật" : "TẮT"}`);
     res.json(saved);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

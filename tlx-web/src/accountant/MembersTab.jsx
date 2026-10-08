@@ -29,6 +29,7 @@ const VIOLATION_KINDS = [
   { key: "icon",  label: "Gửi icon",               color: "#a78bfa" },
   { key: "link",  label: "Gửi link",               color: "#60a5fa" },
   { key: "floor", label: "Nhận cuốc dưới điểm sàn", color: "#f87171" },
+  { key: "recall", label: "Thu hồi tin nhắn",       color: "#f59e0b" },
 ];
 const violationSummary = (v) =>
   VIOLATION_KINDS.filter(k => v?.[k.key]).map(k => `${k.label}: ${v[k.key]}`).join(" · ");
@@ -609,7 +610,7 @@ function ViolationPanel({ groupId, member, onChanged }) {
   const load = () => api.listViolations(groupId, member.zalo_uid).then(setHist).catch(e => setErr(e.message));
   useEffect(() => { load(); }, [groupId, member.zalo_uid]);
 
-  const v = member.violations || { icon: 0, link: 0, floor: 0, total: 0 };
+  const v = member.violations || { icon: 0, link: 0, floor: 0, recall: 0, total: 0 };
   if (!hist || (hist.length === 0 && !v.total)) return null;
 
   const doReset = async () => {

@@ -67,6 +67,7 @@ export const {
   getRules, saveRules,
   getGroupConfig, saveGroupConfig,
   addViolation, getViolationCounts, listViolations, clearViolations, getAccountantGlobalIds,
+  countViolationsToday, getRawMessageByIds,
   getGroupKtUid, setGroupKtUid,
   purgeTable, getDataStats,
 } = impl;

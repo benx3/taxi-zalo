@@ -130,6 +130,8 @@ function attach(userId, api, onEvent) {
   sessions.set(userId, sess);
 
   api.listener.on("message", (msg) => { sess.lastMsgAt = Date.now(); onMessage(sess, msg); });
+  // Thành viên thu hồi tin → cảnh báo + tính vi phạm (chỉ khi nhóm bật trong tab Cấu hình)
+  api.listener.on("undo", (u) => { sess.lastMsgAt = Date.now(); onUndo(sess, u); });
 
   // Lưu cookies định kỳ mỗi 20 phút để giữ phiên qua các lần restart
   sess.cookieSaveTimer = setInterval(() => {
@@ -1473,6 +1475,73 @@ function firstFloorNotice(groupId, tripKeys, dryRun) {
   return true;
 }
 
+// Mã các tin bot vừa tự xóa (kiểm duyệt) — Zalo có thể báo về như 1 lần "thu hồi",
+// không được tính là thành viên thu hồi. Giữ 10 phút.
+const _botDeleted = new Map();   // msgId/cliMsgId -> thời điểm
+function markBotDeleted(...ids) {
+  const now = Date.now();
+  for (const [k, t] of _botDeleted) if (now - t > 600_000) _botDeleted.delete(k);
+  for (const id of ids) if (id != null && id !== "") _botDeleted.set(String(id), now);
+}
+
+// Thành viên thu hồi tin → cảnh báo trong nhóm + cộng 1 vi phạm "recall".
+// Bỏ qua: nhóm chưa bật, tin do bot xóa, quản trị gỡ tin người khác, tin của bot/KT.
+const fmtVnTime = (ms) => {
+  const d = new Date(Number(ms) + 7 * 3600_000);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+};
+export async function onUndo(sess, u) {
+  try {
+    if (!u?.isGroup || !sess.isAccountant) return;
+    const groupId = String(u.threadId);
+    if (sess.selected.size > 0 && !sess.selected.has(groupId)) return;
+    const d = u.data || {};
+    const uid = String(d.uidFrom || "");
+    if (!uid || uid === String(sess.selfId)) return;
+    const dbGroupId = resolveGroupId(sess, groupId);
+    const cfg = await getGroupCfg(dbGroupId);
+    if (!cfg?.recallWarnEnabled) return;
+
+    const ids = [d.content?.globalMsgId, d.content?.cliMsgId]
+      .filter(x => x != null && String(x) !== "0" && String(x) !== groupId).map(String);
+    if (ids.some(id => _botDeleted.has(id))) return;                 // bot tự xóa
+    const raw = await dbm.getRawMessageByIds(groupId, ids).catch(() => null);
+    if (raw?.deleted_at) return;                                       // bot (phiên khác) đã xóa
+    // Chỉ chính người gửi mới tự thu hồi được; người khác gỡ = quản trị xóa → không phải vi phạm.
+    // So uid chỉ khi tin do chính phiên này lưu (uid mỗi tài khoản Zalo nhìn mỗi khác).
+    if (raw && raw.saved_by === sess.userId && raw.sender_id && String(raw.sender_id) !== uid) return;
+    if (await isAccountantSender(sess, dbGroupId, uid)) return;
+
+    const name = d.dName || raw?.sender_name || "Thành viên";
+    const mt = String(raw?.msg_type || "");
+    let content = String(raw?.text || "").trim();
+    if (!raw) content = "(không còn lưu nội dung)";
+    else if (!content) content = /sticker/i.test(mt) ? "[sticker]" : /gif/i.test(mt) ? "[GIF]"
+      : /photo|image/i.test(mt) ? "[hình ảnh]" : /voice/i.test(mt) ? "[tin nhắn thoại]"
+      : /video/i.test(mt) ? "[video]" : /file/i.test(mt) ? "[tệp]" : "[không có chữ]";
+    if (content.length > 300) content = content.slice(0, 300) + "…";
+
+    if (cfg.dryRun) {
+      console.log(`[CẤU HÌNH] 🧪 (thử) ${name} thu hồi tin: "${content.slice(0, 60)}" → sẽ cảnh báo + tính vi phạm`);
+      return;
+    }
+    const canon = await resolveCanonicalUid(dbGroupId, uid);
+    const undoId = String(d.msgId || d.cliMsgId || `${ids[0] || Date.now()}:undo`);
+    if (!(await dbm.addViolation(dbGroupId, canon, "recall", undoId, content.slice(0, 200)))) return; // sự kiện trùng
+    const n = await dbm.countViolationsToday(dbGroupId, canon, "recall").catch(() => 1);
+    console.log(`[VI PHẠM] +1 thu hồi tin — ${name} (${canon}), hôm nay ${n} lần`);
+    await sendNotice(sess, groupId, uid, name, cfg.recallNotice, {
+      nhóm: sess.groupNameById.get(groupId) || groupId,
+      "số lần": n,
+      "thời gian": `${fmtVnTime(Date.now())} (GMT+7)`,
+      "nội dung": content,          // để cuối: nội dung do thành viên gõ, không cho đè biến khác
+    });
+  } catch (e) {
+    console.error(`[${sess.userId}] onUndo:`, e?.message || e);
+  }
+}
+
 // Xóa 1 tin trong nhóm (cần bot là quản trị/phó nhóm).
 // dryRun = chỉ ghi log, không đụng vào tin thật.
 async function deleteGroupMessage(sess, msg, groupId, { dryRun, why, who, maxPerMin }) {
@@ -1485,6 +1554,7 @@ async function deleteGroupMessage(sess, msg, groupId, { dryRun, why, who, maxPer
     console.warn(`[CẤU HÌNH] ⚠️ chạm giới hạn ${maxPerMin} tin/phút, bỏ qua tin của ${who}`);
     return { deleted: false, rateLimited: true };
   }
+  markBotDeleted(msg.data?.msgId, msg.data?.cliMsgId);   // để onUndo không coi là thành viên tự thu hồi
   try {
     await sess.api.deleteMessage({
       threadId: groupId,
@@ -1506,10 +1576,11 @@ async function deleteGroupMessage(sess, msg, groupId, { dryRun, why, who, maxPer
 async function sendNotice(sess, groupId, uid, name, template, vars = {}) {
   const body = String(template || "").trim();
   if (!body) return;
-  let txt = body;
-  for (const [k, v] of Object.entries(vars)) txt = txt.split(`{${k}}`).join(String(v));
-  // Nếu mẫu có {tên} thì tag thật vào đúng chỗ đó, không thì tag ở đầu tin
+  // {tên} → "@Tên" để tag thật vào đúng chỗ đó (trước đây thay bằng tên trần rồi lại chèn thêm
+  // "@Tên" ở đầu → tin ra "@Tên Tên ơi…"). Mẫu không có {tên} thì tag ở đầu tin.
   const tag = `@${name}`;
+  let txt = body.split("{tên}").join(tag);
+  for (const [k, v] of Object.entries(vars)) if (k !== "tên") txt = txt.split(`{${k}}`).join(String(v));
   const hasName = txt.includes(tag);
   const full = hasName ? txt : `${tag} ${txt}`;
   const pos = full.indexOf(tag);

@@ -241,6 +241,51 @@ export default function ConfigTab({ groupId }) {
         )}
       </div>
 
+      {/* ── Cảnh báo thu hồi ───────────────────────── */}
+      <div style={card}>
+        <Toggle on={cfg.recallWarnEnabled} onChange={v => set({ recallWarnEnabled: v })}
+          label="Cảnh báo thành viên thu hồi tin nhắn" color="#f59e0b"
+          desc="Ai gửi tin rồi thu hồi, bot đăng lại nội dung đã thu hồi vào nhóm và tính 1 lần vi phạm." />
+
+        {cfg.recallWarnEnabled && (
+          <div style={{ marginTop: 16, paddingLeft: 55 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+              <div style={{ padding: "10px 12px", borderRadius: 9, background: "rgba(248,113,113,.07)", border: "1px solid rgba(248,113,113,.25)" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#f87171", marginBottom: 6 }}>BỊ CẢNH BÁO</div>
+                <div style={{ fontSize: 12.5, color: "var(--ink-dim)", lineHeight: 1.8 }}>
+                  · Thành viên tự thu hồi tin của mình<br />· Mỗi lần thu hồi = 1 vi phạm
+                </div>
+              </div>
+              <div style={{ padding: "10px 12px", borderRadius: 9, background: "rgba(52,211,153,.07)", border: "1px solid rgba(52,211,153,.25)" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#34d399", marginBottom: 6 }}>KHÔNG TÍNH</div>
+                <div style={{ fontSize: 12.5, color: "var(--ink-dim)", lineHeight: 1.8 }}>
+                  · Tin bot xóa theo luật nhóm<br />· Quản trị gỡ tin người khác<br />· Tài khoản kế toán thu hồi
+                </div>
+              </div>
+            </div>
+
+            <label style={{ display: "block", fontSize: 12.5, color: "var(--ink-dim)", marginBottom: 5, fontWeight: 600 }}>
+              Tin bot gửi khi có người thu hồi
+            </label>
+            <textarea rows={6} value={cfg.recallNotice} onChange={e => set({ recallNotice: e.target.value })}
+              placeholder="Để trống = không gửi tin, chỉ tính vi phạm"
+              style={{ ...inp, resize: "vertical", lineHeight: 1.6, fontFamily: "inherit" }} />
+            <div style={{ fontSize: 12, color: "var(--ink-dim)", marginTop: 6, lineHeight: 1.9 }}>
+              Dùng được:{" "}
+              {[["{tên}", "tag người thu hồi"], ["{nhóm}", "tên nhóm"], ["{số lần}", "số lần thu hồi hôm nay"],
+                ["{nội dung}", "tin đã thu hồi"], ["{thời gian}", "lúc thu hồi"]].map(([k, d], i) => (
+                <span key={k}>{i > 0 && " · "}
+                  <code style={{ background: "rgba(52,211,153,.12)", color: "#34d399", padding: "1px 5px", borderRadius: 4 }}>{k}</code> {d}
+                </span>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--ink-dim)", marginTop: 6, lineHeight: 1.6 }}>
+              Nội dung lấy từ kho tin bot đã lưu (7 ngày). Tin bot chưa kịp lưu sẽ hiện "(không còn lưu nội dung)".
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ── Lưu ────────────────────────────────────── */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 20 }}>
         <button onClick={save} disabled={saving}

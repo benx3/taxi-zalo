@@ -1003,6 +1003,8 @@ export const DEFAULT_GROUP_CONFIG = {
   iconNotice: "",               // để trống = xóa im lặng, không nhắc
   linkDeleteEnabled: false,     // xóa mọi tin có link
   linkNotice: "{tên} ơi, nhóm không cho phép gửi link nên tin của bạn đã bị xóa.",
+  recallWarnEnabled: false,     // cảnh báo + tính vi phạm khi thành viên thu hồi tin
+  recallNotice: "📸 Tin nhắn thu hồi\nNhóm: {nhóm}\nNgười thu hồi: {tên}\nSố lần thu hồi trong ngày: {số lần}\nNội dung đã thu hồi: \"{nội dung}\"\nThời gian: {thời gian}",
   deleteMaxPerMin: 10,          // tối đa số tin bot xóa / phút / nhóm, 0 = không giới hạn
   dryRun: true,                 // CHỈ ghi log, KHÔNG xóa thật — tắt khi đã yên tâm
 };
@@ -1030,7 +1032,18 @@ export async function getAccountantGlobalIds() {
 }
 
 // ---------- Vi phạm kiểm duyệt ----------
-export const VIOLATION_KINDS = ["icon", "link", "floor"];
+export const VIOLATION_KINDS = ["icon", "link", "floor", "recall"];
+
+// Số lần vi phạm loại `kind` (chưa reset) của 1 người TRONG NGÀY hôm nay theo giờ Việt Nam
+export async function countViolationsToday(groupId, memberUid, kind) {
+  const vnOffsetMs = 7 * 60 * 60 * 1000;
+  const dayStart = Math.floor((Date.now() + vnOffsetMs) / 86400000) * 86400000 - vnOffsetMs;
+  const r = await q(
+    `SELECT COUNT(*)::int AS n FROM member_violations
+     WHERE group_id=$1 AND member_uid=$2 AND kind=$3 AND cleared_at IS NULL AND created_at >= $4`,
+    [groupId, String(memberUid), kind, dayStart]);
+  return r.rows[0]?.n || 0;
+}
 
 // Ghi 1 lần vi phạm. Trả về true nếu là lần ghi mới (false = tin này đã được tính rồi).
 export async function addViolation(groupId, memberUid, kind, msgId, detail) {
@@ -1050,7 +1063,7 @@ export async function getViolationCounts(groupId) {
      GROUP BY member_uid, kind`, [groupId]);
   const out = {};
   for (const row of r.rows) {
-    const o = out[row.member_uid] ||= { icon: 0, link: 0, floor: 0, total: 0, last_at: 0 };
+    const o = out[row.member_uid] ||= { icon: 0, link: 0, floor: 0, recall: 0, total: 0, last_at: 0 };
     o[row.kind] = row.n;
     o.total += row.n;
     o.last_at = Math.max(o.last_at, Number(row.last_at) || 0);
@@ -1257,6 +1270,17 @@ export async function getRawMessagesInRange(zaloGroupId, fromMs, toMs, limit = 5
 
 // Thời điểm thật của 1 tin (tra theo msg_id hoặc cli_msg_id) — dùng để biết tin được
 // quote gửi lúc nào, chặn Section E đoán nhầm sang cuốc khác.
+// Tìm 1 tin thô theo bất kỳ mã nào (msgId hoặc cliMsgId) — dùng khi thành viên thu hồi tin
+export async function getRawMessageByIds(zaloGroupId, ids) {
+  const list = (ids || []).filter(Boolean).map(String);
+  if (!list.length) return null;
+  const r = await q(
+    `SELECT msg_id, sender_id, sender_name, text, msg_type, created_at, saved_by, deleted_at
+     FROM raw_messages WHERE group_id=$1 AND (msg_id = ANY($2) OR cli_msg_id = ANY($2)) LIMIT 1`,
+    [String(zaloGroupId), list]);
+  return r.rows[0] || null;
+}
+
 export async function getRawMessageTime(zaloGroupId, msgId) {
   if (!msgId) return null;
   const r = await q(
