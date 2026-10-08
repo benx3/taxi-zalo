@@ -1411,12 +1411,17 @@ function canDelete(groupId, maxPerMin) {
 // Cuốc nào đã cảnh báo người bị chặn điểm sàn rồi thì người sau không cảnh báo nữa.
 // Để ở cấp module: nhiều tài khoản KT cùng nhóm vẫn chỉ ra 1 cảnh báo / cuốc.
 // Tách khóa chế độ thử để lúc chạy thử không "ăn" mất lượt cảnh báo thật.
+// Chỉ nằm trong RAM: restart thì cuốc đang mở có thể cảnh báo lại 1 lần — chấp nhận được.
 const _floorNoticed = new Map();   // `${groupId}:${thử|thật}:${tripMsgId}` -> thời điểm
+let _floorSweptAt = 0;
 function firstFloorNotice(groupId, tripKeys, dryRun) {
   if (!tripKeys.length) return true;
   const now = Date.now();
-  if (_floorNoticed.size > 2000)
+  // Dọn mục cũ hơn 24h, tối đa 10 phút quét 1 lần (không quét lại mỗi lần gọi)
+  if (now - _floorSweptAt > 600_000) {
+    _floorSweptAt = now;
     for (const [k, t] of _floorNoticed) if (now - t > 86_400_000) _floorNoticed.delete(k);
+  }
   const keys = tripKeys.map(id => `${groupId}:${dryRun ? "thử" : "thật"}:${id}`);
   if (keys.some(k => _floorNoticed.has(k))) return false;
   for (const k of keys) _floorNoticed.set(k, now);
