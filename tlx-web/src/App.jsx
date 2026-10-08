@@ -542,7 +542,7 @@ function AdminApp({ me, onLogout }) {
                         <td style={td}>{isAdm?<span style={{display:"inline-flex",alignItems:"center",gap:4,color:"#a78bfa",fontWeight:700,fontSize:12}}><Shield size={12}/> Admin</span>:u.role==="accountant"?<span style={{display:"inline-flex",alignItems:"center",gap:4,color:"#f59e0b",fontWeight:700,fontSize:12}}><Users size={12}/> Kế Toán</span>:u.role==="monitor"?<span style={{display:"inline-flex",alignItems:"center",gap:4,color:"#34d399",fontWeight:700,fontSize:12}}><BarChart2 size={12}/> Monitor</span>:<span style={{color:"var(--ink-dim)",fontSize:12.5}}>Tài xế</span>}</td>
                         <td style={td}>{isAdm?"—":(u.plan||"—")}</td>
                         <td style={td}>{u.hasZalo?<span style={{color:"#34d399"}}>✓</span>:<span style={{color:"var(--ink-dim)"}}>—</span>}</td>
-                        <td style={td}>{!isAdm&&u.status==="active"?<span style={{color:u.daysLeft<=3?"#f59e0b":"var(--ink)"}}>{u.daysLeft} ngày</span>:<span style={{color:"var(--ink-dim)"}}>—</span>}</td>
+                        <td style={td}>{(u.role==="accountant"||u.role==="monitor")?<span style={{color:"var(--ink-dim)",fontSize:12}}>Không tính hạn</span>:!isAdm&&u.status==="active"?<span style={{color:u.daysLeft<=3?"#f59e0b":"var(--ink)"}}>{u.daysLeft} ngày</span>:<span style={{color:"var(--ink-dim)"}}>—</span>}</td>
                         <td style={td}><StatusPill status={u.status}/></td>
                         <td style={{...td,textAlign:"right",whiteSpace:"nowrap"}}>
                           <button onClick={()=>setResetTarget(u)} style={miniBtn("#8b5cf6")}><Lock size={13}/> Reset MK</button>

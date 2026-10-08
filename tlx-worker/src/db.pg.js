@@ -244,6 +244,10 @@ export async function ensureSeed() {
       [uid(), "admin", hash, "Quản trị viên", "admin", "active", now()]);
     console.log("👤 Đã tạo tài khoản admin. Đăng nhập lần đầu và đổi mật khẩu ngay.");
   }
+  // Kế toán / monitor không tính hạn: trả các tài khoản lỡ bị đánh "expired" về "active"
+  // (không đụng tài khoản bị khóa "banned" hay đang chờ duyệt "pending")
+  const _fixed = await q("UPDATE users SET status='active' WHERE role IN ('accountant','monitor') AND status='expired'").catch(() => null);
+  if (_fixed?.rowCount) console.log(`👤 Trả ${_fixed.rowCount} tài khoản kế toán/monitor từ 'expired' về 'active' (không tính hạn)`);
   // Migration: thêm cột public_visible nếu chưa có
   await q("ALTER TABLE accountant_groups ADD COLUMN IF NOT EXISTS public_visible INTEGER NOT NULL DEFAULT 1").catch(() => {});
   await q("ALTER TABLE accountant_groups ADD COLUMN IF NOT EXISTS zalo_group_id TEXT").catch(() => {});
@@ -323,7 +327,8 @@ export function userIdFromToken(token) {
 export function logout(token) { sessions.delete(token); }
 
 async function refreshStatus(u) {
-  if (u.role === "admin" || u.status === "banned") return;
+  // Hạn sử dụng (gói dịch vụ) chỉ áp cho tài xế. Kế toán / monitor / admin không tính hạn (đã chốt với user).
+  if (["admin", "accountant", "monitor"].includes(u.role) || u.status === "banned") return;
   if (u.expires_at && Number(u.expires_at) < now() && u.status === "active") {
     await q("UPDATE users SET status='expired' WHERE id=$1", [u.id]);
   }
