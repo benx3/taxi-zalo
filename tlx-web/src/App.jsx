@@ -601,7 +601,7 @@ function ResetPwdModal({ target, onClose, onDone }) {
   const [p1,setP1]=useState(""); const [p2,setP2]=useState("");
   const [err,setErr]=useState(""); const [ok,setOk]=useState(false); const [busy,setBusy]=useState(false);
   const submit=async()=>{
-    if(p1.length<3){setErr("Mật khẩu phải từ 3 ký tự.");return;}
+    if(p1.length<6){setErr("Mật khẩu phải từ 6 ký tự.");return;}
     if(p1!==p2){setErr("Mật khẩu xác nhận không khớp.");return;}
     setBusy(true);setErr("");
     try{await api.resetPassword(target.id,p1);setOk(true);onDone?.();setTimeout(onClose,1200);}

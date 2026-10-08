@@ -222,7 +222,19 @@ export async function initDb() {
   await q("CREATE INDEX IF NOT EXISTS idx_ucm_primary ON uid_cross_map(group_id, uid_primary)");
 }
 
-const sessions = new Map(); // token -> userId (RAM; production lớn nên thay bằng Redis)
+// token -> { userId, exp } (RAM từng service; production lớn nên thay bằng Redis).
+// Token hết hạn sau 30 ngày kể từ lần dùng cuối (dùng là gia hạn) — trước đây sống mãi tới khi restart.
+const sessions = new Map();
+const TOKEN_TTL_MS = 30 * 86400_000;
+setInterval(() => {
+  const t = Date.now();
+  for (const [k, v] of sessions) if (v.exp < t) sessions.delete(k);
+}, 3600_000).unref?.();
+// Hủy mọi token của 1 người trong service này (khóa / đổi vai trò / đổi mật khẩu / xóa tài khoản).
+// Service còn lại chặn bằng kiểm tra trạng thái theo DB (authGuard.blockBannedUsers).
+export function revokeUserTokens(userId) {
+  for (const [k, v] of sessions) if (v.userId === userId) sessions.delete(k);
+}
 
 export async function ensureSeed() {
   const r = await q("SELECT id FROM users WHERE phone=$1", ["admin"]);
@@ -271,7 +283,13 @@ export async function ensureSeed() {
 }
 
 // ---------- Auth ----------
+// Mật khẩu tối thiểu cho tài khoản MỚI / khi đổi. Tài khoản cũ có mật khẩu ngắn vẫn đăng nhập được.
+export const MIN_PASS_LEN = 6;
 export async function register({ phone, pass, name }) {
+  phone = typeof phone === "string" ? phone.replace(/[\s.\-]/g, "") : "";
+  if (!/^\d{9,12}$/.test(phone)) throw new Error("Số điện thoại không hợp lệ");
+  if (typeof pass !== "string" || pass.length < MIN_PASS_LEN) throw new Error(`Mật khẩu phải từ ${MIN_PASS_LEN} ký tự`);
+  if (typeof name !== "string" || !name.trim() || name.length > 100) throw new Error("Tên không hợp lệ");
   const ex = await q("SELECT 1 FROM users WHERE phone=$1", [phone]);
   if (ex.rowCount) throw new Error("SĐT đã đăng ký");
   const id = uid();
@@ -290,11 +308,18 @@ export async function login({ phone, pass }) {
   }
   await refreshStatus(u);
   const token = uid();
-  sessions.set(token, u.id);
+  sessions.set(token, { userId: u.id, exp: Date.now() + TOKEN_TTL_MS });
   return { token, user: await getUserPublic(u.id) };
 }
 
-export function userIdFromToken(token) { return sessions.get(token) || null; }
+export function userIdFromToken(token) {
+  if (!token) return null;
+  const s = sessions.get(token);
+  if (!s) return null;
+  if (s.exp < Date.now()) { sessions.delete(token); return null; }
+  s.exp = Date.now() + TOKEN_TTL_MS;   // còn dùng thì gia hạn
+  return s.userId;
+}
 export function logout(token) { sessions.delete(token); }
 
 async function refreshStatus(u) {
@@ -353,13 +378,14 @@ export async function toggleBan(id) {
   const r = await q("SELECT status FROM users WHERE id=$1", [id]);
   const s = r.rows[0].status === "banned" ? "active" : "banned";
   await q("UPDATE users SET status=$1 WHERE id=$2", [s, id]);
+  if (s === "banned") revokeUserTokens(id);
   return getUserPublic(id);
 }
 export async function changePassword(userId, oldPass, newPass) {
   const r = await q("SELECT pass_hash FROM users WHERE id=$1", [userId]);
   if (!r.rows[0]) throw new Error("Không tìm thấy tài khoản");
   if (!(await verifyPassword(oldPass, r.rows[0].pass_hash))) throw new Error("Mật khẩu hiện tại không đúng");
-  if (!newPass || newPass.length < 3) throw new Error("Mật khẩu mới phải từ 3 ký tự");
+  if (typeof newPass !== "string" || newPass.length < MIN_PASS_LEN) throw new Error(`Mật khẩu mới phải từ ${MIN_PASS_LEN} ký tự`);
   const hash = await hashPassword(newPass);
   await q("UPDATE users SET pass_hash=$1 WHERE id=$2", [hash, userId]);
   return { ok: true };
@@ -384,6 +410,7 @@ export async function deleteUser(id) {
   await q("DELETE FROM accountant_groups WHERE accountant_id=$1", [id]);
   await q("DELETE FROM transactions WHERE user_id=$1", [id]);
   await q("DELETE FROM users WHERE id=$1", [id]);
+  revokeUserTokens(id);
   return { ok: true };
 }
 
@@ -397,9 +424,10 @@ export async function isGroupsLocked(userId) {
 
 // ---------- Admin: reset mật khẩu, thống kê ----------
 export async function resetPassword(userId, newPass) {
-  if (!newPass || newPass.length < 3) throw new Error("Mật khẩu phải từ 3 ký tự");
+  if (typeof newPass !== "string" || newPass.length < MIN_PASS_LEN) throw new Error(`Mật khẩu phải từ ${MIN_PASS_LEN} ký tự`);
   const hash = await hashPassword(newPass);
   await q("UPDATE users SET pass_hash=$1 WHERE id=$2", [hash, userId]);
+  revokeUserTokens(userId);   // admin đặt lại mật khẩu → đăng xuất người đó
   return { ok: true };
 }
 

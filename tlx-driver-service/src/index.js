@@ -9,6 +9,7 @@ import { WebSocketServer } from "ws";
 import "dotenv/config";
 
 import * as dbm from "../../tlx-worker/src/dbLayer.js";
+import { loginHandler, blockBannedUsers, isBanned, registerAllowed, clientIp } from "../../tlx-worker/src/authGuard.js";
 import * as sm from "../../tlx-worker/src/sessionManager.js";
 import { config } from "../../tlx-worker/src/config.js";
 
@@ -44,15 +45,17 @@ function tokenOf(req) {
   return userId ? { userId, token } : null;
 }
 
+// Token của người đã bị khóa / bị xóa → hủy, trả 403 (kể cả khi bị khóa ở service kia)
+app.use(blockBannedUsers(tokenOf));
+
 // ---------- Auth ----------
 app.post("/api/register", async (req, res) => {
-  try { res.json(await dbm.register(req.body)); }
+  if (!registerAllowed(clientIp(req))) return res.status(429).json({ error: "Đăng ký quá nhiều lần, thử lại sau 1 giờ" });
+  try { res.json(await dbm.register(req.body || {})); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
-app.post("/api/login", async (req, res) => {
-  try { res.json(await dbm.login(req.body)); }
-  catch (e) { res.status(400).json({ error: e.message }); }
-});
+// Đăng nhập: khóa 15 phút khi sai 5 lần / tài khoản hoặc 20 lần / IP (authGuard)
+app.post("/api/login", loginHandler());
 app.post("/api/logout", (req, res) => {
   const a = tokenOf(req); if (a) dbm.logout(a.token);
   res.json({ ok: true });
@@ -302,6 +305,7 @@ wss.on("connection", async (ws, req) => {
   const token = url.searchParams.get("token");
   const userId = dbm.userIdFromToken(token);
   if (!userId) { ws.close(4001, "Unauthorized"); return; }
+  if (await isBanned(userId).catch(() => false)) { dbm.logout(token); ws.close(4003, "Banned"); return; }
 
   if (!clientsByUser.has(userId)) clientsByUser.set(userId, new Set());
   clientsByUser.get(userId).add(ws);

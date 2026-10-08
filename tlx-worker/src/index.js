@@ -15,6 +15,7 @@ import * as replay from "./replayBarem.js";
 import { parseMultipleTrips } from "./parser.js";
 import * as logStore from "./logStore.js";
 import { config } from "./config.js";
+import { loginHandler, blockBannedUsers, isBanned } from "./authGuard.js";
 
 const PORT = Number(process.env.PORT || 8082);
 
@@ -45,6 +46,8 @@ app.use((req, res, next) => {
   if (req.method === "OPTIONS") return res.sendStatus(200);
   next();
 });
+// Token của người đã bị khóa / bị xóa → hủy, trả 403 (kể cả khi bị khóa ở service kia)
+app.use(blockBannedUsers(tokenOf));
 
 // auth helpers (async vì DB có thể là PostgreSQL)
 function tokenOf(req) {
@@ -61,10 +64,8 @@ async function requireAdmin(req, res) {
 }
 
 // ---------- Auth ----------
-app.post("/api/login", async (req, res) => {
-  try { res.json(await dbm.login(req.body)); }
-  catch (e) { res.status(400).json({ error: e.message }); }
-});
+// Đăng nhập: khóa 15 phút khi sai 5 lần / tài khoản hoặc 20 lần / IP (authGuard)
+app.post("/api/login", loginHandler());
 app.post("/api/logout", (req, res) => {
   const a = tokenOf(req); if (a) dbm.logout(a.token);
   res.json({ ok: true });
@@ -973,6 +974,7 @@ wss.on("connection", async (ws, req) => {
   const token = url.searchParams.get("token");
   const userId = dbm.userIdFromToken(token);
   if (!userId) { ws.close(4001, "Unauthorized"); return; }
+  if (await isBanned(userId).catch(() => false)) { dbm.logout(token); ws.close(4003, "Banned"); return; }
 
   if (!clientsByUser.has(userId)) clientsByUser.set(userId, new Set());
   clientsByUser.get(userId).add(ws);

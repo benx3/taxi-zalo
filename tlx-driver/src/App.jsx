@@ -155,7 +155,7 @@ function LoginScreen({ onLogin, goRegister, goHome }) {
 function RegisterScreen({ goLogin, goHome }) {
   const [name,setName]=useState(""); const [phone,setPhone]=useState(""); const [pass,setPass]=useState(""); const [pass2,setPass2]=useState(""); const [done,setDone]=useState(false); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
   const submit=async()=>{
-    if(!name.trim()||phone.trim().length<9||pass.length<3){setErr("Điền đủ tên, SĐT hợp lệ và mật khẩu (≥3 ký tự).");return;}
+    if(!name.trim()||phone.trim().length<9||pass.length<6){setErr("Điền đủ tên, SĐT hợp lệ và mật khẩu (≥6 ký tự).");return;}
     if(pass!==pass2){setErr("Mật khẩu xác nhận không khớp. Vui lòng nhập lại.");return;}
     setBusy(true); setErr("");
     try { await api.register({phone:phone.trim(),pass,name:name.trim()}); setDone(true); }
@@ -421,7 +421,7 @@ function ChangePasswordModal({ onClose }) {
   const [oldP,setOldP]=useState(""); const [n1,setN1]=useState(""); const [n2,setN2]=useState("");
   const [err,setErr]=useState(""); const [ok,setOk]=useState(false); const [busy,setBusy]=useState(false);
   const submit=async()=>{
-    if(n1.length<3){setErr("Mật khẩu mới phải từ 3 ký tự.");return;}
+    if(n1.length<6){setErr("Mật khẩu mới phải từ 6 ký tự.");return;}
     if(n1!==n2){setErr("Mật khẩu mới xác nhận không khớp.");return;}
     setBusy(true);setErr("");
     try{ await api.changePassword(oldP,n1); setOk(true); setTimeout(onClose,1200); }
