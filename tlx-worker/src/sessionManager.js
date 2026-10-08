@@ -512,7 +512,7 @@ async function onMessage(sess, msg) {
         const _ktUid = await dbm.getGroupKtUid(dbGroupId).catch(() => null);
         if (senderId !== String(_ktUid)) {
           const r = await deleteGroupMessage(sess, msg, groupId, {
-            dryRun: _cfg.dryRun, who: senderName,
+            dryRun: _cfg.dryRun, who: senderName, maxPerMin: _cfg.deleteMaxPerMin,
             why: _isLink ? `có link: "${text.slice(0, 60)}"`
                : isStickerMsg(msg) ? `sticker/GIF (${msg.data?.msgType})` : "chỉ toàn icon",
           });
@@ -733,13 +733,20 @@ async function onMessage(sess, msg) {
             if (_pts < _nguong) {
               console.log(`[CẤU HÌNH] ⛔ ${senderName} có ${_pts}đ < sàn ${_nguong}đ → chặn nhận cuốc`);
               const r = await deleteGroupMessage(sess, msg, groupId, {
-                dryRun: _cfgC.dryRun, who: senderName,
+                dryRun: _cfgC.dryRun, who: senderName, maxPerMin: _cfgC.deleteMaxPerMin,
                 why: `điểm ${_pts}đ dưới sàn ${_nguong}đ`,
               });
-              // Xóa xong mới gửi tin nhắc rời có tag tên (theo lựa chọn của KT)
-              if (r.deleted) {
-                await sendNotice(sess, groupId, senderId, senderName, _cfgC.floorNotice,
-                  { tên: senderName, ngưỡng: _nguong, điểm: _pts });
+              // Mỗi cuốc chỉ cảnh báo NGƯỜI ĐẦU TIÊN bị chặn — nhóm đông, nhiều người âm điểm
+              // cùng nhận 1 cuốc thì người sau vẫn bị xóa tin nhưng bot không nhắn thêm.
+              if ((r.deleted || r.dryRun) && _cfgC.floorNotice) {
+                const _tripKeys = [qCliId, qGlobId].filter(Boolean);
+                if (firstFloorNotice(groupId, _tripKeys, r.dryRun)) {
+                  if (r.dryRun) console.log(`[CẤU HÌNH] 🧪 (thử) sẽ gửi cảnh báo cho ${senderName} (người đầu tiên của cuốc này)`);
+                  else await sendNotice(sess, groupId, senderId, senderName, _cfgC.floorNotice,
+                    { tên: senderName, ngưỡng: _nguong, điểm: _pts });
+                } else {
+                  console.log(`[CẤU HÌNH] 🔕 ${r.dryRun ? "(thử) " : ""}không cảnh báo ${senderName}: cuốc này đã cảnh báo 1 người`);
+                }
               }
               if (!_cfgC.dryRun) return;   // không lưu claim → chủ cuốc không chốt được người này
             }
@@ -1387,28 +1394,45 @@ export function isLinkMsg(msg, text) {
   return LINK_RE.test(text || "");
 }
 
-// Giới hạn tốc độ xóa: tránh Zalo coi là hành vi bất thường rồi khóa tài khoản bot
-const DEL_MAX_PER_MIN = 10;
-const _delLog = new Map();   // groupId -> số mốc thời gian đã xóa
-function canDelete(groupId) {
+// Giới hạn tốc độ xóa (KT cấu hình, 0 = không giới hạn): tránh Zalo coi là hành vi bất thường
+// rồi khóa tài khoản bot. Đếm theo nhóm, dùng chung cho mọi loại xóa.
+const _delLog = new Map();   // groupId -> các mốc thời gian đã xóa trong 60s gần nhất
+function canDelete(groupId, maxPerMin) {
+  const max = Number(maxPerMin);
+  if (!(max > 0)) return true;
   const now = Date.now();
   const arr = (_delLog.get(groupId) || []).filter(t => now - t < 60_000);
-  if (arr.length >= DEL_MAX_PER_MIN) return false;
+  if (arr.length >= max) return false;
   arr.push(now);
   _delLog.set(groupId, arr);
   return true;
 }
 
+// Cuốc nào đã cảnh báo người bị chặn điểm sàn rồi thì người sau không cảnh báo nữa.
+// Để ở cấp module: nhiều tài khoản KT cùng nhóm vẫn chỉ ra 1 cảnh báo / cuốc.
+// Tách khóa chế độ thử để lúc chạy thử không "ăn" mất lượt cảnh báo thật.
+const _floorNoticed = new Map();   // `${groupId}:${thử|thật}:${tripMsgId}` -> thời điểm
+function firstFloorNotice(groupId, tripKeys, dryRun) {
+  if (!tripKeys.length) return true;
+  const now = Date.now();
+  if (_floorNoticed.size > 2000)
+    for (const [k, t] of _floorNoticed) if (now - t > 86_400_000) _floorNoticed.delete(k);
+  const keys = tripKeys.map(id => `${groupId}:${dryRun ? "thử" : "thật"}:${id}`);
+  if (keys.some(k => _floorNoticed.has(k))) return false;
+  for (const k of keys) _floorNoticed.set(k, now);
+  return true;
+}
+
 // Xóa 1 tin trong nhóm (cần bot là quản trị/phó nhóm).
 // dryRun = chỉ ghi log, không đụng vào tin thật.
-async function deleteGroupMessage(sess, msg, groupId, { dryRun, why, who }) {
+async function deleteGroupMessage(sess, msg, groupId, { dryRun, why, who, maxPerMin }) {
   const preview = (typeof msg.data?.content === "string" ? msg.data.content : "[media]").slice(0, 60);
   if (dryRun) {
     console.log(`[CẤU HÌNH] 🧪 (thử) sẽ xóa tin của ${who}: "${preview}" — ${why}`);
     return { deleted: false, dryRun: true };
   }
-  if (!canDelete(groupId)) {
-    console.warn(`[CẤU HÌNH] ⚠️ chạm giới hạn ${DEL_MAX_PER_MIN} tin/phút, bỏ qua tin của ${who}`);
+  if (!canDelete(groupId, maxPerMin)) {
+    console.warn(`[CẤU HÌNH] ⚠️ chạm giới hạn ${maxPerMin} tin/phút, bỏ qua tin của ${who}`);
     return { deleted: false, rateLimited: true };
   }
   try {

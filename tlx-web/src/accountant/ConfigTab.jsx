@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Settings, Save, AlertTriangle, FlaskConical, Check, ShieldCheck, Smile } from "lucide-react";
+import { Settings, Save, AlertTriangle, FlaskConical, Check, ShieldCheck, Smile, Gauge } from "lucide-react";
 import { api } from "./api.js";
 
 const card = {
@@ -80,6 +80,34 @@ export default function ConfigTab({ groupId }) {
         </div>
       </div>
 
+      {/* ── Giới hạn tốc độ xóa ────────────────────── */}
+      <div style={card}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 13 }}>
+          <Gauge size={20} style={{ color: "#60a5fa", flexShrink: 0, marginTop: 2 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>Số tin bot được xóa tối đa mỗi phút</div>
+            <div style={{ fontSize: 12.5, color: "var(--ink-dim)", lineHeight: 1.6, marginTop: 3, marginBottom: 10 }}>
+              Tính chung cho mọi loại xóa (điểm sàn, icon, link) trong nhóm này. Quá số này, tin vẫn bị chặn
+              nhận cuốc nhưng không xóa. Xóa quá dồn dập dễ bị Zalo khóa tài khoản bot.
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <input type="number" min="0" max="500" step="1" value={cfg.deleteMaxPerMin ?? 10}
+                onChange={e => set({ deleteMaxPerMin: e.target.value === "" ? "" : Number(e.target.value) })}
+                style={{ ...inp, width: 110, fontFamily: "monospace", fontWeight: 700, fontSize: 15 }} />
+              <span style={{ fontSize: 13, color: "var(--ink-dim)" }}>tin / phút</span>
+              <span style={{ fontSize: 12, color: "var(--ink-dim)" }}>· nhập <strong style={{ color: "var(--ink)" }}>0</strong> = không giới hạn</span>
+            </div>
+            {Number(cfg.deleteMaxPerMin) === 0 && cfg.deleteMaxPerMin !== "" && (
+              <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 9, background: "rgba(251,191,36,.1)",
+                            fontSize: 12.5, color: "#fbbf24", display: "flex", gap: 7, alignItems: "flex-start" }}>
+                <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>Không giới hạn: nhóm đông bị spam thì bot có thể xóa liên tục, tăng nguy cơ bị Zalo khóa.</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* ── Chế độ thử ─────────────────────────────── */}
       <div style={{ ...card, background: cfg.dryRun ? "rgba(251,191,36,.07)" : "rgba(248,113,113,.07)",
                     border: `1px solid ${cfg.dryRun ? "rgba(251,191,36,.35)" : "rgba(248,113,113,.35)"}` }}>
@@ -125,6 +153,10 @@ export default function ConfigTab({ groupId }) {
             <textarea rows={3} value={cfg.floorNotice} onChange={e => set({ floorNotice: e.target.value })}
               placeholder="Để trống = xóa im lặng, không nhắc gì"
               style={{ ...inp, resize: "vertical", lineHeight: 1.6, fontFamily: "inherit" }} />
+            <div style={{ fontSize: 12.5, color: "var(--ink-dim)", marginTop: 8, lineHeight: 1.6 }}>
+              Mỗi cuốc chỉ cảnh báo <strong style={{ color: "var(--ink)" }}>người đầu tiên</strong> bị chặn.
+              Những người sau nhận cùng cuốc vẫn bị xóa tin nhưng bot không nhắn thêm, tránh spam nhóm.
+            </div>
             <div style={{ fontSize: 12, color: "var(--ink-dim)", marginTop: 6, lineHeight: 1.7 }}>
               Dùng được: <code style={{ background: "rgba(52,211,153,.12)", color: "#34d399", padding: "1px 5px", borderRadius: 4 }}>{"{tên}"}</code> (tag tài xế) ·{" "}
               <code style={{ background: "rgba(52,211,153,.12)", color: "#34d399", padding: "1px 5px", borderRadius: 4 }}>{"{ngưỡng}"}</code> ·{" "}
@@ -223,7 +255,8 @@ export default function ConfigTab({ groupId }) {
         </div>
         · Không bao giờ xóa tin của <strong style={{ color: "var(--ink)" }}>bot và kế toán</strong><br />
         · Chỉ chặn đúng tin <strong style={{ color: "var(--ink)" }}>nhận cuốc thật</strong> (reply trúng tin đăng cuốc) — "ok" trong chat thường không bị đụng<br />
-        · Tối đa <strong style={{ color: "var(--ink)" }}>10 tin/phút</strong> mỗi nhóm, tránh Zalo khóa tài khoản bot<br />
+        · Xóa tối đa <strong style={{ color: "var(--ink)" }}>{Number(cfg.deleteMaxPerMin) > 0 ? `${cfg.deleteMaxPerMin} tin/phút` : "không giới hạn"}</strong> mỗi nhóm (chỉnh ở ô trên cùng)<br />
+        · Điểm sàn: mỗi cuốc chỉ cảnh báo <strong style={{ color: "var(--ink)" }}>1 người</strong>, người sau xóa im lặng<br />
         · Mọi lần xóa đều ghi vào <strong style={{ color: "var(--ink)" }}>tab Log hệ thống</strong> để đối chiếu khi tài xế thắc mắc<br />
         · Tin bị xóa vẫn còn trong kho tin thô <strong style={{ color: "var(--ink)" }}>7 ngày</strong> để tra cứu
       </div>

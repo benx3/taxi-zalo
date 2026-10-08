@@ -986,6 +986,7 @@ export const DEFAULT_GROUP_CONFIG = {
   iconNotice: "",               // để trống = xóa im lặng, không nhắc
   linkDeleteEnabled: false,     // xóa mọi tin có link
   linkNotice: "{tên} ơi, nhóm không cho phép gửi link nên tin của bạn đã bị xóa.",
+  deleteMaxPerMin: 10,          // tối đa số tin bot xóa / phút / nhóm, 0 = không giới hạn
   dryRun: true,                 // CHỈ ghi log, KHÔNG xóa thật — tắt khi đã yên tâm
 };
 

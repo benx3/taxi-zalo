@@ -603,6 +603,11 @@ app.post("/api/accountant/group-config/:groupId", async (req, res) => {
   const b = req.body || {};
   const pts = Number(b.floorPoints);
   if (b.floorEnabled && !Number.isFinite(pts)) return res.status(400).json({ error: "Điểm sàn không hợp lệ" });
+  // Ô để trống gửi lên "" → Number("") = 0 = không giới hạn: phải chặn, không để lọt thành 0
+  const maxDel = b.deleteMaxPerMin === undefined ? 10
+               : (b.deleteMaxPerMin === "" || b.deleteMaxPerMin === null) ? NaN : Number(b.deleteMaxPerMin);
+  if (!Number.isInteger(maxDel) || maxDel < 0 || maxDel > 500)
+    return res.status(400).json({ error: "Số tin xóa tối đa / phút phải là số nguyên từ 0 đến 500" });
   try {
     const saved = await dbm.saveGroupConfig(groupId, {
       floorEnabled:      !!b.floorEnabled,
@@ -612,10 +617,11 @@ app.post("/api/accountant/group-config/:groupId", async (req, res) => {
       iconNotice:        String(b.iconNotice ?? "").slice(0, 500),
       linkDeleteEnabled: !!b.linkDeleteEnabled,
       linkNotice:        String(b.linkNotice ?? "").slice(0, 500),
+      deleteMaxPerMin:   maxDel,
       dryRun:            !!b.dryRun,
     });
     sm.invalidateGroupCfg(groupId);   // bỏ cache để áp dụng ngay, khỏi chờ 60s
-    console.log(`[CẤU HÌNH] ${a.userId} cập nhật nhóm ${groupId}: sàn=${saved.floorEnabled ? saved.floorPoints + "đ" : "tắt"}, xóa icon=${saved.iconDeleteEnabled ? "bật" : "tắt"}, xóa link=${saved.linkDeleteEnabled ? "bật" : "tắt"}, chế độ thử=${saved.dryRun ? "bật" : "TẮT"}`);
+    console.log(`[CẤU HÌNH] ${a.userId} cập nhật nhóm ${groupId}: sàn=${saved.floorEnabled ? saved.floorPoints + "đ" : "tắt"}, xóa icon=${saved.iconDeleteEnabled ? "bật" : "tắt"}, xóa link=${saved.linkDeleteEnabled ? "bật" : "tắt"}, tối đa=${saved.deleteMaxPerMin || "∞"} tin/phút, chế độ thử=${saved.dryRun ? "bật" : "TẮT"}`);
     res.json(saved);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
