@@ -511,6 +511,8 @@ async function onMessage(sess, msg) {
       if (_isIcon || _isLink) {
         const _ktUid = await dbm.getGroupKtUid(dbGroupId).catch(() => null);
         if (senderId !== String(_ktUid)) {
+          if (!_cfg.dryRun) recordViolation(dbGroupId, senderId, senderName, _isLink ? "link" : "icon", msg,
+            _isLink ? text.slice(0, 120) : (isStickerMsg(msg) ? `[${msg.data?.msgType}]` : text.slice(0, 40)));
           const r = await deleteGroupMessage(sess, msg, groupId, {
             dryRun: _cfg.dryRun, who: senderName, maxPerMin: _cfg.deleteMaxPerMin,
             why: _isLink ? `có link: "${text.slice(0, 60)}"`
@@ -732,6 +734,8 @@ async function onMessage(sess, msg) {
             const _nguong = Number(_cfgC.floorPoints) || 0;
             if (_pts < _nguong) {
               console.log(`[CẤU HÌNH] ⛔ ${senderName} có ${_pts}đ < sàn ${_nguong}đ → chặn nhận cuốc`);
+              if (!_cfgC.dryRun) recordViolation(dbGroupId, senderId, senderName, "floor", msg,
+                `${_pts}đ < sàn ${_nguong}đ: ${text.slice(0, 80)}`);
               const r = await deleteGroupMessage(sess, msg, groupId, {
                 dryRun: _cfgC.dryRun, who: senderName, maxPerMin: _cfgC.deleteMaxPerMin,
                 why: `điểm ${_pts}đ dưới sàn ${_nguong}đ`,
@@ -1406,6 +1410,19 @@ function canDelete(groupId, maxPerMin) {
   arr.push(now);
   _delLog.set(groupId, arr);
   return true;
+}
+
+// Cộng 1 lần vi phạm (icon / link / floor) cho người gửi. Chạy nền, không chặn luồng xử lý tin.
+// Quy về UID gốc như san điểm; nhiều tài khoản KT cùng thấy 1 tin thì DB chỉ nhận lần đầu (theo msg_id).
+const VIOLATION_LABEL = { icon: "gửi icon", link: "gửi link", floor: "nhận cuốc khi dưới điểm sàn" };
+function recordViolation(dbGroupId, senderId, senderName, kind, msg, detail) {
+  const mid = msg?.data?.msgId || msg?.data?.cliMsgId;
+  if (!mid) return;
+  Promise.resolve((async () => {
+    const uid = await resolveCanonicalUid(dbGroupId, senderId);
+    if (await dbm.addViolation(dbGroupId, uid, kind, String(mid), detail))
+      console.log(`[VI PHẠM] +1 ${VIOLATION_LABEL[kind]} — ${senderName} (${uid})`);
+  })()).catch(e => console.warn(`[VI PHẠM] không ghi được: ${e?.message || e}`));
 }
 
 // Cuốc nào đã cảnh báo người bị chặn điểm sàn rồi thì người sau không cảnh báo nữa.

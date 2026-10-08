@@ -60,6 +60,10 @@ enrichMemberNames: (groupId) => req(`/api/accountant/groups/${encodeURIComponent
   getGroupConfig: (groupId) => req(`/api/accountant/group-config/${encodeURIComponent(groupId)}`, null, "GET"),
   saveGroupConfig: (groupId, cfg) => req(`/api/accountant/group-config/${encodeURIComponent(groupId)}`, cfg),
 
+  // Vi phạm kiểm duyệt (icon / link / dưới điểm sàn)
+  listViolations: (groupId, zaloUid) => req(`/api/accountant/violations/${encodeURIComponent(groupId)}/${encodeURIComponent(zaloUid)}`, null, "GET"),
+  resetViolations: (groupId, zaloUid) => req(`/api/accountant/violations/${encodeURIComponent(groupId)}/${encodeURIComponent(zaloUid)}/reset`, {}),
+
   // Thêm cuốc xe thủ công
   manualSuggest: (groupId, texts) => req("/api/accountant/manual-trips/suggest", { groupId, texts }),
   manualApply: (groupId, rows, atMs) => req("/api/accountant/manual-trips/apply", { groupId, rows, atMs }),

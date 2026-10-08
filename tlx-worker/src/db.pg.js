@@ -163,6 +163,23 @@ export async function initDb() {
     updated_at  BIGINT NOT NULL
   )`);
 
+  // Vi phạm kiểm duyệt (gửi icon / gửi link / nhận cuốc khi dưới điểm sàn).
+  // Mỗi dòng = 1 lần vi phạm. UNIQUE(group_id,msg_id): nhiều tài khoản KT cùng nhóm
+  // cùng thấy 1 tin thì chỉ tính 1 lần. KT reset = đóng dấu cleared_at (giữ lịch sử).
+  await q(`CREATE TABLE IF NOT EXISTS member_violations (
+    id          SERIAL PRIMARY KEY,
+    group_id    TEXT NOT NULL,
+    member_uid  TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    msg_id      TEXT NOT NULL,
+    detail      TEXT,
+    created_at  BIGINT NOT NULL,
+    cleared_at  BIGINT,
+    cleared_by  TEXT,
+    UNIQUE(group_id, msg_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_violations_member ON member_violations(group_id, member_uid) WHERE cleared_at IS NULL`);
+
   await q(`CREATE TABLE IF NOT EXISTS system_logs (
     id         BIGSERIAL PRIMARY KEY,
     level      TEXT NOT NULL,
@@ -995,6 +1012,53 @@ export async function getGroupConfig(groupId) {
   let saved = {};
   try { saved = r.rows[0]?.config_json ? JSON.parse(r.rows[0].config_json) : {}; } catch {}
   return { ...DEFAULT_GROUP_CONFIG, ...saved };
+}
+
+// ---------- Vi phạm kiểm duyệt ----------
+export const VIOLATION_KINDS = ["icon", "link", "floor"];
+
+// Ghi 1 lần vi phạm. Trả về true nếu là lần ghi mới (false = tin này đã được tính rồi).
+export async function addViolation(groupId, memberUid, kind, msgId, detail) {
+  if (!groupId || !memberUid || !msgId || !VIOLATION_KINDS.includes(kind)) return false;
+  const r = await q(
+    `INSERT INTO member_violations(group_id, member_uid, kind, msg_id, detail, created_at)
+     VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(group_id, msg_id) DO NOTHING`,
+    [groupId, String(memberUid), kind, String(msgId), detail ? String(detail).slice(0, 200) : null, now()]);
+  return r.rowCount > 0;
+}
+
+// Đếm vi phạm CHƯA reset của cả nhóm: Map member_uid -> { icon, link, floor, total, last_at }
+export async function getViolationCounts(groupId) {
+  const r = await q(
+    `SELECT member_uid, kind, COUNT(*)::int AS n, MAX(created_at) AS last_at
+     FROM member_violations WHERE group_id=$1 AND cleared_at IS NULL
+     GROUP BY member_uid, kind`, [groupId]);
+  const out = {};
+  for (const row of r.rows) {
+    const o = out[row.member_uid] ||= { icon: 0, link: 0, floor: 0, total: 0, last_at: 0 };
+    o[row.kind] = row.n;
+    o.total += row.n;
+    o.last_at = Math.max(o.last_at, Number(row.last_at) || 0);
+  }
+  return out;
+}
+
+// Lịch sử vi phạm của 1 người (cả đã reset), mới nhất trước
+export async function listViolations(groupId, memberUid, limit = 50) {
+  const r = await q(
+    `SELECT id, kind, detail, created_at, cleared_at, cleared_by FROM member_violations
+     WHERE group_id=$1 AND member_uid=$2 ORDER BY created_at DESC LIMIT $3`,
+    [groupId, String(memberUid), Math.min(Number(limit) || 50, 200)]);
+  return r.rows;
+}
+
+// KT reset số vi phạm về 0 (đóng dấu, không xóa dòng). Trả về số lần vi phạm đã reset.
+export async function clearViolations(groupId, memberUid, clearedBy) {
+  const r = await q(
+    `UPDATE member_violations SET cleared_at=$3, cleared_by=$4
+     WHERE group_id=$1 AND member_uid=$2 AND cleared_at IS NULL`,
+    [groupId, String(memberUid), now(), clearedBy ? String(clearedBy) : null]);
+  return r.rowCount;
 }
 
 export async function saveGroupConfig(groupId, cfg) {

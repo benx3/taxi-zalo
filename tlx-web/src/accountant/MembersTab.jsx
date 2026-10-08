@@ -24,6 +24,15 @@ const fmtTime = (ms) => {
   return d.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
+// Vi phạm kiểm duyệt (bot tự đếm khi xóa tin)
+const VIOLATION_KINDS = [
+  { key: "icon",  label: "Gửi icon",               color: "#a78bfa" },
+  { key: "link",  label: "Gửi link",               color: "#60a5fa" },
+  { key: "floor", label: "Nhận cuốc dưới điểm sàn", color: "#f87171" },
+];
+const violationSummary = (v) =>
+  VIOLATION_KINDS.filter(k => v?.[k.key]).map(k => `${k.label}: ${v[k.key]}`).join(" · ");
+
 function buildPageList(cur, total) {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
   if (cur <= 4) return [1, 2, 3, 4, 5, "…", total];
@@ -155,9 +164,10 @@ export default function MembersTab({ groupId }) {
       "SĐT": m.phone ? String(m.phone).replace(/^84/, "0") : "",
       "Hiện tại": Number(m.points) || 0,
       [`Điểm ${yestLabelFull}`]: m.points_yesterday != null ? Number(m.points_yesterday) : "",
+      "Vi phạm": m.violations?.total || 0,
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = [{ wch: 6 }, { wch: 36 }, { wch: 10 }, { wch: 14 }];
+    ws["!cols"] = [{ wch: 6 }, { wch: 36 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 9 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Thành viên");
     const date = new Date().toISOString().slice(0, 10);
@@ -338,6 +348,12 @@ export default function MembersTab({ groupId }) {
                     {m.alias && <span style={{ fontSize: 11, color: "var(--ink-dim)", fontWeight: 400, marginLeft: 5 }}>({m.display_name})</span>}
                     {(m.zalo_uid || "").startsWith("~imp_") && <span style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,.15)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 4, padding: "1px 5px", marginLeft: 6 }}>TẠM</span>}
                     {m.is_out === 1 && <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", background: "rgba(148,163,184,.12)", border: "1px solid rgba(148,163,184,.3)", borderRadius: 4, padding: "1px 5px", marginLeft: 6 }}>OUT</span>}
+                    {m.violations?.total > 0 && (
+                      <span title={violationSummary(m.violations)}
+                        style={{ fontSize: 10, fontWeight: 800, color: "#f87171", background: "rgba(248,113,113,.12)", border: "1px solid rgba(248,113,113,.35)", borderRadius: 4, padding: "1px 5px", marginLeft: 6 }}>
+                        ⚠ {m.violations.total} vi phạm
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--ink-dim)", marginTop: 1 }}>#{(m.zalo_uid || "").slice(-6)}</div>
                 </button>
@@ -582,6 +598,92 @@ function ConvoThread({ raw }) {
 
 const TX_PAGE_SIZE = 20;
 
+// Số lần vi phạm + lịch sử + nút reset về 0. Ẩn hẳn nếu người này chưa từng vi phạm.
+function ViolationPanel({ groupId, member, onChanged }) {
+  const [hist, setHist] = useState(null);
+  const [showHist, setShowHist] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const load = () => api.listViolations(groupId, member.zalo_uid).then(setHist).catch(e => setErr(e.message));
+  useEffect(() => { load(); }, [groupId, member.zalo_uid]);
+
+  const v = member.violations || { icon: 0, link: 0, floor: 0, total: 0 };
+  if (!hist || (hist.length === 0 && !v.total)) return null;
+
+  const doReset = async () => {
+    setBusy(true); setErr("");
+    try {
+      await api.resetViolations(groupId, member.zalo_uid);
+      setConfirm(false);
+      await load();
+      onChanged?.();
+    } catch (e) { setErr(e.message || "Lỗi reset"); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ margin: "0 16px 16px", padding: "12px 14px", borderRadius: 10,
+                  background: v.total ? "rgba(248,113,113,.06)" : "rgba(255,255,255,.02)",
+                  border: `1px solid ${v.total ? "rgba(248,113,113,.3)" : "var(--line)"}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <AlertTriangle size={15} color={v.total ? "#f87171" : "var(--ink-dim)"} />
+        <span style={{ fontWeight: 800, fontSize: 14, color: v.total ? "#f87171" : "var(--ink-dim)" }}>
+          {v.total ? `${v.total} lần vi phạm` : "Không có vi phạm"}
+        </span>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {VIOLATION_KINDS.filter(k => v[k.key]).map(k => (
+            <span key={k.key} style={{ fontSize: 12, fontWeight: 700, color: k.color, background: k.color + "1f",
+                                       border: `1px solid ${k.color}55`, borderRadius: 6, padding: "2px 8px" }}>
+              {k.label}: {v[k.key]}
+            </span>
+          ))}
+        </div>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          <button onClick={() => setShowHist(s => !s)}
+            style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent", color: "var(--ink-dim)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+            {showHist ? "Ẩn lịch sử" : "Xem lịch sử"}
+          </button>
+          {v.total > 0 && (!confirm
+            ? <button onClick={() => setConfirm(true)}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(248,113,113,.4)", background: "rgba(248,113,113,.1)", color: "#f87171", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+                <RefreshCw size={12} /> Reset về 0
+              </button>
+            : <>
+                <span style={{ fontSize: 12.5, color: "#f87171", fontWeight: 600 }}>Reset {v.total} lần vi phạm?</span>
+                <button onClick={doReset} disabled={busy}
+                  style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#ef4444", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: busy ? "default" : "pointer" }}>
+                  {busy ? "…" : "Xác nhận"}
+                </button>
+                <button onClick={() => setConfirm(false)}
+                  style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent", color: "var(--ink-dim)", cursor: "pointer" }}><X size={13} /></button>
+              </>)}
+        </div>
+      </div>
+      {err && <div style={{ color: "#f87171", fontSize: 12, marginTop: 8 }}>{err}</div>}
+
+      {showHist && (
+        <div style={{ marginTop: 10, borderTop: "1px solid var(--line)" }}>
+          {hist.map(h => {
+            const k = VIOLATION_KINDS.find(x => x.key === h.kind);
+            return (
+              <div key={h.id} style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "7px 0", borderBottom: "1px solid var(--line)", opacity: h.cleared_at ? .5 : 1, fontSize: 12.5 }}>
+                <span style={{ color: k?.color || "var(--ink-dim)", fontWeight: 700, flexShrink: 0, width: 150 }}>{k?.label || h.kind}</span>
+                <span style={{ flex: 1, minWidth: 0, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={h.detail || ""}>{h.detail || "—"}</span>
+                <span style={{ color: "var(--ink-dim)", flexShrink: 0, fontSize: 11.5 }}>
+                  {fmtTime(h.created_at)}{h.cleared_at ? " · đã reset" : ""}
+                </span>
+              </div>
+            );
+          })}
+          {hist.length >= 50 && <div style={{ fontSize: 11.5, color: "var(--ink-dim)", paddingTop: 6 }}>Chỉ hiện 50 lần gần nhất</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MemberDetail({ member, groupId, onBack }) {
   const [m, setM] = useState(member);
   const [txs, setTxs] = useState([]);
@@ -681,6 +783,8 @@ function MemberDetail({ member, groupId, onBack }) {
           {aliasErr && <div style={{ color: "#f87171", fontSize: 12, marginTop: 6 }}>{aliasErr}</div>}
         </div>
       )}
+
+      <ViolationPanel groupId={groupId} member={m} onChanged={reload} />
 
       {/* Lịch sử giao dịch */}
       <div style={{ padding: "0 16px" }}>

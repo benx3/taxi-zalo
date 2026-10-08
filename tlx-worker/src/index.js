@@ -390,7 +390,30 @@ app.get("/api/accountant/members", async (req, res) => {
   const { groupId } = req.query;
   if (!groupId) return res.status(400).json({ error: "Thiếu groupId" });
   if (!await checkGroupAccess(req, res, groupId)) return;
-  res.json(await dbm.listMembersWithYesterday(groupId));
+  const [list, vio] = await Promise.all([
+    dbm.listMembersWithYesterday(groupId),
+    dbm.getViolationCounts(groupId).catch(() => ({})),
+  ]);
+  res.json(list.map(m => ({ ...m, violations: vio[m.zalo_uid] || null })));
+});
+
+// Vi phạm kiểm duyệt: lịch sử của 1 người + KT reset về 0
+app.get("/api/accountant/violations/:groupId/:zaloUid", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  const { groupId, zaloUid } = req.params;
+  if (!await checkGroupAccess(req, res, groupId)) return;
+  try { res.json(await dbm.listViolations(groupId, zaloUid, req.query.limit)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/api/accountant/violations/:groupId/:zaloUid/reset", async (req, res) => {
+  const a = await requireAccountant(req, res); if (!a) return;
+  const { groupId, zaloUid } = req.params;
+  if (!await checkGroupAccess(req, res, groupId)) return;
+  try {
+    const cleared = await dbm.clearViolations(groupId, zaloUid, a.userId);
+    console.log(`[VI PHẠM] ${a.userId} reset ${cleared} lần vi phạm của ${zaloUid} nhóm ${groupId}`);
+    res.json({ ok: true, cleared });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post("/api/accountant/members", async (req, res) => {
   const { groupId, zaloUid, phone, display_name } = req.body;
