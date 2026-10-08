@@ -78,6 +78,12 @@ export default function ConfigTab({ groupId }) {
           Các luật dưới đây chỉ áp dụng cho <strong style={{ color: "var(--ink)" }}>riêng nhóm này</strong>.
           Bot phải là <strong style={{ color: "var(--ink)" }}>quản trị viên hoặc phó nhóm</strong> thì mới xóa được tin.
         </div>
+        <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 9, background: "rgba(96,165,250,.07)",
+                      border: "1px solid rgba(96,165,250,.25)", fontSize: 12.5, color: "var(--ink-dim)", lineHeight: 1.6 }}>
+          Nhóm theo dõi bằng <strong style={{ color: "var(--ink)" }}>2 tài khoản kế toán</strong> (chính + dự phòng):
+          chỉ bật kiểm duyệt ở <strong style={{ color: "var(--ink)" }}>1 tài khoản</strong>. Mỗi tài khoản có cấu hình và sổ vi phạm riêng,
+          bật cả hai thì bot xóa và cảnh báo 2 lần. Tài khoản chính chết thì vào tài khoản dự phòng bật lên.
+        </div>
       </div>
 
       {/* ── Giới hạn tốc độ xóa ────────────────────── */}
@@ -253,7 +259,7 @@ export default function ConfigTab({ groupId }) {
         <div style={{ fontWeight: 800, color: "#60a5fa", marginBottom: 7, display: "flex", alignItems: "center", gap: 6 }}>
           <ShieldCheck size={14} /> Các lớp an toàn đang bật sẵn
         </div>
-        · Không bao giờ xóa tin của <strong style={{ color: "var(--ink)" }}>bot và kế toán</strong><br />
+        · Không bao giờ xóa tin của <strong style={{ color: "var(--ink)" }}>bot và mọi tài khoản kế toán</strong> (kể cả tài khoản dự phòng)<br />
         · Chỉ chặn đúng tin <strong style={{ color: "var(--ink)" }}>nhận cuốc thật</strong> (reply trúng tin đăng cuốc) — "ok" trong chat thường không bị đụng<br />
         · Xóa tối đa <strong style={{ color: "var(--ink)" }}>{Number(cfg.deleteMaxPerMin) > 0 ? `${cfg.deleteMaxPerMin} tin/phút` : "không giới hạn"}</strong> mỗi nhóm (chỉnh ở ô trên cùng)<br />
         · Điểm sàn: mỗi cuốc chỉ cảnh báo <strong style={{ color: "var(--ink)" }}>1 người</strong>, người sau xóa im lặng<br />

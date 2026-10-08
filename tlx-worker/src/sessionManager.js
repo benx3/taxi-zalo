@@ -501,16 +501,17 @@ async function onMessage(sess, msg) {
 
     // (A.-1) Dọn tin rác: sticker / tin chỉ toàn icon, và tin có link (mỗi loại bật riêng).
     // Đặt sớm nhất có thể nhưng SAU khi đã lưu raw_messages, để tin xóa vẫn còn vết tra cứu.
-    // Không đụng ảnh/voice (có thể là cuốc thật), không đụng tin của bot/KT.
+    // Không đụng ảnh/voice (có thể là cuốc thật), không đụng tin của bot/KT (mọi tài khoản KT).
     if (sess.isAccountant && senderId !== String(sess.selfId)) {
       const _cfg = await getGroupCfg(dbGroupId);
-      // Kiểm tra sticker/emoji/link TRƯỚC (rẻ, chạy trong RAM) rồi mới hỏi DB lấy UID kế toán,
-      // nếu không sẽ tốn 1 truy vấn DB cho MỌI tin nhắn của nhóm.
+      // Kiểm tra sticker/emoji/link TRƯỚC (rẻ, chạy trong RAM) rồi mới hỏi DB xem có phải KT không,
+      // nếu không sẽ tốn truy vấn DB cho MỌI tin nhắn của nhóm.
       const _isIcon = !!_cfg?.iconDeleteEnabled && (isStickerMsg(msg) || isEmojiOnly(text));
       const _isLink = !_isIcon && !!_cfg?.linkDeleteEnabled && isLinkMsg(msg, text);
       if (_isIcon || _isLink) {
-        const _ktUid = await dbm.getGroupKtUid(dbGroupId).catch(() => null);
-        if (senderId !== String(_ktUid)) {
+        if (await isAccountantSender(sess, dbGroupId, senderId)) {
+          console.log(`[CẤU HÌNH] ↪ bỏ qua tin của tài khoản kế toán ${senderName} (${_isLink ? "link" : "icon"})`);
+        } else {
           if (!_cfg.dryRun) recordViolation(dbGroupId, senderId, senderName, _isLink ? "link" : "icon", msg,
             _isLink ? text.slice(0, 120) : (isStickerMsg(msg) ? `[${msg.data?.msgType}]` : text.slice(0, 40)));
           const r = await deleteGroupMessage(sess, msg, groupId, {
@@ -728,7 +729,7 @@ async function onMessage(sess, msg) {
           // Chỉ chặn đúng tin nhận cuốc thật (đã xác định quote trúng cuốc đang cache,
           // và người reply không phải chủ cuốc) → "ok" trong chat thường không bị đụng.
           const _cfgC = await getGroupCfg(dbGroupId);
-          if (_cfgC?.floorEnabled) {
+          if (_cfgC?.floorEnabled && !(await isAccountantSender(sess, dbGroupId, senderId))) {
             const _mem = await dbm.getMemberByZaloUid(dbGroupId, senderId).catch(() => null);
             const _pts = Number(_mem?.points ?? 0);
             const _nguong = Number(_cfgC.floorPoints) || 0;
@@ -1410,6 +1411,33 @@ function canDelete(groupId, maxPerMin) {
   arr.push(now);
   _delLog.set(groupId, arr);
   return true;
+}
+
+// Người gửi có phải 1 tài khoản kế toán (bot) không — để kiểm duyệt KHÔNG BAO GIỜ xóa/ghi vi phạm cho KT.
+// Zalo cấp uid riêng theo tài khoản nhìn: bot A thấy bot B bằng 1 uid lạ → phải so global_id.
+// Thứ tự rẻ → đắt: chính nó, kt_uid cài cho nhóm, rồi mới tới global_id (DB/API).
+let _ktGlobalIds = { at: 0, set: new Set() };
+async function getKtGlobalIds() {
+  if (Date.now() - _ktGlobalIds.at < 600_000) return _ktGlobalIds.set;
+  const set = new Set(await dbm.getAccountantGlobalIds().catch(() => []));
+  // Bổ sung global_id của các phiên KT đang chạy (phòng bot chưa có dòng members của chính nó)
+  for (const s of sessions.values()) {
+    if (!s?.isAccountant || !s.selfId || !s.api) continue;
+    const { globalId } = await resolveGlobalId(s, String(s.selfId)).catch(() => ({}));
+    if (globalId) set.add(String(globalId));
+  }
+  _ktGlobalIds = { at: Date.now(), set };
+  return set;
+}
+async function isAccountantSender(sess, dbGroupId, senderId) {
+  if (senderId === String(sess.selfId)) return true;
+  const ktUid = await dbm.getGroupKtUid(dbGroupId).catch(() => null);
+  if (ktUid && senderId === String(ktUid)) return true;
+  const ids = await getKtGlobalIds();
+  if (!ids.size) return false;
+  const mem = await dbm.getMemberByZaloUid(dbGroupId, senderId).catch(() => null);
+  const gid = mem?.global_id || (await resolveGlobalId(sess, senderId).catch(() => ({})))?.globalId;
+  return !!gid && ids.has(String(gid));
 }
 
 // Cộng 1 lần vi phạm (icon / link / floor) cho người gửi. Chạy nền, không chặn luồng xử lý tin.

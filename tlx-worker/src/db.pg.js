@@ -1014,6 +1014,21 @@ export async function getGroupConfig(groupId) {
   return { ...DEFAULT_GROUP_CONFIG, ...saved };
 }
 
+// global_id của MỌI tài khoản Zalo kế toán (kể cả tài khoản đang chết).
+// Zalo cấp mã người riêng theo tài khoản nhìn, nên bot A không nhận ra bot B bằng uid —
+// chỉ global_id là chung. Mỗi bot có dòng members của chính nó (zalo_uid = uid của nó)
+// trong sổ của chính nó, kèm global_id → lấy ra từ đó.
+export async function getAccountantGlobalIds() {
+  const r = await q(`
+    SELECT DISTINCT m.global_id
+    FROM zalo_sessions zs
+    JOIN users u   ON u.id = zs.user_id AND u.role IN ('accountant','admin')
+    JOIN members m ON m.zalo_uid = zs.zalo_uid
+    WHERE zs.zalo_uid IS NOT NULL AND zs.zalo_uid <> ''
+      AND m.global_id IS NOT NULL AND m.global_id <> ''`);
+  return r.rows.map(x => String(x.global_id));
+}
+
 // ---------- Vi phạm kiểm duyệt ----------
 export const VIOLATION_KINDS = ["icon", "link", "floor"];
 
