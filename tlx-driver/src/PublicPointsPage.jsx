@@ -181,6 +181,46 @@ function SiteFooter() {
   );
 }
 
+/* ── Phân loại giao dịch + người thao tác ─────────
+   Dữ liệu thật: san điểm lưu type "manual" + requester_uid; chỉnh tay type "manual" có
+   "[kt: Tên]" / "[monitor: Tên]" / "[admin: Tên]" trong reason; thỏa thuận lại = "barem_adjust";
+   mục KT cần xem lại = "barem" với raw_text {source:"kt_review"}. */
+const parseRaw = (raw) => { try { return typeof raw === "string" ? JSON.parse(raw) : null; } catch { return null; } };
+const ROLE_LABEL = { kt: "KT", accountant: "KT", monitor: "Monitor", admin: "Admin" };
+function txKind(tx) {
+  if (tx.type === "barem") {
+    return parseRaw(tx.raw_text)?.source === "kt_review"
+      ? { label: "Cần xem lại", bg: "rgba(251,191,36,.12)", col: "#fbbf24" }
+      : { label: "Barem", bg: "rgba(52,211,153,.12)", col: "#34d399" };
+  }
+  if (tx.type === "barem_adjust") return { label: "Thỏa thuận lại", bg: "rgba(167,139,250,.12)", col: "#a78bfa" };
+  if (tx.type === "san" || (tx.type === "manual" && tx.requester_uid)) return { label: "San điểm", bg: "rgba(88,166,255,.12)", col: "#58a6ff" };
+  if (tx.type === "manual") return { label: "Chỉnh tay", bg: "rgba(251,146,60,.12)", col: "#fb923c" };
+  if (tx.type === "auto") return { label: "Tự động", bg: "rgba(255,255,255,.06)", col: c.dim };
+  return { label: tx.type || "Khác", bg: "rgba(255,255,255,.06)", col: c.dim };
+}
+// "kt:Tên" (approved_by) hoặc "[kt: Tên]" (cuối reason khi chỉnh tay) → { role, name }
+function txActor(tx) {
+  const m1 = /^([a-z]+):\s*(.+)$/i.exec(String(tx.approved_by || "").trim());
+  if (m1) return { role: ROLE_LABEL[m1[1].toLowerCase()] || m1[1], name: m1[2], how: "duyệt" };
+  const m2 = /\[(kt|admin|monitor):\s*([^\]]+)\]\s*$/i.exec(String(tx.reason || ""));
+  if (m2) return { role: ROLE_LABEL[m2[1].toLowerCase()], name: m2[2].trim(), how: "chỉnh" };
+  return null;
+}
+// Bỏ nhãn "[kt: Tên]" khỏi lý do khi hiển thị (đã hiện riêng ở dòng người thao tác)
+const cleanReason = (s) => String(s || "").replace(/\s*\[(kt|admin|monitor):[^\]]*\]\s*$/i, "").trim();
+function ActorTag({ tx }) {
+  const a = txActor(tx);
+  if (a) return (
+    <span style={{ fontSize: 11, color: c.dim, fontWeight: 600 }}>
+      {tx.status === "rejected" ? "từ chối" : a.how} bởi <span style={{ color: tx.status === "rejected" ? "#f87171" : "#a3e635" }}>{a.role} {a.name}</span>
+    </span>
+  );
+  if (tx.type === "barem" || tx.type === "barem_adjust")
+    return <span style={{ fontSize: 11, color: "#818cf8", fontWeight: 600 }}>bot tự tính</span>;
+  return null;
+}
+
 /* ── ConvoThread (parse raw_text JSON như kế toán) ─ */
 function ConvoThread({ raw }) {
   const [showLog, setShowLog] = useState(false);
@@ -226,6 +266,15 @@ function ConvoThread({ raw }) {
       </div>
     );
   }
+  // Tin tag kế toán bot chưa tự xử lý được → đưa người duyệt xem lại
+  if (c2?.source === "kt_review" && c2.text) {
+    return (
+      <div style={{ background: "rgba(251,191,36,.06)", border: "1px solid rgba(251,191,36,.3)", borderRadius: 8, padding: "8px 10px", marginBottom: 6, lineHeight: 1.5 }}>
+        {c2.reason && <div style={{ fontSize: 11.5, color: "#fbbf24", fontWeight: 700, marginBottom: 4 }}>⚠ {c2.reason}</div>}
+        {row(c2.time, c2.sender, c2.text, null)}
+      </div>
+    );
+  }
   // Cancel/free/adjust không có tripText — chỉ hiển thị phần điều chỉnh
   if (c2 && (c2.cancelText || c2.freeText || c2.adjustText)) {
     return (
@@ -247,10 +296,8 @@ function TxRow({ tx, memberUid }) {
   const delta = isSelf ? pts : -pts;
   const receiver = tx.to_member_name || tx.to_member || "";
   const sender   = tx.from_member_name || tx.from_member || "";
-  const typeLabel = tx.type === "barem" ? "barem" : tx.type === "san" ? "san điểm" : tx.type === "auto" ? "tự động" : "thủ công";
-  const typeBg = tx.type === "barem" ? "rgba(52,211,153,.12)" : tx.type === "san" ? "rgba(88,166,255,.12)" : "rgba(255,255,255,.06)";
-  const typeColor = tx.type === "barem" ? "#34d399" : tx.type === "san" ? "#58a6ff" : c.dim;
-  const approverName = tx.approved_by ? tx.approved_by.replace(/^[^:]+:/, "").trim() : null;
+  const kind = txKind(tx);
+  const reasonText = cleanReason(tx.reason);
 
   return (
     <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: "13px 15px", marginBottom: 10 }}>
@@ -272,21 +319,18 @@ function TxRow({ tx, memberUid }) {
 
       {/* Conversation / raw text */}
       {tx.raw_text && <ConvoThread raw={tx.raw_text} />}
-      {tx.reason && !tx.raw_text && (
+      {reasonText && (!tx.raw_text || tx.type === "barem_adjust") && (
         <div style={{ fontSize: 13, color: c.dim, lineHeight: 1.5, marginBottom: 8, wordBreak: "break-word" }}>
-          {tx.reason.length > 120 ? tx.reason.slice(0, 120) + "…" : tx.reason}
+          {reasonText.length > 160 ? reasonText.slice(0, 160) + "…" : reasonText}
         </div>
       )}
 
       {/* Footer row */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: typeBg, color: typeColor, fontWeight: 700 }}>
-          {typeLabel}
+        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: kind.bg, color: kind.col, fontWeight: 700 }}>
+          {kind.label}
         </span>
-        {approverName
-          ? <span style={{ fontSize: 11, color: c.dim, fontWeight: 600 }}>thủ công · <span style={{ color: "#a3e635" }}>{approverName}</span></span>
-          : <span style={{ fontSize: 11, color: "#818cf8", fontWeight: 600 }}>auto</span>
-        }
+        <ActorTag tx={tx} />
         <span style={{ fontSize: 11, color: c.dim, display: "flex", alignItems: "center", gap: 3, marginLeft: "auto" }}>
           <Clock size={10} /> {fmtTime(tx.created_at)}
         </span>
@@ -344,8 +388,8 @@ function GroupsView({ onSelect, apiBase = BASE }) {
 const MEMBER_PAGE_SIZES = [50, 100, 150];
 const TX_PAGE_LIMIT = 50;
 
+// Trạng thái luôn lấy theo status (loại giao dịch đã có nhãn riêng — txKind)
 const TX_STATUS = (tx) => {
-  if (tx.type === "san") return { label: "San điểm", bg: "rgba(88,166,255,.12)", col: "#58a6ff" };
   const s = tx.status;
   if (!s || s === "approved") return { label: "Đã duyệt", bg: "rgba(52,211,153,.12)", col: "#34d399" };
   if (s === "pending") return { label: "Chờ duyệt", bg: "rgba(251,191,36,.12)", col: "#fbbf24" };
@@ -399,7 +443,7 @@ function GroupTransactionsView({ group, txApiBase, txPath }) {
           <Search size={15} color={c.dim} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
           <input
             style={{ width: "100%", padding: "10px 14px 10px 36px", borderRadius: 10, border: `1px solid ${c.border}`, background: c.card, color: c.ink, fontSize: 14, outline: "none", boxSizing: "border-box" }}
-            placeholder="Tìm theo tên poster / taker…"
+            placeholder="Tìm theo tên / biệt danh (gõ không dấu cũng được)…"
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
           />
@@ -419,13 +463,13 @@ function GroupTransactionsView({ group, txApiBase, txPath }) {
         const pts = Number(tx.points);
         const ptsStr = Math.abs(pts % 1) < 0.001 ? Math.abs(pts).toFixed(0) : Math.abs(pts).toFixed(2);
         const status = TX_STATUS(tx);
-        const typeLabel = tx.type === "barem" ? "barem" : tx.type === "san" ? "san điểm" : tx.type === "auto" ? "tự động" : "thủ công";
+        const kind = txKind(tx);
+        const reasonText = cleanReason(tx.reason);
         const from = tx.from_member_name || tx.from_member || "";
         const to = tx.to_member_name || tx.to_member || "";
         // Âm khi chỉ có from_member (poster trả điểm, không có người nhận riêng)
         const isNeg = !!tx.from_member && !tx.to_member;
-        const ptsColor = isNeg ? "#f87171" : "#34d399";
-        const approverName = tx.approved_by ? tx.approved_by.replace(/^[^:]+:/, "").trim() : null;
+        const ptsColor = tx.status === "rejected" ? c.dim : isNeg ? "#f87171" : "#34d399";
         return (
           <div key={tx.id} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 10, padding: "11px 14px", marginBottom: 8, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "start" }}>
             <div>
@@ -435,23 +479,22 @@ function GroupTransactionsView({ group, txApiBase, txPath }) {
                  to   ? <span style={{ color: "#34d399" }}>{to}</span> : <span style={{ color: c.dim }}>—</span>}
               </div>
               {tx.raw_text && <ConvoThread raw={tx.raw_text} />}
+              {reasonText && (!tx.raw_text || tx.type === "barem_adjust") && (
+                <div style={{ fontSize: 12.5, color: c.dim, lineHeight: 1.5, marginBottom: 4, wordBreak: "break-word" }}>
+                  {reasonText.length > 160 ? reasonText.slice(0, 160) + "…" : reasonText}
+                </div>
+              )}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
                 <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: status.bg, color: status.col, fontWeight: 700 }}>{status.label}</span>
-                <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(255,255,255,.05)", color: c.dim, fontWeight: 600 }}>{typeLabel}</span>
-                {tx.status === "approved" && (
-                  approverName
-                    ? <span style={{ fontSize: 11, color: c.dim, fontWeight: 600 }}>thủ công · <span style={{ color: "#a3e635" }}>{approverName}</span></span>
-                    : <span style={{ fontSize: 11, color: "#818cf8", fontWeight: 600 }}>auto</span>
-                )}
-                {tx.status === "rejected" && approverName && (
-                  <span style={{ fontSize: 11, color: c.dim }}>từ chối bởi <span style={{ color: "#f87171" }}>{approverName}</span></span>
-                )}
+                <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: kind.bg, color: kind.col, fontWeight: 700 }}>{kind.label}</span>
+                {tx.status !== "pending" && <ActorTag tx={tx} />}
                 <span style={{ fontSize: 11, color: c.dim, marginLeft: "auto", display: "flex", alignItems: "center", gap: 3 }}>
                   <Clock size={10} />{fmtTime(tx.created_at)}
                 </span>
               </div>
             </div>
-            <div style={{ textAlign: "right", fontWeight: 800, fontSize: 18, color: ptsColor, whiteSpace: "nowrap" }}>
+            <div style={{ textAlign: "right", fontWeight: 800, fontSize: 18, color: ptsColor, whiteSpace: "nowrap",
+                          textDecoration: tx.status === "rejected" ? "line-through" : "none" }}>
               {isNeg ? "-" : "+"}{ptsStr}đ
             </div>
           </div>
@@ -480,13 +523,18 @@ function GroupTransactionsView({ group, txApiBase, txPath }) {
 }
 
 /* ── PendingApprovalsView ───────────────────────── */
-function PendingApprovalsView({ group, apiBase }) {
+// Làm giống tab Chờ duyệt của kế toán: hiện nội dung tin, người chuyển / người nhận kèm điểm
+// hiện tại → sau khi duyệt, cảnh báo người chuyển bị âm, chặn ô điểm trống / sai.
+const MAX_APPROVE_PTS = 1000;
+const fmtP = (v) => `${v >= 0 ? "+" : ""}${Math.abs(v % 1) < 0.001 ? v.toFixed(0) : v.toFixed(2)}đ`;
+function PendingApprovalsView({ group, apiBase, onChanged }) {
   const base = apiBase || BASE;
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState({});
   const [editPoints, setEditPoints] = useState({}); // txId → string
+  const [warnId, setWarnId] = useState(null);        // tx đang chờ xác nhận "người chuyển sẽ âm"
 
   const load = useCallback(async () => {
     setLoading(true); setErr("");
@@ -498,10 +546,9 @@ function PendingApprovalsView({ group, apiBase }) {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       setItems(data);
-      // Khởi tạo editPoints với giá trị hiện tại (chỉ cho tx chưa có giá trị đang sửa)
       setEditPoints(prev => {
-        const next = { ...prev };
-        data.forEach(tx => { if (!(tx.id in next)) next[tx.id] = String(Number(tx.points)); });
+        const next = {};
+        data.forEach(tx => { next[tx.id] = tx.id in prev ? prev[tx.id] : String(Number(tx.points)); });
         return next;
       });
     } catch (e) { setErr(e.message); }
@@ -510,20 +557,20 @@ function PendingApprovalsView({ group, apiBase }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const act = async (id, action) => {
-    setBusy(b => ({ ...b, [id]: true }));
+  const act = async (id, action, pts) => {
+    setBusy(b => ({ ...b, [id]: true })); setWarnId(null);
     try {
       const tok = localStorage.getItem("tlx_token");
-      const body = action === "approve" && editPoints[id] !== undefined
-        ? { points: Number(editPoints[id]) } : {};
       const r = await fetch(`${base}/api/monitor/pending-transfers/${id}/${action}`,
         { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + (tok || "") },
-          body: JSON.stringify(body) });
+          body: JSON.stringify(action === "approve" ? { points: pts } : {}) });
       if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `HTTP ${r.status}`); }
-      setEditPoints(prev => { const n = { ...prev }; delete n[id]; return n; });
-      await load();
+      onChanged?.();
     } catch (e) { alert(e.message); }
-    finally { setBusy(b => { const n = { ...b }; delete n[id]; return n; }); }
+    finally {
+      setBusy(b => { const n = { ...b }; delete n[id]; return n; });
+      await load();   // luôn tải lại: kể cả khi người khác đã duyệt trước
+    }
   };
 
   return (
@@ -533,7 +580,7 @@ function PendingApprovalsView({ group, apiBase }) {
         <button onClick={load} style={{ padding: "7px 14px", borderRadius: 9, border: `1px solid ${c.border}`, background: "transparent", color: c.dim, fontSize: 13, cursor: "pointer" }}>↻ Tải lại</button>
       </div>
 
-      {loading && <div style={{ textAlign: "center", padding: 40, color: c.dim }}>Đang tải…</div>}
+      {loading && !items.length && <div style={{ textAlign: "center", padding: 40, color: c.dim }}>Đang tải…</div>}
       {err && <div style={{ color: "#f87171", marginBottom: 12 }}>Lỗi: {err}</div>}
       {!loading && items.length === 0 && !err && (
         <div style={{ textAlign: "center", padding: "48px 0", color: c.dim }}>Không có giao dịch nào đang chờ duyệt.</div>
@@ -541,60 +588,93 @@ function PendingApprovalsView({ group, apiBase }) {
 
       {items.map(tx => {
         const pts = Number(tx.points);
-        const from = tx.from_member_name || tx.from_member || "";
-        const to = tx.to_member_name || tx.to_member || "";
-        const typeLabel = tx.type === "barem" ? "barem" : tx.type === "san" ? "san điểm" : "thủ công";
+        const kind = txKind(tx);
+        const raw = parseRaw(tx.raw_text);
+        const isReview = raw?.source === "kt_review";
+        const fromName = tx.from_member_name || tx.from_member || "";
+        const toName = tx.to_member_name || tx.to_member || "";
+        const fromPts = tx.from_member && tx.from_points != null ? Number(tx.from_points) : null;
+        const toPts = tx.to_member && tx.to_points != null ? Number(tx.to_points) : null;
         const isBusy = !!busy[tx.id];
-        const curPts = editPoints[tx.id] ?? String(pts);
-        const ptsChanged = Number(curPts) !== pts;
+        const curStr = editPoints[tx.id] ?? String(pts);
+        const cur = Number(curStr);
+        const valid = curStr.trim() !== "" && Number.isFinite(cur) && cur >= 0 && cur <= MAX_APPROVE_PTS;
+        const ptsChanged = valid && cur !== pts;
+        const goesNegative = valid && fromPts != null && fromPts - cur < 0;
+        const reasonText = cleanReason(tx.reason);
+
+        const onApprove = () => {
+          if (!valid) return;
+          if (goesNegative && warnId !== tx.id) { setWarnId(tx.id); return; }
+          act(tx.id, "approve", cur);
+        };
+
+        const box = (title, col, name, now, after) => (
+          <div style={{ flex: 1, minWidth: 130, background: col + "14", border: `1px solid ${col}40`, borderRadius: 9, padding: "8px 10px" }}>
+            <div style={{ fontSize: 11, color: col, fontWeight: 700, marginBottom: 2 }}>{title}</div>
+            <div style={{ fontWeight: 700, fontSize: 13.5, color: c.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name || "—"}</div>
+            {now != null && (
+              <div style={{ fontSize: 12, color: c.dim, marginTop: 2 }}>
+                Hiện <b style={{ color: now >= 0 ? "#34d399" : "#f87171" }}>{fmtP(now)}</b>
+                {valid && <> → <b style={{ color: after >= 0 ? "#34d399" : "#f87171" }}>{fmtP(after)}</b></>}
+              </div>
+            )}
+          </div>
+        );
+
         return (
           <div key={tx.id} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
-            {/* Header: tên + ô điểm */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <div style={{ flex: 1, fontSize: 14, fontWeight: 700, color: c.ink, minWidth: 0 }}>
-                {from && to
-                  ? <><span style={{ color: "#60a5fa" }}>{from}</span><span style={{ color: c.dim }}> → </span><span style={{ color: "#34d399" }}>{to}</span></>
-                  : from ? <span style={{ color: "#f87171" }}>{from}</span>
-                  : to ? <span style={{ color: "#34d399" }}>{to}</span>
-                  : <span style={{ color: c.dim }}>—</span>}
-              </div>
-              {/* Ô điểm chỉnh được */}
-              <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  value={curPts}
-                  onChange={e => setEditPoints(prev => ({ ...prev, [tx.id]: e.target.value }))}
-                  disabled={isBusy}
-                  style={{ width: 72, padding: "4px 8px", borderRadius: 7, border: `1px solid ${ptsChanged ? c.accent : c.border}`, background: "rgba(0,0,0,.3)", color: ptsChanged ? c.accent : "#fbbf24", fontWeight: 700, fontSize: 15, textAlign: "center", outline: "none" }}
-                />
-                <span style={{ fontSize: 13, color: ptsChanged ? c.accent : "#fbbf24", fontWeight: 700 }}>đ</span>
-              </div>
-            </div>
-            {tx.raw_text && <ConvoThread raw={tx.raw_text} />}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
               <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(251,191,36,.12)", color: "#fbbf24", fontWeight: 700 }}>Chờ duyệt</span>
-              <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(255,255,255,.05)", color: c.dim, fontWeight: 600 }}>{typeLabel}</span>
-              {ptsChanged && (
-                <span style={{ fontSize: 11, color: c.accent, fontWeight: 600 }}>
-                  {pts % 1 === 0 ? pts.toFixed(0) : pts.toFixed(2)}đ → {Number(curPts) % 1 === 0 ? Number(curPts).toFixed(0) : Number(curPts).toFixed(2)}đ
-                </span>
-              )}
+              <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: kind.bg, color: kind.col, fontWeight: 700 }}>{kind.label}</span>
               <span style={{ fontSize: 11, color: c.dim, marginLeft: "auto", display: "flex", alignItems: "center", gap: 3 }}>
                 <Clock size={10} />{fmtTime(tx.created_at)}
               </span>
             </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <button
-                disabled={isBusy}
-                onClick={() => act(tx.id, "approve")}
-                style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: isBusy ? "#21262d" : "rgba(52,211,153,.15)", color: isBusy ? c.dim : "#34d399", fontWeight: 700, fontSize: 13, cursor: isBusy ? "default" : "pointer" }}>
-                {isBusy ? "…" : ptsChanged ? `✓ Duyệt ${Number(curPts) % 1 === 0 ? Number(curPts).toFixed(0) : Number(curPts).toFixed(2)}đ` : "✓ Duyệt"}
+
+            {/* Nội dung: hội thoại cuốc / tin cần xem lại / tin san điểm */}
+            {raw ? <ConvoThread raw={tx.raw_text} /> : reasonText ? (
+              <div style={{ background: "rgba(0,0,0,.3)", border: `1px solid ${c.border}`, borderRadius: 8, padding: "8px 10px", marginBottom: 8, fontSize: 12.5, color: c.ink, lineHeight: 1.55, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
+                {reasonText}
+              </div>
+            ) : null}
+            {Array.isArray(raw?.multiTrips) && raw.multiTrips.length > 1 && (
+              <div style={{ fontSize: 12, color: "#f59e0b", fontWeight: 700, marginBottom: 8 }}>
+                ⚠ Tin có {raw.multiTrips.length} cuốc: {raw.multiTrips.map(t => `${t.type} ${t.price}k`).join(" · ")}. Kiểm tra điểm trước khi duyệt.
+              </div>
+            )}
+            {isReview && (
+              <div style={{ fontSize: 12, color: c.dim, marginBottom: 8, lineHeight: 1.5 }}>
+                Duyệt = cộng số điểm bên dưới cho <b style={{ color: c.ink }}>{toName || "người gửi"}</b>. Nếu tin này không cần cộng điểm, bấm <b style={{ color: "#f87171" }}>Từ chối</b>.
+              </div>
+            )}
+
+            {/* Người chuyển → điểm → người nhận */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              {tx.from_member && box("Người chuyển", "#f87171", fromName, fromPts, fromPts != null ? fromPts - cur : null)}
+              <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
+                <input type="number" step="0.5" min="0" max={MAX_APPROVE_PTS} value={curStr}
+                  onChange={e => { setWarnId(null); setEditPoints(prev => ({ ...prev, [tx.id]: e.target.value })); }}
+                  disabled={isBusy}
+                  style={{ width: 70, padding: "5px 8px", borderRadius: 7, border: `1px solid ${!valid ? "#f87171" : ptsChanged ? c.accent : c.border}`, background: "rgba(0,0,0,.3)", color: !valid ? "#f87171" : ptsChanged ? c.accent : "#fbbf24", fontWeight: 800, fontSize: 15, textAlign: "center", outline: "none" }} />
+                <span style={{ fontSize: 13, color: "#fbbf24", fontWeight: 700 }}>đ →</span>
+              </div>
+              {tx.to_member && box("Người nhận", "#34d399", toName, toPts, toPts != null ? toPts + cur : null)}
+            </div>
+            {!valid && <div style={{ fontSize: 12, color: "#f87171", marginBottom: 8 }}>Nhập số điểm từ 0 đến {MAX_APPROVE_PTS}.</div>}
+
+            {warnId === tx.id && (
+              <div style={{ marginBottom: 8, padding: "9px 12px", borderRadius: 9, background: "rgba(245,158,11,.1)", border: "1px solid rgba(245,158,11,.4)", fontSize: 12.5, color: "#f59e0b" }}>
+                ⚠ Sau khi duyệt, <b style={{ color: c.ink }}>{fromName}</b> sẽ còn <b style={{ color: "#f87171" }}>{fmtP(fromPts - cur)}</b>. Bấm Duyệt lần nữa để xác nhận.
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button disabled={isBusy || !valid} onClick={onApprove}
+                style={{ flex: 2, padding: "8px 0", borderRadius: 8, border: "none", background: isBusy || !valid ? "#21262d" : warnId === tx.id ? "rgba(245,158,11,.2)" : "rgba(52,211,153,.15)", color: isBusy || !valid ? c.dim : warnId === tx.id ? "#f59e0b" : "#34d399", fontWeight: 700, fontSize: 13, cursor: isBusy || !valid ? "default" : "pointer" }}>
+                {isBusy ? "…" : warnId === tx.id ? `Vẫn duyệt ${fmtP(cur).replace("+", "")}` : ptsChanged ? `✓ Duyệt ${fmtP(cur).replace("+", "")}` : "✓ Duyệt"}
               </button>
-              <button
-                disabled={isBusy}
-                onClick={() => act(tx.id, "reject")}
+              <button disabled={isBusy} onClick={() => act(tx.id, "reject")}
                 style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: isBusy ? "#21262d" : "rgba(248,113,113,.1)", color: isBusy ? c.dim : "#f87171", fontWeight: 700, fontSize: 13, cursor: isBusy ? "default" : "pointer" }}>
                 {isBusy ? "…" : "✗ Từ chối"}
               </button>
@@ -608,8 +688,10 @@ function PendingApprovalsView({ group, apiBase }) {
 
 /* ── MembersView ────────────────────────────────── */
 function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBase, txPath }) {
-  const canMonitor = ["admin", "accountant"].includes(meRole)
-    || (meRole === "monitor" && (allowedGroupIds === null || (Array.isArray(allowedGroupIds) && allowedGroupIds.includes(group.group_id))));
+  // Admin: mọi nhóm. Kế toán / monitor: chỉ nhóm được phép (server cũng chặn y hệt)
+  const canMonitor = meRole === "admin"
+    || (["accountant", "monitor"].includes(meRole)
+        && (allowedGroupIds === null || (Array.isArray(allowedGroupIds) && allowedGroupIds.includes(group.group_id))));
   const [activeTab, setActiveTab] = useState("leaderboard");
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -632,9 +714,14 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
   };
 
   const loadMembers = useCallback(() => {
-    setLoading(true);
+    setLoading(true); setErr("");
     get(`/api/public/members/${group.group_id}`).then(setMembers).catch(e => setErr(e.message)).finally(() => setLoading(false));
   }, [group.group_id]);
+  // Duyệt / sửa điểm ở tab khác xong quay về bảng xếp hạng → tải lại để thấy điểm mới
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    if (activeTab === "leaderboard" && dirty) { setDirty(false); loadMembers(); }
+  }, [activeTab, dirty, loadMembers]);
 
   const doAdjust = async () => {
     const delta = parseFloat(adjustDelta);
@@ -650,6 +737,7 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
       });
       if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `HTTP ${r.status}`); }
       setAdjustFlash({ ok: true, msg: `Đã sửa ${delta > 0 ? "+" : ""}${delta}đ cho ${adjustTarget.name}` });
+      setDirty(false);
       setAdjustTarget(null); setAdjustDelta(""); setAdjustReason("");
       loadMembers();
       setTimeout(() => setAdjustFlash(null), 3000);
@@ -663,6 +751,16 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
     get(`/api/public/members/${group.group_id}`).then(setMembers).catch(e => setErr(e.message)).finally(() => setLoading(false));
   }, [group.group_id]);
 
+  const isOut = (m) => Number(m.is_out) === 1;
+  const activeCount = useMemo(() => members.filter(m => !isOut(m)).length, [members]);
+  // Hạng THẬT theo điểm trong số người còn ở nhóm (cùng điểm cùng hạng) — không đổi khi tìm kiếm / sắp theo tên
+  const rankOf = useMemo(() => {
+    const pts = members.filter(m => !isOut(m)).map(m => Number(m.points) || 0).sort((a, b) => b - a);
+    const firstIdx = new Map();
+    pts.forEach((p, i) => { if (!firstIdx.has(p)) firstIdx.set(p, i + 1); });
+    return (m) => isOut(m) ? null : firstIdx.get(Number(m.points) || 0);
+  }, [members]);
+
   const sorted = useMemo(() => {
     const q = noMark(search.trim());
     let list = q ? members.filter(m =>
@@ -670,12 +768,14 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
       noMark(m.display_name).includes(q) ||
       (m.zalo_uid || "").includes(search.trim())
     ) : [...members];
+    const nameOf = (m) => m.alias || m.display_name || "";
     list.sort((a, b) => {
+      if (isOut(a) !== isOut(b)) return isOut(a) ? 1 : -1;   // người đã rời nhóm luôn xuống cuối
       if (sortBy === "points") {
         const d = (Number(b.points) || 0) - (Number(a.points) || 0);
         return sortDir === "asc" ? -d : d;
       }
-      const d = (a.display_name || "").localeCompare(b.display_name || "", "vi");
+      const d = nameOf(a).localeCompare(nameOf(b), "vi");
       return sortDir === "desc" ? -d : d;
     });
     return list;
@@ -692,8 +792,6 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
     else { setSortBy(col); setSortDir(col === "points" ? "desc" : "asc"); }
   };
 
-  // Offset thứ tự (#) theo trang
-  const rankOffset = (page - 1) * pageSize;
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 16px 0" }}>
@@ -701,7 +799,10 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{ fontSize: 22, fontWeight: 800, color: c.ink, margin: 0 }}>Điểm tài xế {group.group_name || group.group_id}</h1>
-            <p style={{ color: c.dim, fontSize: 14, marginTop: 4 }}>Bảng xếp hạng điểm thưởng · {members.length} tài xế</p>
+            <p style={{ color: c.dim, fontSize: 14, marginTop: 4 }}>
+              Bảng xếp hạng điểm thưởng · {activeCount} tài xế
+              {members.length > activeCount && <span> · {members.length - activeCount} đã rời nhóm</span>}
+            </p>
           </div>
           <button onClick={copyLink} style={{ flexShrink: 0, marginTop: 4, padding: "7px 14px", borderRadius: 9, border: `1px solid ${c.border}`, background: copied ? "rgba(52,211,153,.15)" : "rgba(255,255,255,.05)", color: copied ? c.accent : c.dim, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, transition: "all .15s" }}>
             {copied ? "✓ Đã sao chép!" : "🔗 Chia sẻ"}
@@ -726,7 +827,7 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
       )}
 
       {canMonitor && activeTab === "approve" && (
-        <PendingApprovalsView group={group} apiBase={txApiBase || BASE} />
+        <PendingApprovalsView group={group} apiBase={txApiBase || BASE} onChanged={() => setDirty(true)} />
       )}
 
       {(!canMonitor || activeTab === "leaderboard") && <>
@@ -779,9 +880,10 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
 
         {paged.map((m, i) => {
           const pts = Number(m.points) || 0;
-          const ptsYest = Number(m.points_yesterday) ?? pts;
+          const ptsYest = m.points_yesterday != null ? Number(m.points_yesterday) : pts;
           const fmtPts = (v) => `${v >= 0 ? "+" : ""}${v % 1 === 0 ? v.toFixed(0) : v.toFixed(2)}đ`;
-          const rank = rankOffset + i + 1;
+          const rank = rankOf(m);
+          const out = isOut(m);
           const isEditing = canMonitor && adjustTarget?.uid === m.zalo_uid;
           const isLast = i === paged.length - 1;
           return (
@@ -794,11 +896,12 @@ function MembersView({ group, onBack, onSelect, meRole, allowedGroupIds, txApiBa
                 onClick={() => { if (!isEditing) onSelect(m); }}>
                 <ZaloAvatar uid={m.zalo_uid} name={m.display_name} src={m.avatar} size={40} />
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: c.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: out ? c.dim : c.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {m.alias || m.display_name || m.zalo_uid}
+                    {out && <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", background: "rgba(148,163,184,.12)", border: "1px solid rgba(148,163,184,.3)", borderRadius: 4, padding: "1px 5px", marginLeft: 6 }}>ĐÃ RỜI NHÓM</span>}
                   </div>
                   {m.alias && <div style={{ fontSize: 11, color: c.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.display_name}</div>}
-                  <div style={{ fontSize: 11, color: c.dim, marginTop: 1 }}>#{rank} · ID …{(m.zalo_uid || "").slice(-6)}</div>
+                  <div style={{ fontSize: 11, color: c.dim, marginTop: 1 }}>{rank ? `#${rank}` : "—"} · ID …{(m.zalo_uid || "").slice(-6)}</div>
                 </div>
                 <div style={{ textAlign: "right", fontWeight: 700, fontSize: 14, color: ptsYest >= 0 ? "#94a3b8" : "#f87171" }}>
                   {fmtPts(ptsYest)}
@@ -888,12 +991,33 @@ function TransactionsView({ group, member, groupSlug, onBack }) {
     navigator.clipboard.writeText(shareUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
   };
 
+  // Tải từng lô 200 giao dịch; còn nữa thì hiện nút "Tải thêm" (trước đây cắt cứng ở 200)
+  const TX_BATCH = 200;
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const fetchBatch = useCallback((offset) =>
+    get(`/api/public/transactions/${group.group_id}/${member.zalo_uid}?limit=${TX_BATCH}&offset=${offset}`)
+  , [group.group_id, member.zalo_uid]);
   useEffect(() => {
-    get(`/api/public/transactions/${group.group_id}/${member.zalo_uid}?limit=200`)
-      .then(data => { setTxs([...data].sort((a, b) => b.created_at - a.created_at)); setPage(1); })
+    setLoading(true);
+    fetchBatch(0)
+      .then(data => { setTxs([...data].sort((a, b) => b.created_at - a.created_at)); setHasMore(data.length === TX_BATCH); setPage(1); })
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
-  }, [group.group_id, member.zalo_uid]);
+  }, [fetchBatch]);
+  const loadMore = () => {
+    setLoadingMore(true);
+    fetchBatch(txs.length)
+      .then(data => {
+        setTxs(prev => {
+          const seen = new Set(prev.map(t => t.id));
+          return [...prev, ...data.filter(t => !seen.has(t.id))].sort((a, b) => b.created_at - a.created_at);
+        });
+        setHasMore(data.length === TX_BATCH);
+      })
+      .catch(e => setErr(e.message))
+      .finally(() => setLoadingMore(false));
+  };
 
   const pts = Number(member.points) || 0;
 
@@ -943,7 +1067,7 @@ function TransactionsView({ group, member, groupSlug, onBack }) {
       {/* Tiêu đề */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
         <h3 style={{ fontSize: 16, fontWeight: 700, color: c.ink, margin: 0 }}>
-          Lịch sử giao dịch <span style={{ color: c.dim, fontWeight: 500, fontSize: 14 }}>({txs.length})</span>
+          Lịch sử giao dịch <span style={{ color: c.dim, fontWeight: 500, fontSize: 14 }}>({txs.length}{hasMore ? "+" : ""})</span>
         </h3>
         <button onClick={copyLink} style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 9, border: `1px solid ${c.border}`, background: copied ? "rgba(52,211,153,.15)" : "rgba(255,255,255,.05)", color: copied ? c.accent : c.dim, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
           {copied ? "✓ Đã sao chép!" : "🔗 Chia sẻ"}
@@ -990,6 +1114,15 @@ function TransactionsView({ group, member, groupSlug, onBack }) {
           <span style={{ fontSize: 12, color: c.dim, marginLeft: 6 }}>{txs.length} giao dịch · trang {page}/{totalPages}</span>
         </div>
       )}
+
+      {hasMore && page === totalPages && (
+        <div style={{ textAlign: "center", paddingTop: 14 }}>
+          <button onClick={loadMore} disabled={loadingMore}
+            style={{ padding: "9px 22px", borderRadius: 9, border: `1px solid ${c.border}`, background: "rgba(255,255,255,.04)", color: c.ink, fontSize: 13, fontWeight: 700, cursor: loadingMore ? "default" : "pointer" }}>
+            {loadingMore ? "Đang tải…" : "Tải thêm giao dịch cũ hơn"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1027,9 +1160,16 @@ export default function PublicPointsPage() {
           .then(u => {
             if (u?.role) setMeRole(u.role);
             if (u?.role === "admin" || u?.role === "accountant") {
-              setAllowedGroupIds(null);
               setTxApiBase(KT_BASE);
               setTxPath("/api/admin/group-transactions");
+              if (u.role === "admin") setAllowedGroupIds(null);
+              else {
+                // Kế toán chỉ thấy tab duyệt / sửa điểm ở nhóm của chính mình
+                return fetch(KT_BASE + "/api/accountant/groups", { headers: { Authorization: "Bearer " + tok } })
+                  .then(r => r.ok ? r.json() : [])
+                  .then(gs => setAllowedGroupIds((gs || []).map(g => g.group_id)))
+                  .catch(() => setAllowedGroupIds([]));
+              }
             }
           })
           .catch(() => {});

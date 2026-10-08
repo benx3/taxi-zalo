@@ -144,16 +144,33 @@ app.get("/api/public/by-slug/:slug", async (req, res) => {
     res.json({ ...found, slug: slugify(found.group_name) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// Chỉ nhóm KT đã bật "công khai" mới xem được qua API không đăng nhập. Cache 60s.
+let _publicGroups = { at: 0, ids: new Set() };
+async function isPublicGroup(groupId) {
+  if (Date.now() - _publicGroups.at > 60_000) {
+    const groups = await dbm.listPublicGroups();
+    _publicGroups = { at: Date.now(), ids: new Set(groups.map(g => g.group_id)) };
+  }
+  return _publicGroups.ids.has(String(groupId));
+}
+// Bảng xếp hạng công khai: CHỈ trả các trường cần hiển thị — không lộ SĐT, global_id…
+const PUBLIC_MEMBER_FIELDS = ["zalo_uid", "display_name", "alias", "avatar", "points", "points_yesterday", "is_out"];
+
 app.get("/api/public/members/:groupId", async (req, res) => {
-  try { res.json(await dbm.listMembersWithYesterday(req.params.groupId)); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  try {
+    if (!await isPublicGroup(req.params.groupId)) return res.status(404).json({ error: "Nhóm không tồn tại" });
+    const rows = await dbm.listMembersWithYesterday(req.params.groupId);
+    res.json(rows.map(m => Object.fromEntries(PUBLIC_MEMBER_FIELDS.map(k => [k, m[k] ?? null]))));
+  } catch (e) { res.status(500).json({ error: "Lỗi máy chủ" }); }
 });
 app.get("/api/public/transactions/:groupId/:zaloUid", async (req, res) => {
   try {
     const { groupId, zaloUid } = req.params;
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
-    res.json(await dbm.listTransactions(groupId, { zaloUid, limit, approvedOnly: true }));
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    if (!await isPublicGroup(groupId)) return res.status(404).json({ error: "Nhóm không tồn tại" });
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    res.json(await dbm.listTransactions(groupId, { zaloUid, limit, offset, approvedOnly: true }));
+  } catch (e) { res.status(500).json({ error: "Lỗi máy chủ" }); }
 });
 
 // ---------- Monitor: danh sách nhóm được phép xem ----------
@@ -162,9 +179,8 @@ app.get("/api/monitor/my-groups", async (req, res) => {
     const a = tokenOf(req); if (!a) return res.status(401).json({ error: "Chưa đăng nhập" });
     const u = await dbm.getUserPublic(a.userId);
     if (!["monitor", "admin", "accountant"].includes(u?.role)) return res.status(403).json({ error: "Không có quyền" });
-    if (u.role === "admin" || u.role === "accountant") return res.json({ all: true });
-    const groups = await dbm.getMonitorGroups(a.userId);
-    res.json({ all: false, groupIds: groups.map(g => g.group_id) });
+    if (u.role === "admin") return res.json({ all: true });
+    res.json({ all: false, groupIds: await allowedGroupIdsOf(u, a.userId) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -185,15 +201,33 @@ app.get("/api/monitor/group-transactions/:groupId", async (req, res) => {
 });
 
 // ---------- Monitor: giao dịch đang chờ duyệt ----------
+// Nhóm được phép thao tác: monitor = nhóm admin giao; kế toán = CHỈ nhóm của chính mình
+// (trước đây kế toán được mọi nhóm, kể cả nhóm của kế toán khác); admin = tất cả.
+async function allowedGroupIdsOf(u, userId) {
+  if (u?.role === "accountant") return (await dbm.getAccountantGroups(userId)).map(g => g.group_id);
+  if (u?.role === "monitor") return (await dbm.getMonitorGroups(userId)).map(g => g.group_id);
+  return [];
+}
 async function checkMonitorGroupAccess(req, res, groupId) {
   const a = tokenOf(req); if (!a) { res.status(401).json({ error: "Chưa đăng nhập" }); return null; }
   const u = await dbm.getUserPublic(a.userId);
   if (!["monitor", "admin", "accountant"].includes(u?.role)) { res.status(403).json({ error: "Không có quyền" }); return null; }
-  if (u.role === "admin" || u.role === "accountant") return { a, u };
-  const groups = await dbm.getMonitorGroups(a.userId);
-  if (!groups.some(g => g.group_id === groupId)) { res.status(403).json({ error: "Không có quyền trên nhóm này" }); return null; }
+  if (u.role === "admin") return { a, u };
+  if (!(await allowedGroupIdsOf(u, a.userId)).includes(String(groupId))) {
+    res.status(403).json({ error: "Không có quyền trên nhóm này" }); return null;
+  }
   return { a, u };
 }
+// Số điểm hợp lệ cho duyệt / chỉnh tay: số thực hữu hạn, trần 1000đ/lần (chặn gõ nhầm, chặn NaN làm hỏng điểm)
+const MAX_PTS_PER_OP = 1000;
+const validPts = (v, { allowZero = false, allowNegative = false } = {}) => {
+  const n = Number(v);
+  if (v === "" || v === null || v === undefined || !Number.isFinite(n)) return null;
+  if (!allowNegative && n < 0) return null;
+  if (!allowZero && n === 0) return null;
+  if (Math.abs(n) > MAX_PTS_PER_OP) return null;
+  return n;
+};
 
 app.get("/api/monitor/pending-transfers/:groupId", async (req, res) => {
   try {
@@ -208,7 +242,11 @@ app.post("/api/monitor/pending-transfers/:id/approve", async (req, res) => {
     const ctx = await checkMonitorGroupAccess(req, res, groupId); if (!ctx) return;
     const { u } = ctx;
     const adjusterRole = u?.role === "admin" ? "admin" : u?.role === "accountant" ? "kt" : "monitor";
-    const overridePoints = req.body?.points !== undefined ? Number(req.body.points) : null;
+    let overridePoints = null;
+    if (req.body?.points !== undefined) {
+      overridePoints = validPts(req.body.points, { allowZero: true });
+      if (overridePoints === null) return res.status(400).json({ error: `Số điểm duyệt phải từ 0 đến ${MAX_PTS_PER_OP}` });
+    }
     await dbm.approvePendingTransfer(req.params.id, `${adjusterRole}:${u?.name || ctx.a.userId}`, overridePoints);
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
@@ -227,14 +265,18 @@ app.post("/api/monitor/pending-transfers/:id/reject", async (req, res) => {
 
 app.post("/api/monitor/adjust-points", async (req, res) => {
   try {
-    const { groupId, zaloUid, delta, reason } = req.body;
+    const { groupId, zaloUid, delta, reason } = req.body || {};
     if (!groupId || !zaloUid || delta === undefined) return res.status(400).json({ error: "Thiếu groupId, zaloUid hoặc delta" });
+    const d = validPts(delta, { allowNegative: true });
+    if (d === null) return res.status(400).json({ error: `Số điểm phải khác 0 và không quá ${MAX_PTS_PER_OP}` });
     const ctx = await checkMonitorGroupAccess(req, res, groupId); if (!ctx) return;
+    // Chỉ chỉnh điểm cho người đang có trong sổ nhóm — không tạo thành viên "ma" theo uid tùy ý
+    if (!await dbm.getMemberByZaloUid(groupId, String(zaloUid))) return res.status(404).json({ error: "Không tìm thấy thành viên trong nhóm" });
     const { u } = ctx;
     const adjusterRole = u?.role === "admin" ? "admin" : u?.role === "accountant" ? "kt" : "monitor";
     const adjusterLabel = `${adjusterRole}: ${u?.name || "?"}`;
-    const fullReason = (reason?.trim() ? reason.trim() + " " : "") + `[${adjusterLabel}]`;
-    const txId = await dbm.adjustPoints(groupId, zaloUid, Number(delta), fullReason);
+    const fullReason = (typeof reason === "string" && reason.trim() ? reason.trim().slice(0, 300) + " " : "") + `[${adjusterLabel}]`;
+    const txId = await dbm.adjustPoints(groupId, String(zaloUid), d, fullReason);
     res.json({ ok: true, txId });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });

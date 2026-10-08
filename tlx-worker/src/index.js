@@ -258,7 +258,8 @@ app.post("/api/admin/accountant-groups", async (req, res) => {
 
 // ---------- Admin/KT: xem giao dịch nhóm (dùng KT token) ----------
 app.get("/api/admin/group-transactions/:groupId", async (req, res) => {
-  const a = await requireAccountant(req, res); if (!a) return;
+  // checkGroupAccess: admin xem mọi nhóm, kế toán CHỈ nhóm của mình (trước chỉ cần là kế toán)
+  if (!await checkGroupAccess(req, res, req.params.groupId)) return;
   try {
     const { groupId } = req.params;
     const limit = Math.min(Number(req.query.limit) || 50, 200);
@@ -830,7 +831,11 @@ app.post("/api/monitor/pending-transfers/:id/approve", async (req, res) => {
       if (!groups.some(g => g.group_id === groupId)) return res.status(403).json({ error: "Không có quyền trên nhóm này" });
     }
     const u = await dbm.getUserPublic(a.userId);
-    const overridePoints = req.body?.points !== undefined ? Number(req.body.points) : null;
+    let overridePoints = null;
+    if (req.body?.points !== undefined) {
+      overridePoints = validPts(req.body.points, { allowZero: true });
+      if (overridePoints === null) return res.status(400).json({ error: `Số điểm duyệt phải từ 0 đến ${MAX_PTS_PER_OP}` });
+    }
     await dbm.approvePendingTransfer(req.params.id, `${u?.role === "admin" ? "admin" : "kt"}:${u?.name || a.userId}`, overridePoints);
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
@@ -849,16 +854,29 @@ app.post("/api/monitor/pending-transfers/:id/reject", async (req, res) => {
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
+// Số điểm hợp lệ cho duyệt / chỉnh tay: số thực hữu hạn, trần 1000đ/lần (chặn gõ nhầm, chặn NaN làm hỏng điểm)
+const MAX_PTS_PER_OP = 1000;
+function validPts(v, { allowZero = false, allowNegative = false } = {}) {
+  const n = Number(v);
+  if (v === "" || v === null || v === undefined || !Number.isFinite(n)) return null;
+  if (!allowNegative && n < 0) return null;
+  if (!allowZero && n === 0) return null;
+  if (Math.abs(n) > MAX_PTS_PER_OP) return null;
+  return n;
+}
 app.post("/api/monitor/adjust-points", async (req, res) => {
-  const { groupId, zaloUid, delta, reason } = req.body;
+  const { groupId, zaloUid, delta, reason } = req.body || {};
   if (!groupId || !zaloUid || delta === undefined) return res.status(400).json({ error: "Thiếu groupId, zaloUid hoặc delta" });
+  const d = validPts(delta, { allowNegative: true });
+  if (d === null) return res.status(400).json({ error: `Số điểm phải khác 0 và không quá ${MAX_PTS_PER_OP}` });
   if (!await checkGroupAccess(req, res, groupId)) return;
   try {
+    if (!await dbm.getMemberByZaloUid(groupId, String(zaloUid))) return res.status(404).json({ error: "Không tìm thấy thành viên trong nhóm" });
     const a = tokenOf(req);
     const u = a ? await dbm.getUserPublic(a.userId) : null;
     const adjusterLabel = `${u?.role === "admin" ? "admin" : "kt"}: ${u?.name || "?"}`;
-    const fullReason = (reason?.trim() ? reason.trim() + " " : "") + `[${adjusterLabel}]`;
-    const txId = await dbm.adjustPoints(groupId, zaloUid, Number(delta), fullReason);
+    const fullReason = (typeof reason === "string" && reason.trim() ? reason.trim().slice(0, 300) + " " : "") + `[${adjusterLabel}]`;
+    const txId = await dbm.adjustPoints(groupId, String(zaloUid), d, fullReason);
     res.json({ ok: true, txId });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });

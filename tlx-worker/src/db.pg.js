@@ -794,8 +794,23 @@ export async function getLatestBaremTripMsgId(groupId, memberUid, sinceMs = 0) {
   );
   return r.rows[0]?.trip_msg_id || null;
 }
+// Tìm tên không phân biệt dấu, không cần extension unaccent: translate() các chữ có dấu
+// (cả hoa lẫn thường, dạng dựng sẵn) về chữ không dấu, rồi bỏ dấu rời (tên Zalo đôi khi lưu dạng tách dấu).
+const _VN_LOWER = "àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ";
+const _VN_FROM = _VN_LOWER + _VN_LOWER.toUpperCase();
+const _VN_TO = [..._VN_FROM].map(ch => /[đĐ]/.test(ch) ? "d" : ch.normalize("NFD")[0].toLowerCase()).join("");
+const unaccentSql = (col) =>
+  `regexp_replace(translate(lower(COALESCE(${col},'')), '${_VN_FROM}', '${_VN_TO}'), '[\\u0300-\\u036f]', '', 'g')`;
+export const unaccentJs = (s) => String(s || "").normalize("NFC").toLowerCase()
+  .replace(/[đĐ]/g, "d").normalize("NFD").replace(/[̀-ͯ]/g, "");
+// Điều kiện tìm theo tên/biệt danh của người chuyển hoặc người nhận
+function txSearchCond(search, params) {
+  const p = `$${params.push(`%${unaccentJs(search)}%`)}`;
+  return `(${["fm.display_name", "fm.alias", "tm.display_name", "tm.alias"].map(c => `${unaccentSql(c)} LIKE ${p}`).join(" OR ")})`;
+}
+
 export async function listTransactions(groupId, { zaloUid, limit = 100, dateFrom, dateTo, approvedOnly = false, search = "", offset = 0 } = {}) {
-  const base = `SELECT pt.*, fm.display_name as from_member_name, tm.display_name as to_member_name
+  const base = `SELECT pt.*, COALESCE(fm.alias, fm.display_name) as from_member_name, COALESCE(tm.alias, tm.display_name) as to_member_name
     FROM point_transactions pt
     LEFT JOIN members fm ON fm.group_id=pt.group_id AND fm.zalo_uid=pt.from_member
     LEFT JOIN members tm ON tm.group_id=pt.group_id AND tm.zalo_uid=pt.to_member`;
@@ -805,7 +820,7 @@ export async function listTransactions(groupId, { zaloUid, limit = 100, dateFrom
   if (zaloUid) { conds.push(`(pt.from_member=$${params.push(zaloUid)} OR pt.to_member=$${params.push(zaloUid)})`); }
   if (dateFrom) { conds.push(`pt.created_at >= $${params.push(dateFrom)}`); }
   if (dateTo)   { conds.push(`pt.created_at <= $${params.push(dateTo)}`); }
-  if (search) { const s = `%${search.toLowerCase()}%`; conds.push(`(LOWER(COALESCE(fm.display_name,'')) LIKE $${params.push(s)} OR LOWER(COALESCE(tm.display_name,'')) LIKE $${params.push(s)})`); }
+  if (search) conds.push(txSearchCond(search, params));
   let sql = `${base} WHERE ${conds.join(" AND ")} ORDER BY pt.created_at DESC LIMIT $${params.push(limit)}`;
   if (offset) sql += ` OFFSET $${params.push(offset)}`;
   const r = await q(sql, params);
@@ -819,7 +834,7 @@ export async function countTransactions(groupId, { zaloUid, approvedOnly = false
   const params = [groupId];
   if (approvedOnly) conds.push("(pt.status IS NULL OR pt.status='approved')");
   if (zaloUid) { conds.push(`(pt.from_member=$${params.push(zaloUid)} OR pt.to_member=$${params.push(zaloUid)})`); }
-  if (search) { const s = `%${search.toLowerCase()}%`; conds.push(`(LOWER(COALESCE(fm.display_name,'')) LIKE $${params.push(s)} OR LOWER(COALESCE(tm.display_name,'')) LIKE $${params.push(s)})`); }
+  if (search) conds.push(txSearchCond(search, params));
   const r = await q(`${base} WHERE ${conds.join(" AND ")}`, params);
   return Number(r.rows[0]?.cnt || 0);
 }
@@ -957,27 +972,45 @@ export async function getPendingTxGroup(txId) {
 }
 
 export async function approvePendingTransfer(txId, approvedBy = null, overridePoints = null) {
-  const r = await q("SELECT * FROM point_transactions WHERE id=$1 AND status='pending'", [txId]);
-  const tx = r.rows[0]; if (!tx) throw new Error("Không tìm thấy giao dịch đang chờ");
-  const pts = (overridePoints !== null && overridePoints !== undefined && !isNaN(Number(overridePoints)))
-    ? Math.abs(Number(overridePoints)) : Number(tx.points);
-  if (tx.from_member) {
-    await upsertMember(tx.group_id, tx.from_member);
-    await q("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
-      [pts, now(), tx.group_id, tx.from_member]);
+  const ov = (overridePoints !== null && overridePoints !== undefined && Number.isFinite(Number(overridePoints)))
+    ? Math.abs(Number(overridePoints)) : null;
+  // Thành viên phải tồn tại trước (upsertMember tự quản lý câu lệnh riêng)
+  const r0 = await q("SELECT group_id, from_member, to_member FROM point_transactions WHERE id=$1 AND status='pending'", [txId]);
+  const t0 = r0.rows[0]; if (!t0) throw new Error("Giao dịch không còn chờ duyệt (đã có người xử lý)");
+  if (t0.from_member) await upsertMember(t0.group_id, t0.from_member);
+  if (t0.to_member)   await upsertMember(t0.group_id, t0.to_member);
+
+  // Đổi trạng thái + cộng/trừ điểm trong 1 transaction. UPDATE ... WHERE status='pending' là
+  // chốt nguyên tử: 2 người bấm duyệt cùng lúc thì chỉ 1 người thắng, người kia nhận lỗi.
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const r = await client.query(
+      `UPDATE point_transactions SET status='approved', points=COALESCE($1, points), approved_by=$2
+       WHERE id=$3 AND status='pending' RETURNING group_id, from_member, to_member, points`,
+      [ov, approvedBy || null, txId]);
+    const tx = r.rows[0];
+    if (!tx) throw new Error("Giao dịch không còn chờ duyệt (đã có người xử lý)");
+    const pts = Number(tx.points);
+    if (tx.from_member)
+      await client.query("UPDATE members SET points=ROUND(CAST(points-$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
+        [pts, now(), tx.group_id, tx.from_member]);
+    if (tx.to_member)
+      await client.query("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
+        [pts, now(), tx.group_id, tx.to_member]);
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
   }
-  if (tx.to_member) {
-    await upsertMember(tx.group_id, tx.to_member);
-    await q("UPDATE members SET points=ROUND(CAST(points+$1 AS numeric),10),updated_at=$2 WHERE group_id=$3 AND zalo_uid=$4",
-      [pts, now(), tx.group_id, tx.to_member]);
-  }
-  await q("UPDATE point_transactions SET status='approved', points=$1, approved_by=$2 WHERE id=$3", [pts, approvedBy || null, txId]);
 }
 
 export async function rejectPendingTransfer(txId, approvedBy = null) {
-  const r = await q("SELECT id FROM point_transactions WHERE id=$1 AND status='pending'", [txId]);
-  if (!r.rows[0]) throw new Error("Không tìm thấy giao dịch đang chờ");
-  await q("UPDATE point_transactions SET status='rejected', approved_by=$1 WHERE id=$2", [approvedBy || null, txId]);
+  const r = await q("UPDATE point_transactions SET status='rejected', approved_by=$1 WHERE id=$2 AND status='pending' RETURNING id",
+    [approvedBy || null, txId]);
+  if (!r.rows[0]) throw new Error("Giao dịch không còn chờ duyệt (đã có người xử lý)");
 }
 
 // ---------- Kế toán: account KT của nhóm (để auto san điểm) ----------
@@ -1382,11 +1415,17 @@ const PURGEABLE = {
   system_logs: 'created_at',
 };
 const PURGE_ALLOWED = new Set(['barem_msg_refs', 'raw_messages', 'system_logs']);
+// Chỉ được xóa dữ liệu cũ hơn mức này — chặn ở tầng DB, kể cả khi gọi thẳng API.
+// barem_msg_refs: 6 tháng (Section E cần tra lại cuốc cũ); raw_messages: 7 ngày (nguồn Tính điểm bù).
+const PURGE_MIN_DAYS = { barem_msg_refs: 180, raw_messages: 7, system_logs: 1 };
 export async function purgeTable(table, days) {
   const col = PURGEABLE[table];
   if (!col) throw new Error('Bảng không được phép xóa: ' + table);
   if (!PURGE_ALLOWED.has(table)) throw new Error('Bảng này không cho phép xóa thủ công: ' + table);
-  const cutoff = Date.now() - days * 86400000;
+  const minDays = PURGE_MIN_DAYS[table] || 1;
+  if (!Number.isFinite(Number(days)) || Number(days) < minDays)
+    throw new Error(`Bảng ${table} chỉ được xóa dữ liệu cũ hơn ${minDays} ngày`);
+  const cutoff = Date.now() - Number(days) * 86400000;
   const r = await q(`DELETE FROM ${table} WHERE ${col} < $1`, [cutoff]);
   return r.rowCount;
 }
