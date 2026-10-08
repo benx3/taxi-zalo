@@ -27,7 +27,24 @@ const now = () => Date.now();
 const q = (text, params) => pool.query(text, params);
 
 // ---------- Khởi tạo bảng ----------
-export async function initDb() {
+// tlx-worker và tlx-driver-service khởi động cùng lúc, cùng chạy CREATE TABLE IF NOT EXISTS / ALTER…
+// Postgres không chịu được 2 lệnh tạo cùng 1 bảng song song (lỗi 23505 pg_type_typname_nsp_index)
+// → 1 service sập, pm2 bật lại, nginx trả 502 (đã xảy ra 8/10). Khóa advisory để chạy lần lượt.
+const INIT_LOCK_KEY = 7240501;   // số bất kỳ, cố định — chỉ dùng cho khởi tạo schema
+async function withInitLock(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query("SELECT pg_advisory_lock($1)", [INIT_LOCK_KEY]);
+    return await fn();
+  } finally {
+    await client.query("SELECT pg_advisory_unlock($1)", [INIT_LOCK_KEY]).catch(() => {});
+    client.release();
+  }
+}
+export async function initDb() { return withInitLock(_initDbImpl); }
+export async function ensureSeed() { return withInitLock(_ensureSeedImpl); }
+
+async function _initDbImpl() {
   await q(`
     CREATE TABLE IF NOT EXISTS users (
       id          TEXT PRIMARY KEY,
@@ -143,13 +160,14 @@ export async function initDb() {
     created_at  BIGINT NOT NULL
   )`);
   await q("CREATE INDEX IF NOT EXISTS idx_rawmsg_group ON raw_messages(group_id, created_at DESC)");
-  // Section E tra ngược tin được quote theo cli_msg_id → cần index, nếu không sẽ quét cả bảng
-  await q("CREATE INDEX IF NOT EXISTS idx_rawmsg_cli ON raw_messages(cli_msg_id)");
   // Cột phục vụ tính lại điểm: quote (nối chuỗi cuốc→ok→ok ib) + mentions (san điểm)
   for (const col of [
     "cli_msg_id TEXT", "quote_cli_msg_id TEXT", "quote_global_msg_id TEXT",
     "quote_owner_id TEXT", "mentions TEXT", "saved_by TEXT",
   ]) await q(`ALTER TABLE raw_messages ADD COLUMN IF NOT EXISTS ${col}`);
+  // Section E tra ngược tin được quote theo cli_msg_id → cần index, nếu không sẽ quét cả bảng.
+  // Phải tạo SAU khi thêm cột (DB mới tinh chưa có cột này → lỗi, service không khởi động được)
+  await q("CREATE INDEX IF NOT EXISTS idx_rawmsg_cli ON raw_messages(cli_msg_id)");
   // Đánh dấu tin bị bot xóa (luật điểm sàn / xóa icon) — để "Tính điểm bù"
   // KHÔNG dựng lại cuốc từ những tin đã bị chặn.
   await q("ALTER TABLE raw_messages ADD COLUMN IF NOT EXISTS deleted_at BIGINT");
@@ -236,7 +254,7 @@ export function revokeUserTokens(userId) {
   for (const [k, v] of sessions) if (v.userId === userId) sessions.delete(k);
 }
 
-export async function ensureSeed() {
+async function _ensureSeedImpl() {
   const r = await q("SELECT id FROM users WHERE phone=$1", ["admin"]);
   if (r.rowCount === 0) {
     const hash = await hashPassword("admin");

@@ -956,6 +956,14 @@ app.get("/api/zalo/pending-qr", (req, res) => {
 app.get("/", (_req, res) => res.send("TLX worker đang chạy"));
 app.get("/health", (_req, res) => res.json({ ok: true, sessions: sm.sessionCount?.() ?? 0 }));
 
+// Body JSON sai / quá lớn → trả lỗi gọn, không đổ nguyên stack vào log (trước in ~15 dòng stack mỗi lần)
+app.use((err, req, res, next) => {
+  if (err?.type === "entity.parse.failed") return res.status(400).json({ error: "Dữ liệu gửi lên không hợp lệ" });
+  if (err?.type === "entity.too.large") return res.status(413).json({ error: "Dữ liệu gửi lên quá lớn" });
+  console.error(`[HTTP] ${req.method} ${req.path}: ${err?.message || err}`);
+  if (!res.headersSent) res.status(500).json({ error: "Lỗi máy chủ" });
+});
+
 const server = app.listen(PORT, () => console.log(`🌐 Server (HTTP+WS) cổng ${PORT}`));
 
 // ====================== WebSocket ======================

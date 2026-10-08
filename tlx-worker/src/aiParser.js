@@ -104,7 +104,12 @@ QUY TẮC tripType — dùng kiến thức địa lý Việt Nam để xác đ�
 - "liên tỉnh": 2 điểm thuộc 2 tỉnh/thành phố khác nhau; bến xe liên tỉnh (bx Mỹ Đình, bx Giáp Bát, bx Nước Ngầm...) thường là dấu hiệu liên tỉnh
 - Nếu chỉ có 1 điểm hoặc không xác định được → ưu tiên "liên tỉnh" nếu giá cao (>400k), ngược lại "nội thành"`;
 
+// Model đổi được qua GROQ_MODEL (Groq hay gỡ model cũ: 9/2026 "llama-3.3-70b-versatile" trả 404
+// cho MỌI tin → ~150k dòng lỗi). Model không tồn tại → ngưng gọi Groq 1 giờ, chỉ ghi log 1 lần.
+const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+let _groqPausedUntil = 0;
 async function callGroq(text, key) {
+  if (Date.now() < _groqPausedUntil) throw new Error("Groq đang tạm ngưng (model không dùng được)");
   const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -112,7 +117,7 @@ async function callGroq(text, key) {
       Authorization: `Bearer ${key}`,
     },
     body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
+      model: GROQ_MODEL,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: text },
@@ -125,6 +130,10 @@ async function callGroq(text, key) {
   });
   if (!r.ok) {
     const err = await r.text().catch(() => "");
+    if (r.status === 404 || /model_not_found|model_decommissioned|does not exist/i.test(err)) {
+      _groqPausedUntil = Date.now() + 3600_000;
+      console.error(`[AI] Groq: model "${GROQ_MODEL}" không dùng được → ngưng gọi Groq 1 giờ. Đặt GROQ_MODEL sang model còn hoạt động.`);
+    }
     throw new Error(`Groq ${r.status}: ${err.slice(0, 120)}`);
   }
   const d = await r.json();

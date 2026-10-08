@@ -231,22 +231,41 @@ async function batchResolveGlobalIds(sess, uids) {
   }
   if (!toFetch.length) return result;
   const BATCH = 50;
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  // Zalo giới hạn tần suất: trước đây bị chặn thì bỏ qua đợt đó và gọi tiếp ngay → cả chục đợt sau
+  // cũng bị chặn (8/10: đợt 350→850 hỏng hết, thành viên thiếu global_id). Giờ: bị chặn thì chờ
+  // tăng dần rồi thử lại đúng đợt đó; vẫn bị chặn thì dừng hẳn, lần đồng bộ sau làm tiếp phần còn thiếu.
+  const isRateLimit = (e) => /vượt quá số request|too many|rate limit|429/i.test(String(e?.message || e));
+  let gap = 200, failedFrom = -1;
+  outer:
   for (let i = 0; i < toFetch.length; i += BATCH) {
-    try {
-      const batch = toFetch.slice(i, i + BATCH);
-      const resp = await sess.api.getUserInfo(batch);
-      for (const [uid, prof] of Object.entries(resp?.changed_profiles || {})) {
-        if (prof?.globalId) {
-          const entry = { globalId: prof.globalId, phone: prof.phoneNumber || null };
-          result[uid] = entry;
-          sess.uidGlobalIdCache.set(uid, entry);
+    const batch = toFetch.slice(i, i + BATCH);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const resp = await sess.api.getUserInfo(batch);
+        for (const [uid, prof] of Object.entries(resp?.changed_profiles || {})) {
+          if (prof?.globalId) {
+            const entry = { globalId: prof.globalId, phone: prof.phoneNumber || null };
+            result[uid] = entry;
+            sess.uidGlobalIdCache.set(uid, entry);
+          }
         }
+        break;
+      } catch (e) {
+        if (isRateLimit(e) && attempt < 3) {
+          gap = Math.max(gap, 1000);                       // đã bị chặn → các đợt sau đi chậm lại
+          await sleep([5000, 15000, 45000][attempt]);
+          continue;
+        }
+        if (isRateLimit(e)) { failedFrom = i; break outer; }
+        console.warn(`[${sess.userId}] batchResolveGlobalIds batch ${i}: ${e?.message}`);
+        break;
       }
-    } catch (e) {
-      console.warn(`[${sess.userId}] batchResolveGlobalIds batch ${i}: ${e?.message}`);
     }
-    if (i + BATCH < toFetch.length) await new Promise(r => setTimeout(r, 200));
+    if (i + BATCH < toFetch.length) await sleep(gap);
   }
+  if (failedFrom >= 0)
+    console.warn(`[${sess.userId}] batchResolveGlobalIds: Zalo vẫn chặn sau 3 lần chờ → dừng ở ${failedFrom}/${toFetch.length}, lần đồng bộ sau làm tiếp`);
   return result;
 }
 
@@ -897,8 +916,8 @@ async function onMessage(sess, msg) {
       const taggedPartyUids = mentions
         .map(m => String(m.uid))
         .filter(u => u && u !== String(sess.selfId) && (!_ktUidE || u !== String(_ktUidE)));
-      // Log khi có quote nhưng không kích hoạt được (luôn hiện, không cần DEBUG_BAREM)
-      if (qd && !ktMentioned) console.log(`[BAREM_E] ⚠️ quote có nhưng ktMentioned=false | mentions=${JSON.stringify(mentions.map(m=>m.uid))} selfId=${sess.selfId} group=${dbGroupId}`);
+      // Reply có quote mà không tag KT là chuyện bình thường (~1.800 lần/ngày) → chỉ ghi khi bật DEBUG_BAREM
+      if (qd && !ktMentioned && process.env.DEBUG_BAREM) console.log(`[BAREM_E] ⚠️ quote có nhưng ktMentioned=false | mentions=${JSON.stringify(mentions.map(m=>m.uid))} selfId=${sess.selfId} group=${dbGroupId}`);
       if (process.env.DEBUG_BAREM) console.log(`[BAREM_E] hasQuote=${!!qd} ktMentioned=${ktMentioned} mentions=${JSON.stringify(mentions.map(m=>m.uid))} selfId=${sess.selfId}`);
       // Tin có quote + tag KT → Section E xử lý cancel/adjust/revert
       // Tin không có quote + tag KT → Section E.1 lưu 0đ pending (tranh chấp standalone)
