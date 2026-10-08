@@ -146,7 +146,7 @@ export default function ConfigTab({ groupId }) {
               <div style={{ padding: "10px 12px", borderRadius: 9, background: "rgba(248,113,113,.07)", border: "1px solid rgba(248,113,113,.25)" }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "#f87171", marginBottom: 6 }}>BỊ XÓA</div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-dim)", lineHeight: 1.8 }}>
-                  · Sticker Zalo<br />· Tin chỉ có 👍 😂 ❤️<br />· Không kèm chữ nào
+                  · Sticker, GIF trong kho Zalo<br />· Tin chỉ có icon (👍 😂 ❤️, icon Zalo)<br />· Không kèm chữ nào
                 </div>
               </div>
               <div style={{ padding: "10px 12px", borderRadius: 9, background: "rgba(52,211,153,.07)", border: "1px solid rgba(52,211,153,.25)" }}>

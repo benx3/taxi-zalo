@@ -511,7 +511,7 @@ async function onMessage(sess, msg) {
         if (senderId !== String(_ktUid)) {
           const r = await deleteGroupMessage(sess, msg, groupId, {
             dryRun: _cfg.dryRun, who: senderName,
-            why: isStickerMsg(msg) ? "sticker" : "chỉ toàn emoji",
+            why: isStickerMsg(msg) ? `sticker/GIF (${msg.data?.msgType})` : "chỉ toàn icon",
           });
           if (r.deleted && _cfg.iconNotice) {
             await sendNotice(sess, groupId, senderId, senderName, _cfg.iconNotice, { tên: senderName });
@@ -1331,23 +1331,41 @@ async function getGroupCfg(dbGroupId) {
 }
 export function invalidateGroupCfg(dbGroupId) { _cfgCache.delete(dbGroupId); }
 
-// Tin "chỉ toàn icon": phải có ít nhất 1 emoji VÀ bỏ hết emoji đi thì không còn chữ nào.
-// "👍" → true · "😂😂" → true · "ok 👍" → false (còn chữ) · "123" → false (không có emoji)
+// Icon trong kho icon Zalo: app Zalo vẽ thành hình nhưng bot nhận về dạng MÃ CHỮ
+// (vd "/-strong" = like, "/-heart" = tim, ":d" = cười). Mỗi mẫu dưới đây khớp trọn 1 từ.
+// Mắt bằng chữ cái (x, b, 8, p) bắt buộc có mũi "-" để không nuốt chữ thật như "bx", "xl", "bv".
+const ZALO_ICON_TOKEN = new RegExp("^(?:" + [
+  /(?:\/-[a-z]+)+/,                                  // /-strong /-heart /-rose /-ok (có thể dính nhau)
+  /[:;=][-'^]?[)(\][dpov3x*|$\/\\<>zlqs@!?~]+/,      // :) :(( :d :p ;) =)) :v :3 :-((
+  /[8xb>&$|p][-'][)(\][dpov3x*|$\/\\<>zlqs@!?]+/,     // 8-) x-) b-) >-| p-(
+  /:-?[a-z]{2,10}/,                                  // :-bye :wipe :handclap
+  /--b|_\(\)_|-_+-|\^+_*\^+|<3|\((?:y|n)\)/,         // --b _()_ -_- ^^ ^_^ <3 (y)
+].map(r => r.source).join("|") + ")+$", "i");
+
+// Tin "chỉ toàn icon": mọi từ đều là emoji / mã icon Zalo / dấu câu, và có ít nhất 1 icon.
+// "👍" · "😂😂" · "/-strong" · ":))" · "/-heart /-heart" → true
+// "ok 👍" · "bx" · "8:30" · "??" (chỉ dấu câu, không có icon) → false
 export function isEmojiOnly(s) {
   const t = (s || "").trim();
   if (!t) return false;
-  if (!/\p{Extended_Pictographic}/u.test(t)) return false;
-  const rest = t
-    .replace(/\p{Extended_Pictographic}/gu, "")
-    .replace(/[‍︎️⃣]/g, "")        // ZWJ, biến thể, keycap
-    .replace(/[\u{1F3FB}-\u{1F3FF}]/gu, "")            // tông màu da
-    .replace(/\s/g, "");
-  return rest.length === 0;
+  let hasIcon = false;
+  for (const tok of t.split(/\s+/)) {
+    if (/\p{Extended_Pictographic}/u.test(tok)) hasIcon = true;
+    const rest = tok
+      .replace(/\p{Extended_Pictographic}/gu, "")
+      .replace(/[‍︎️⃣]/g, "")        // ZWJ, biến thể, keycap
+      .replace(/[\u{1F3FB}-\u{1F3FF}]/gu, "");           // tông màu da
+    if (!rest) continue;
+    if (ZALO_ICON_TOKEN.test(rest)) { hasIcon = true; continue; }
+    if (/^[\p{P}\p{S}]+$/u.test(rest)) continue;          // dấu câu không tính là chữ
+    return false;                                         // còn chữ/số thật → giữ tin
+  }
+  return hasIcon;
 }
 
-// Sticker Zalo — msgType chứa chữ "sticker"
+// Sticker / GIF lấy từ kho của Zalo — msgType "chat.sticker", "chat.gif"
 export function isStickerMsg(msg) {
-  return /sticker/i.test(String(msg?.data?.msgType || ""));
+  return /sticker|gif/i.test(String(msg?.data?.msgType || ""));
 }
 
 // Giới hạn tốc độ xóa: tránh Zalo coi là hành vi bất thường rồi khóa tài khoản bot
