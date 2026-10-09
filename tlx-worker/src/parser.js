@@ -217,8 +217,15 @@ export function parseSeats(t) {
   return "Không rõ";
 }
 
+// Bao hàng ghế sau: khách đi cùng nhau lấy trọn 1 hàng ghế (sau / giữa) để ngồi chung.
+// PHẢI kiểm tra TRƯỚC nhánh "Hàng" (chở hàng hóa) — nhánh đó bắt "bao hàng" nên trước đây
+// "bao hàng ghế sau" bị tính barem ship. Chỉ nhận khi "bao hàng" đi liền với ghế sau/giữa;
+// "bao hàng sau 5h" (chở hàng, giao sau 5h) không tính vì sau "sau" là giờ.
+export const BAO_HANG_GHE_RE = /\bbhgs\b|bao\s*h[aà]ng\s*gh[eếê]\s*(?:sau|gi[uữ]a)(?![a-zà-ỹ])|bao\s*h[aà]ng\s*(?:sau|gi[uữ]a)(?![a-zà-ỹ])(?!\s*\d)/;
+
 export function parseType(t) {
   const l = t.toLowerCase();
+  if (BAO_HANG_GHE_RE.test(l)) return "Bao hàng ghế sau";
   if (/(bao\s*hàng|csct\s*đồ|(?:^|[\s\d,.])\s*đồ\s|gửi\s*hàng|giao\s*hàng|chở\s*hàng|ship\b|kiện\s*hàng|hàng\s+(?:nhỏ|nặng|lớn|to|bé|gọn|cồng|kềnh)|hồ\s*sơ|tài\s*liệu|giấy\s*tờ|phong\s*bì|bưu\s*phẩm)/.test(l) && !/1\s*ghế|1k\b|gái|khách/.test(l)) return "Hàng";
   // "bx/bxe" + tên bến xe whitelist (Mỹ Đình/Giáp Bát/Nước Ngầm/Gia Lâm/Yên Nghĩa) → bến xe, KHÔNG phải bao xe
   // "bx/bxe" + bất kỳ địa danh khác → bao xe (vì chỉ có vài bến xe lớn ở HN)

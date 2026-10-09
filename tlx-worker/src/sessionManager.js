@@ -365,6 +365,9 @@ const PARSER_TO_BAREM = {
   "Bao xe 5 chỗ 2 chiều":  ["bao_xe_5_2c", "bao_xe_2c", "bao_xe_5", "bao_xe"],
   "Bao xe 7 chỗ":          ["bao_xe_7", "bao_xe"],
   "Bao xe 7 chỗ 2 chiều":  ["bao_xe_7_2c", "bao_xe_2c", "bao_xe_7", "bao_xe"],
+  // Không lùi về barem khác: điểm loại này mỗi nhóm một kiểu, đoán sẽ tính sai im lặng.
+  // Nhóm chưa cấu hình → 0đ → vào Chờ duyệt cho KT tự chấm.
+  "Bao hàng ghế sau":      ["bao_hang_ghe_sau"],
   "Ghép 1":          ["ghep_1"],
   "Ghép 2":          ["ghep_2"],
   "Ghép 3":          ["ghep_3", "ghep_2"],  // thử ghep_3 trước, fallback ghep_2

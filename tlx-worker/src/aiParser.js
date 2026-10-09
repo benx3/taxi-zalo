@@ -41,7 +41,7 @@ TRƯỜNG JSON CẦN TRẢ VỀ:
   "from": string|null,
   "to": string|null,
   "seats": "1 ghế"|"2 khách"|"3 khách"|"Bao xe"|"Không rõ",
-  "type": "Ghép 1"|"Ghép 2"|"Ghép 3"|"Bao xe"|"Bao xe 2 chiều"|"Bao xe 5 chỗ"|"Bao xe 5 chỗ 2 chiều"|"Bao xe 7 chỗ"|"Bao xe 7 chỗ 2 chiều"|"Sân bay"|"Sân bay đón"|"Sân bay tiễn"|"Sân bay 2 chiều"|"Hàng",
+  "type": "Ghép 1"|"Ghép 2"|"Ghép 3"|"Bao xe"|"Bao xe 2 chiều"|"Bao xe 5 chỗ"|"Bao xe 5 chỗ 2 chiều"|"Bao xe 7 chỗ"|"Bao xe 7 chỗ 2 chiều"|"Bao hàng ghế sau"|"Sân bay"|"Sân bay đón"|"Sân bay tiễn"|"Sân bay 2 chiều"|"Hàng",
   "timeLabel": string,
   "timeBucket": "soon"|"today"|"tomorrow",
   "car": "Xe 29c"|"Xe 16c"|"Xe 7c+"|"Sedan/4c"|"Sedan/5c"|null,
@@ -77,7 +77,8 @@ QUY TẮC type:
 - "Sân bay đón": ĐÓN khách TỪ sân bay về (from=T1/T2/NB, to=nội đô) — "dự hạ/dự về/đáp/hạ cánh" là dấu hiệu đón
 - "Sân bay 2 chiều": đón và tiễn cả 2 chiều (có "2c/2chiều" + sân bay)
 - "Sân bay": có sân bay nhưng không rõ chiều
-- "Hàng": ship/gửi hàng/chở hàng/kiện hàng/đồ (KHÔNG có từ "khách/người")
+- "Bao hàng ghế sau": khách lấy trọn 1 hàng ghế — bhgs/bao hàng sau/bao hàng ghế sau/bao hàng ghế giữa. ĐÂY LÀ CHỞ NGƯỜI, KHÔNG phải "Hàng"
+- "Hàng": ship/gửi hàng/chở hàng/kiện hàng/đồ (KHÔNG có từ "khách/người"; "bao hàng ghế sau/giữa" KHÔNG phải hàng)
 - "Bao xe 5 chỗ": bx5/x5/xe 5/bao xe 5/Vf6tl (VinFast VF6) — ưu tiên hơn "Bao xe" chung
 - "Bao xe 7 chỗ": bx7/x7/xe 7/7 chỗ/7c/bao xe 7/Limo Green (Xanh SM Limo) — ưu tiên hơn "Bao xe" chung
 - Hai loại trên nếu có "2c/2 chiều" → thêm hậu tố " 2 chiều" (vd "Bao xe 7 chỗ 2 chiều")

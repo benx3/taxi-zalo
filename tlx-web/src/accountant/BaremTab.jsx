@@ -9,6 +9,7 @@ const TRIP_TYPES = [
   { value: "bao_xe_5_2c",   label: "Bao xe 5 chỗ 2 chiều" },
   { value: "bao_xe_7",      label: "Bao xe 7 chỗ 1 chiều" },
   { value: "bao_xe_7_2c",   label: "Bao xe 7 chỗ 2 chiều" },
+  { value: "bao_hang_ghe_sau", label: "Bao hàng ghế sau / giữa" },
   { value: "ghep_1",        label: "Ghép 1 khách" },
   { value: "ghep_2",        label: "Ghép 2 khách" },
   { value: "ship",          label: "Gửi hàng / Ship" },
